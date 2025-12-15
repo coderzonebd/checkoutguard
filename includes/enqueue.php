@@ -43,6 +43,7 @@ function checkoutguard_enqueue_admin_assets($hook_suffix)
     $is_main_dashboard = ($screen->id === 'dashboard');
     $is_single_order_page = ($screen->id === 'shop_order' || ($screen->id === 'woocommerce_page_wc-orders' && ($_GET['action'] ?? '') === 'edit'));
     $is_courier_check_page = ($screen->id === 'checkoutguard_page_checkoutguard-courier-check');
+    $is_settings_page = ($screen->id === 'checkoutguard_page_checkoutguard-settings');
 
     if ($is_checkoutguard_page || $is_main_dashboard || $is_single_order_page) {
         // Enqueue Dashicons for our custom icons
@@ -78,10 +79,22 @@ function checkoutguard_enqueue_admin_assets($hook_suffix)
 
     // Enqueue courier check assets on the courier check page
     if ($is_courier_check_page) {
+        // Enqueue Dashicons
+        wp_enqueue_style('dashicons');
+        
+        // Enqueue admin styles first for base styles
+        wp_enqueue_style(
+            'checkoutguard-admin-styles',
+            CHECKOUTGUARD_PLUGIN_URL . 'assets/css/admin-styles.css',
+            ['dashicons'],
+            CHECKOUTGUARD_VERSION
+        );
+        
+        // Then enqueue courier-specific styles
         wp_enqueue_style(
             'checkoutguard-courier-check-styles',
             CHECKOUTGUARD_PLUGIN_URL . 'assets/css/courier-check.css',
-            ['dashicons'],
+            ['dashicons', 'checkoutguard-admin-styles'],
             CHECKOUTGUARD_VERSION
         );
 
@@ -101,6 +114,36 @@ function checkoutguard_enqueue_admin_assets($hook_suffix)
                 'nonce' => wp_create_nonce('checkoutguard_courier_check_nonce'),
                 'noRecentSearches' => esc_html__('No recent searches', 'checkoutguard'),
                 'pluginUrl' => CHECKOUTGUARD_PLUGIN_URL,
+            ]
+        );
+    }
+
+    // Enqueue invoice assets on the invoice page
+    if ($screen->id === 'checkoutguard_page_checkoutguard-invoice') {
+        wp_enqueue_style('dashicons');
+        
+        // Enqueue admin styles
+        wp_enqueue_style(
+            'checkoutguard-admin-styles',
+            CHECKOUTGUARD_PLUGIN_URL . 'assets/css/admin-styles.css',
+            ['dashicons'],
+            CHECKOUTGUARD_VERSION
+        );
+
+        wp_enqueue_script(
+            'checkoutguard-invoice-script',
+            CHECKOUTGUARD_PLUGIN_URL . 'assets/js/invoice.js',
+            ['jquery'],
+            CHECKOUTGUARD_VERSION,
+            true
+        );
+
+        wp_localize_script(
+            'checkoutguard-invoice-script',
+            'checkoutguard_invoice_params',
+            [
+                'ajaxUrl' => admin_url('admin-ajax.php'),
+                'nonce' => wp_create_nonce('checkoutguard_invoice_nonce'),
             ]
         );
     }

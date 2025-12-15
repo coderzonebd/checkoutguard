@@ -3,7 +3,7 @@
  * Plugin Name: CheckoutGuard
  * Plugin URI: https://coderzonebd.com/
  * Description: Tracks incomplete WooCommerce checkouts to help you understand cart abandonment. Includes a dashboard widget, fraud protection, and courier success rate checking.
- * Version: 1.1.1.1
+ * Version: 1.1.2
  * Requires at least: 5.6
  * Tested up to: 6.9
  * Requires PHP: 7.4
@@ -34,7 +34,7 @@ add_action('before_woocommerce_init', function () {
 define('CHECKOUTGUARD_IS_PRO', false);
 
 // Define Core Plugin Constants
-define('CHECKOUTGUARD_VERSION', '1.1.0'); // Updated version
+define('CHECKOUTGUARD_VERSION', '1.1.2'); // Updated version
 define('CHECKOUTGUARD_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('CHECKOUTGUARD_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('CHECKOUTGUARD_PLUGIN_FILE', __FILE__);
@@ -45,6 +45,8 @@ define('CHECKOUTGUARD_ADMIN_DIR', CHECKOUTGUARD_INC_DIR . 'admin/');
 require_once CHECKOUTGUARD_INC_DIR . 'utils.php';
 require_once CHECKOUTGUARD_ADMIN_DIR . 'admin-pages.php';
 require_once CHECKOUTGUARD_ADMIN_DIR . 'courier-check-page.php';
+require_once CHECKOUTGUARD_ADMIN_DIR . 'invoice-page.php';
+require_once CHECKOUTGUARD_ADMIN_DIR . 'settings-page.php';
 require_once CHECKOUTGUARD_INC_DIR . 'courier-check-ajax.php';
 
 /**
@@ -109,7 +111,10 @@ function appsero_init_tracker_checkoutguard() {
     $client = new Appsero\Client( 'e20adf30-6ccb-4195-819f-936eab691c43', 'CheckoutGuard', __FILE__ );
 
     // Active insights
-    $client->insights()->init();
+    $client ->insights()
+            ->add_plugin_data()
+            ->init();
+            
     // Active automatic updater
     $client->updater();
 

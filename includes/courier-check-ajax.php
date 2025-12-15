@@ -102,6 +102,12 @@ function checkoutguard_handle_courier_check_ajax()
     $response_body = wp_remote_retrieve_body($response);
     $data = json_decode($response_body, true);
 
+    // Log API response for debugging
+    if (defined('WP_DEBUG') && WP_DEBUG) {
+        error_log('CheckoutGuard Courier API Response - Code: ' . $response_code);
+        error_log('CheckoutGuard Courier API Body: ' . $response_body);
+    }
+
     // Handle different response codes
     if ($response_code === 200 && isset($data['success']) && $data['success']) {
         // Save to database for recent searches and local caching
@@ -131,6 +137,10 @@ function checkoutguard_handle_courier_check_ajax()
         wp_send_json_error([
             'message' => $error_message,
             'rate_limit' => isset($data['rate_limit']) ? $data['rate_limit'] : null
+        ]);
+    } elseif ($response_code === 500 || $response_code === 502 || $response_code === 503) {
+        wp_send_json_error([
+            'message' => esc_html__('The courier service API is temporarily unavailable. Please try again in a few moments.', 'checkoutguard')
         ]);
     } else {
         $error_message = isset($data['message']) ? $data['message'] : esc_html__('Unknown error occurred.', 'checkoutguard');

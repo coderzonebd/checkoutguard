@@ -20,7 +20,7 @@ function checkoutguard_register_admin_menu()
         5
     );
     
-    // Sub-menu item for Dashboard
+    // Sub-menu item for Dashboard (always visible)
     add_submenu_page(
         'checkoutguard-dashboard',
         esc_html__('Dashboard', 'checkoutguard'),
@@ -30,33 +30,61 @@ function checkoutguard_register_admin_menu()
         'checkoutguard_render_dashboard_page'
     );
 
-    // Sub-menu item for Incomplete Checkouts
-    add_submenu_page(
-        'checkoutguard-dashboard',
-        esc_html__('Incomplete Checkouts', 'checkoutguard'),
-        esc_html__('Incomplete Checkouts', 'checkoutguard'),
-        'manage_woocommerce',
-        'checkoutguard-incomplete-checkouts',
-        'checkoutguard_render_incomplete_checkouts_page'
-    );
+    // Sub-menu item for Incomplete Checkouts (check if enabled)
+    if (checkoutguard_get_setting('enable_incomplete_checkout_tracking', true)) {
+        add_submenu_page(
+            'checkoutguard-dashboard',
+            esc_html__('Incomplete Checkouts', 'checkoutguard'),
+            esc_html__('Incomplete Checkouts', 'checkoutguard'),
+            'manage_woocommerce',
+            'checkoutguard-incomplete-checkouts',
+            'checkoutguard_render_incomplete_checkouts_page'
+        );
+    }
 
-    // Sub-menu item for the limited Fraud Blocker
-    add_submenu_page(
-        'checkoutguard-dashboard',
-        esc_html__('Fraud Blocker', 'checkoutguard'),
-        esc_html__('Fraud Blocker', 'checkoutguard'),
-        'manage_options', // Only admins can access this
-        'checkoutguard-fraud-blocker',
-        'checkoutguard_render_fraud_blocker_page'
-    );
+    // Sub-menu item for the limited Fraud Blocker (check if enabled)
+    if (checkoutguard_get_setting('enable_fraud_blocker', true)) {
+        add_submenu_page(
+            'checkoutguard-dashboard',
+            esc_html__('Fraud Blocker', 'checkoutguard'),
+            esc_html__('Fraud Blocker', 'checkoutguard'),
+            'manage_options', // Only admins can access this
+            'checkoutguard-fraud-blocker',
+            'checkoutguard_render_fraud_blocker_page'
+        );
+    }
 
-    // Sub-menu item for Courier Check
+    // Sub-menu item for Courier Check (check if enabled)
+    if (checkoutguard_get_setting('enable_courier_check', true)) {
+        add_submenu_page(
+            'checkoutguard-dashboard',
+            esc_html__('Courier Check', 'checkoutguard'),
+            esc_html__('Courier Check', 'checkoutguard'),
+            'manage_woocommerce',
+            'checkoutguard-courier-check',
+            'checkoutguard_render_courier_check_page'
+        );
+    }
+
+    // Sub-menu item for Invoice & Shipping Slip (check if enabled)
+    if (checkoutguard_get_setting('enable_invoice_shipping', true)) {
+        add_submenu_page(
+            'checkoutguard-dashboard',
+            esc_html__('Invoice & Shipping', 'checkoutguard'),
+            esc_html__('Invoice & Shipping', 'checkoutguard'),
+            'manage_woocommerce',
+            'checkoutguard-invoice',
+            'checkoutguard_render_invoice_page'
+        );
+    }
+
+    // Sub-menu item for Settings (always visible)
     add_submenu_page(
         'checkoutguard-dashboard',
-        esc_html__('Courier Check', 'checkoutguard'),
-        esc_html__('Courier Check', 'checkoutguard'),
-        'manage_woocommerce',
-        'checkoutguard-courier-check',
-        'checkoutguard_render_courier_check_page'
+        esc_html__('Settings', 'checkoutguard'),
+        esc_html__('Settings', 'checkoutguard'),
+        'manage_options',
+        'checkoutguard-settings',
+        'checkoutguard_render_settings_page'
     );
 }

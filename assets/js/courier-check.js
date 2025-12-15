@@ -18,7 +18,7 @@
         });
 
         // Handle recent search item click
-        $(document).on('click', '.cg-recent-item', function() {
+        $(document).on('click', '.cg-recent-item-modern', function() {
             const phoneNumber = $(this).data('phone');
             if (phoneNumber) {
                 $('#cg-phone-number').val(phoneNumber);
@@ -40,7 +40,7 @@
      * Checks if "Clear All" button should be visible.
      */
     function checkClearAllButtonVisibility() {
-        const itemCount = $('#cg-recent-list .cg-recent-item').length;
+        const itemCount = $('#cg-recent-list .cg-recent-item-modern').length;
         if (itemCount === 0) {
             $('#cg-clear-all-btn').hide();
         } else {
@@ -67,7 +67,7 @@
         // Disable form and show loading
         $button.prop('disabled', true);
         $loading.show();
-        $resultsContainer.html('<div class="cg-loading-results"><span class="spinner is-active"></span><p>Fetching courier data...</p></div>');
+        $resultsContainer.html('<div class="cg-loading-modern"><span class="cg-spinner-modern"></span><span>Fetching courier data...</span></div>');
 
         // Make AJAX request
         $.ajax({
@@ -296,7 +296,7 @@
         e.stopPropagation(); // Prevent triggering the search item click
         
         const $button = $(this);
-        const $item = $button.closest('.cg-recent-item');
+        const $item = $button.closest('.cg-recent-item-modern');
         const searchId = $button.data('search-id');
         const phoneNumber = $item.data('phone');
 
@@ -324,8 +324,8 @@
                         $(this).remove();
                         
                         // Check if there are any items left
-                        if ($('#cg-recent-list .cg-recent-item').length === 0) {
-                            $('#cg-recent-list').html('<p class="cg-no-data"><span class="dashicons dashicons-info"></span>' + checkoutguardCourier.noRecentSearches + '</p>');
+                        if ($('#cg-recent-list .cg-recent-item-modern').length === 0) {
+                            $('#cg-recent-list').html('<div class="cg-no-data-modern"><span class="dashicons dashicons-info"></span><p>' + checkoutguardCourier.noRecentSearches + '</p></div>');
                             $('#cg-clear-all-btn').hide();
                         }
                     });
@@ -352,7 +352,7 @@
         e.preventDefault();
         
         const $button = $(this);
-        const itemCount = $('#cg-recent-list .cg-recent-item').length;
+        const itemCount = $('#cg-recent-list .cg-recent-item-modern').length;
 
         // Check if there are items to delete
         if (itemCount === 0) {
@@ -383,13 +383,13 @@
             success: function(response) {
                 if (response.success) {
                     // Fade out all items
-                    $('#cg-recent-list .cg-recent-item').fadeOut(300, function() {
+                    $('#cg-recent-list .cg-recent-item-modern').fadeOut(300, function() {
                         $(this).remove();
                     });
                     
                     // Update list with empty state
                     setTimeout(function() {
-                        $('#cg-recent-list').html('<p class="cg-no-data"><span class="dashicons dashicons-info"></span>' + checkoutguardCourier.noRecentSearches + '</p>');
+                        $('#cg-recent-list').html('<div class="cg-no-data-modern"><span class="dashicons dashicons-info"></span><p>' + checkoutguardCourier.noRecentSearches + '</p></div>');
                         $button.hide();
                     }, 350);
                     

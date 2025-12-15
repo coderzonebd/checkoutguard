@@ -32,15 +32,12 @@ function checkoutguard_handle_save_checkout_data()
     // Sanitize all POST data
     $posted_data = isset($_POST) ? $_POST : array();
     $data_to_save = [
-        'email' => isset($posted_data['billing_email']) ? sanitize_email($posted_data['billing_email']) : '',
         'first_name' => isset($posted_data['billing_first_name']) ? sanitize_text_field($posted_data['billing_first_name']) : '',
         'last_name' => isset($posted_data['billing_last_name']) ? sanitize_text_field($posted_data['billing_last_name']) : '',
-        'phone' => isset($posted_data['billing_phone']) ? checkoutguard_normalize_phone_number(sanitize_text_field($posted_data['billing_phone'])) : '',
         'address_1' => isset($posted_data['billing_address_1']) ? sanitize_text_field($posted_data['billing_address_1']) : '',
         'city' => isset($posted_data['billing_city']) ? sanitize_text_field($posted_data['billing_city']) : '',
         'postcode' => isset($posted_data['billing_postcode']) ? sanitize_text_field($posted_data['billing_postcode']) : '',
         'country' => isset($posted_data['billing_country']) ? sanitize_text_field($posted_data['billing_country']) : '',
-        'ip_address' => WC_Geolocation::get_ip_address(),
         'session_id' => $session_id,
         'updated_at' => current_time('mysql'),
     ];
@@ -108,58 +105,22 @@ function checkoutguard_get_incomplete_checkout_details_ajax_handler()
         return;
     }
 
-    // Decode cart data
-    $cart_items = array();
-
-    // Try to get cart data from cart_data field
-    if (!empty($entry->cart_data)) {
-        $decoded_items = json_decode($entry->cart_data, true);
-        if (is_array($decoded_items)) {
-            $cart_items = $decoded_items;
-        }
+    // Decode cart items from cart_details field
+    $cart_items = json_decode($entry->cart_details, true);
+    if (!is_array($cart_items)) {
+        $cart_items = array();
     }
 
-    // If cart_data is empty or invalid, try to extract from description
-    if (empty($cart_items) && !empty($entry->description)) {
-        $lines = explode("\n", $entry->description);
-        foreach ($lines as $line) {
-            // Match patterns like "1x Product Name" or just "Product Name"
-            if (preg_match('/^(\d+)x\s+(.+)$/', $line, $matches)) {
-                $cart_items[] = array(
-                    'name' => trim($matches[2]),
-                    'quantity' => intval($matches[1]),
-                    'line_total' => 0
-                );
-            } elseif (!empty(trim($line))) {
-                // Add any non-empty line as a product
-                $cart_items[] = array(
-                    'name' => trim($line),
-                    'quantity' => 1,
-                    'line_total' => 0
-                );
-            }
-        }
-    }
-
-    // Fallback: If still no items, extract from the table data
-    if (empty($cart_items)) {
-        // Get products from the incomplete checkouts table
-        $products_table = $wpdb->prefix . 'checkoutguard_incomplete_checkout_products';
-        $products = $wpdb->get_results($wpdb->prepare(
-            "SELECT product_name, quantity, price FROM {$products_table} WHERE checkout_id = %d",
-            $entry_id
-        ));
-
-        if (!empty($products)) {
-            foreach ($products as $product) {
-                $cart_items[] = array(
-                    'name' => $product->product_name,
-                    'quantity' => $product->quantity,
-                    'line_total' => $product->price
-                );
-            }
-        }
-    }
+    // Format full address
+    $address_parts = array_filter(array(
+        $entry->address_1,
+        $entry->address_2,
+        $entry->city,
+        $entry->state,
+        $entry->postcode,
+        $entry->country
+    ));
+    $full_address = !empty($address_parts) ? implode(', ', $address_parts) : esc_html__('No address provided', 'checkoutguard');
 
     ob_start();
     ?>
@@ -169,56 +130,95 @@ function checkoutguard_get_incomplete_checkout_details_ajax_handler()
             <div class="cg-info-grid">
                 <div class="cg-info-item">
                     <span class="cg-info-label"><?php esc_html_e('Name:', 'checkoutguard'); ?></span>
-                    <span
-                        class="cg-info-value"><?php echo esc_html(trim($entry->first_name . ' ' . $entry->last_name)); ?></span>
-                </div>
-                <div class="cg-info-item">
-                    <span class="cg-info-label"><?php esc_html_e('Email:', 'checkoutguard'); ?></span>
-                    <span class="cg-info-value"><?php echo esc_html($entry->email); ?></span>
-                </div>
-                <div class="cg-info-item">
-                    <span class="cg-info-label"><?php esc_html_e('Phone:', 'checkoutguard'); ?></span>
-                    <span class="cg-info-value">
-                        <?php echo esc_html($entry->phone); // REMOVED: Pro check, now always shows phone ?>
-                    </span>
+                    <span class="cg-info-value"><?php 
+                        $full_name = trim($entry->first_name . ' ' . $entry->last_name);
+                        echo esc_html($full_name ?: __('(Not provided)', 'checkoutguard')); 
+                    ?></span>
                 </div>
             </div>
+            <?php if (!CHECKOUTGUARD_IS_PRO): ?>
+                <div class="cg-pro-upsell-box">
+                    <span class="dashicons dashicons-lock"></span>
+                    <p><?php esc_html_e('To see emails, phones, ip please upgrade to pro', 'checkoutguard'); ?></p>
+                    <a href="https://coderzonebd.com/pricing" target="_blank" class="button button-primary">
+                        <?php esc_html_e('Upgrade to Pro', 'checkoutguard'); ?>
+                    </a>
+                </div>
+            <?php else: ?>
+                <div class="cg-info-grid cg-contact-details">
+                    <div class="cg-info-item">
+                        <span class="cg-info-label"><?php esc_html_e('Email:', 'checkoutguard'); ?></span>
+                        <span class="cg-info-value"><?php echo esc_html($entry->email ?: __('(Not provided)', 'checkoutguard')); ?></span>
+                    </div>
+                    <div class="cg-info-item">
+                        <span class="cg-info-label"><?php esc_html_e('Phone:', 'checkoutguard'); ?></span>
+                        <span class="cg-info-value"><?php echo esc_html($entry->phone ?: __('(Not provided)', 'checkoutguard')); ?></span>
+                    </div>
+                    <div class="cg-info-item">
+                        <span class="cg-info-label"><?php esc_html_e('IP Address:', 'checkoutguard'); ?></span>
+                        <span class="cg-info-value"><?php echo esc_html($entry->ip_address ?: __('(Not captured)', 'checkoutguard')); ?></span>
+                    </div>
+                </div>
+            <?php endif; ?>
         </div>
 
         <div class="cg-modal-section">
             <h3><?php esc_html_e('Cart Details', 'checkoutguard'); ?></h3>
-            <p><strong><?php esc_html_e('Cart Value:', 'checkoutguard'); ?></strong>
-                <?php echo wc_price($entry->cart_value); ?></p>
-            <?php
-            $cart_items = json_decode($entry->cart_details, true);
-            if (!empty($cart_items)) {
-                echo '<ul>';
-                foreach ($cart_items as $item) {
-                    echo '<li>' . esc_html($item['name']) . ' (Qty: ' . esc_html($item['quantity']) . ')</li>';
-                }
-                echo '</ul>';
-            }
-            ?>
+            <div class="cg-cart-summary">
+                <p><strong><?php esc_html_e('Total Cart Value:', 'checkoutguard'); ?></strong> <?php echo wc_price($entry->cart_value); ?></p>
+                <?php if (!empty($cart_items)): ?>
+                    <div class="cg-cart-items-list">
+                        <h4><?php esc_html_e('Items in Cart:', 'checkoutguard'); ?></h4>
+                        <ul>
+                            <?php foreach ($cart_items as $item): ?>
+                                <li>
+                                    <strong><?php echo esc_html($item['name']); ?></strong>
+                                    <span class="cg-item-meta">
+                                        <?php esc_html_e('Quantity:', 'checkoutguard'); ?> <?php echo esc_html($item['quantity']); ?>
+                                        <?php if (isset($item['line_total']) && $item['line_total'] > 0): ?>
+                                            | <?php echo wc_price($item['line_total']); ?>
+                                        <?php endif; ?>
+                                    </span>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </div>
+                <?php else: ?>
+                    <p class="cg-no-items"><?php esc_html_e('No cart items found.', 'checkoutguard'); ?></p>
+                <?php endif; ?>
+            </div>
         </div>
 
         <div class="cg-modal-section">
             <h3><?php esc_html_e('Checkout Information', 'checkoutguard'); ?></h3>
             <div class="cg-info-grid">
                 <div class="cg-info-item">
-                    <span class="cg-info-label"><?php esc_html_e('Address:', 'checkoutguard'); ?></span>
-                    <span class="cg-info-value"><?php echo esc_html($entry->address_1); ?></span>
+                    <span class="cg-info-label"><?php esc_html_e('Full Address:', 'checkoutguard'); ?></span>
+                    <span class="cg-info-value"><?php echo esc_html($full_address); ?></span>
                 </div>
                 <div class="cg-info-item">
-                    <span class="cg-info-label"><?php esc_html_e('Cart Value:', 'checkoutguard'); ?></span>
-                    <span class="cg-info-value"><?php echo wc_price($entry->cart_value); ?></span>
+                    <span class="cg-info-label"><?php esc_html_e('Status:', 'checkoutguard'); ?></span>
+                    <span class="cg-info-value"><span class="cg-status-badge cg-status-<?php echo esc_attr($entry->status); ?>"><?php echo esc_html(ucfirst($entry->status)); ?></span></span>
                 </div>
                 <div class="cg-info-item">
-                    <span class="cg-info-label"><?php esc_html_e('Captured on:', 'checkoutguard'); ?></span>
-                    <span
-                        class="cg-info-value"><?php echo esc_html(date_i18n(get_option('date_format'), strtotime($entry->created_at))); ?></span>
+                    <span class="cg-info-label"><?php esc_html_e('First Captured:', 'checkoutguard'); ?></span>
+                    <span class="cg-info-value"><?php echo esc_html(date_i18n(get_option('date_format') . ' ' . get_option('time_format'), strtotime($entry->created_at))); ?></span>
+                </div>
+                <div class="cg-info-item">
+                    <span class="cg-info-label"><?php esc_html_e('Last Updated:', 'checkoutguard'); ?></span>
+                    <span class="cg-info-value"><?php echo esc_html(date_i18n(get_option('date_format') . ' ' . get_option('time_format'), strtotime($entry->updated_at))); ?></span>
                 </div>
             </div>
         </div>
+
+        <?php if ($entry->admin_notes): ?>
+        <div class="cg-modal-section">
+            <h3><?php esc_html_e('Admin Notes', 'checkoutguard'); ?></h3>
+            <div class="cg-admin-notes">
+                <?php echo wp_kses_post(nl2br($entry->admin_notes)); ?>
+            </div>
+        </div>
+        <?php endif; ?>
     </div>
     <?php
     $html_output = ob_get_clean();
