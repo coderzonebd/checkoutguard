@@ -9,6 +9,11 @@ if (!defined('ABSPATH')) {
  */
 function checkoutguard_register_dashboard_widget()
 {
+    // Check if dashboard widget is enabled
+    if (!checkoutguard_get_setting('enable_dashboard_widget', true)) {
+        return;
+    }
+    
     // Only add the widget for users who can manage WooCommerce.
     if (current_user_can('manage_woocommerce')) {
         wp_add_dashboard_widget(

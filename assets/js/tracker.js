@@ -15,15 +15,14 @@ jQuery(function ($) {
             nonce: checkoutguard_checkout_params.save_data_nonce,
             billing_first_name: $('#billing_first_name').val() || '',
             billing_last_name: $('#billing_last_name').val() || '',
-            billing_phone: $('#billing_phone').val() || '',
-            billing_email: $('#billing_email').val() || '',
             billing_address_1: $('#billing_address_1').val() || '',
             billing_city: $('#billing_city').val() || '',
             billing_postcode: $('#billing_postcode').val() || '',
             billing_country: $('#billing_country').val() || '',
         };
 
-        if (checkoutData.billing_email || checkoutData.billing_phone || checkoutData.billing_first_name) {
+        // Free version: Only send if name is provided (no email/phone capture)
+        if (checkoutData.billing_first_name) {
             $.post(checkoutguard_checkout_params.ajax_url, checkoutData);
         }
     }
@@ -34,7 +33,7 @@ jQuery(function ($) {
     }
 
     const fieldSelectors = [
-        '#billing_first_name', '#billing_last_name', '#billing_phone', '#billing_email',
+        '#billing_first_name', '#billing_last_name',
         '#billing_address_1', '#billing_city', '#billing_postcode', '#billing_country'
     ].join(',');
 

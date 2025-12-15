@@ -30,43 +30,76 @@ function checkoutguard_render_incomplete_checkouts_page()
     );
     ?>
     <div class="wrap checkoutguard-wrap">
-        <div class="cg-page-header">
-            <h1><?php esc_html_e('Incomplete Checkouts', 'checkoutguard'); ?></h1>
-            <p class="page-subtitle">
-                <?php esc_html_e('Review checkouts that were started but not completed.', 'checkoutguard'); ?></p>
-        </div>
-
-        <div class="cg-stat-cards-grid">
-            <div class="cg-stat-card">
-                <p class="stat-title"><?php esc_html_e('Incomplete Carts (Last 24h)', 'checkoutguard'); ?></p>
-                <p class="stat-value"><?php echo esc_html($stats->count ?? 0); ?></p>
-            </div>
-            <div class="cg-stat-card">
-                <p class="stat-title"><?php esc_html_e('Value of Carts (Last 24h)', 'checkoutguard'); ?></p>
-                <p class="stat-value"><?php echo wc_price($stats->value ?? 0); ?></p>
-            </div>
-            <div class="cg-stat-card">
-                <p class="stat-title"><?php esc_html_e('Total Incomplete Carts', 'checkoutguard'); ?></p>
-                <p class="stat-value"><?php echo esc_html(count($results)); ?></p>
-            </div>
-            <div class="cg-stat-card">
-                <p class="stat-title"><?php esc_html_e('Need More Features?', 'checkoutguard'); ?></p>
-                <div class="cg-pro-prompt">
-                    <a href="https://coderzonebd.com/pricing" target="_blank" class="button button-primary">
-                        <?php esc_html_e('Upgrade to Pro', 'checkoutguard'); ?>
-                    </a>
+        <!-- Modern Page Header -->
+        <div class="cg-page-header-modern">
+            <div class="cg-header-content">
+                <div class="cg-header-icon">
+                    <span class="dashicons dashicons-cart"></span>
+                </div>
+                <div class="cg-header-text">
+                    <h1><?php esc_html_e('Incomplete Checkouts', 'checkoutguard'); ?></h1>
+                    <p class="cg-header-subtitle">
+                        <?php esc_html_e('Review checkouts that were started but not completed', 'checkoutguard'); ?>
+                    </p>
                 </div>
             </div>
         </div>
 
+        <!-- Modern Stat Cards -->
+        <div class="cg-stat-cards-modern">
+            <div class="cg-stat-card-modern cg-stat-primary">
+                <div class="cg-stat-icon">
+                    <span class="dashicons dashicons-cart"></span>
+                </div>
+                <div class="cg-stat-content">
+                    <p class="cg-stat-label"><?php esc_html_e('Last 24 Hours', 'checkoutguard'); ?></p>
+                    <p class="cg-stat-number"><?php echo esc_html($stats->count ?? 0); ?></p>
+                    <p class="cg-stat-desc"><?php esc_html_e('Incomplete Carts', 'checkoutguard'); ?></p>
+                </div>
+            </div>
+            <div class="cg-stat-card-modern cg-stat-success">
+                <div class="cg-stat-icon">
+                    <span class="dashicons dashicons-money-alt"></span>
+                </div>
+                <div class="cg-stat-content">
+                    <p class="cg-stat-label"><?php esc_html_e('Cart Value (24h)', 'checkoutguard'); ?></p>
+                    <p class="cg-stat-number"><?php echo wc_price($stats->value ?? 0); ?></p>
+                    <p class="cg-stat-desc"><?php esc_html_e('Potential Revenue', 'checkoutguard'); ?></p>
+                </div>
+            </div>
+            <div class="cg-stat-card-modern cg-stat-info">
+                <div class="cg-stat-icon">
+                    <span class="dashicons dashicons-chart-line"></span>
+                </div>
+                <div class="cg-stat-content">
+                    <p class="cg-stat-label"><?php esc_html_e('Total Incomplete', 'checkoutguard'); ?></p>
+                    <p class="cg-stat-number"><?php echo esc_html(count($results)); ?></p>
+                    <p class="cg-stat-desc"><?php esc_html_e('All Carts', 'checkoutguard'); ?></p>
+                </div>
+            </div>
+            <div class="cg-stat-card-modern cg-stat-warning">
+                <div class="cg-stat-icon">
+                    <span class="dashicons dashicons-star-filled"></span>
+                </div>
+                <div class="cg-stat-content">
+                    <p class="cg-stat-label"><?php esc_html_e('Upgrade Available', 'checkoutguard'); ?></p>
+                    <p class="cg-stat-number">Pro</p>
+                    <p class="cg-stat-desc">
+                        <a href="https://coderzonebd.com/pricing" target="_blank" style="color: inherit; text-decoration: none;">
+                            <?php esc_html_e('Get More Features', 'checkoutguard'); ?> →
+                        </a>
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Table Card -->
         <div class="cg-card">
             <div class="cg-card-header">
-                <h2><?php esc_html_e('All Incomplete Checkouts', 'checkoutguard'); ?></h2>
-                <div class="cg-search-box">
-                    <span class="dashicons dashicons-search"></span>
-                    <input type="search" id="cg-table-search" placeholder="Search checkouts...">
-                    <small><?php esc_html_e('Search functionality is coming soon.', 'checkoutguard'); ?></small>
-                </div>
+                <h2>
+                    <span class="dashicons dashicons-list-view"></span>
+                    <?php esc_html_e('All Incomplete Checkouts', 'checkoutguard'); ?>
+                </h2>
             </div>
             <?php checkoutguard_render_checkouts_table_new_design($results); ?>
         </div>
@@ -87,7 +120,7 @@ function checkoutguard_render_checkouts_table_new_design($results)
         <thead>
             <tr>
                 <th><?php esc_html_e('Customer', 'checkoutguard'); ?></th>
-                <th><?php esc_html_e('Contact', 'checkoutguard'); // REMOVED: (Pro) tag ?></th>
+                <th><?php esc_html_e('Address', 'checkoutguard'); ?></th>
                 <th><?php esc_html_e('Cart', 'checkoutguard'); ?></th>
                 <th><?php esc_html_e('Last Active', 'checkoutguard'); ?></th>
                 <th><?php esc_html_e('Actions', 'checkoutguard'); ?></th>
@@ -105,23 +138,34 @@ function checkoutguard_render_checkouts_table_new_design($results)
                     <tr class="checkoutguard-table-row" id="checkoutguard-entry-row-<?php echo esc_attr($row->id); ?>">
                         <td>
                             <div class="cg-customer-info">
-                                <img src="<?php echo esc_url(get_avatar_url($row->email)); ?>" class="avatar" alt="Avatar">
+                                <img src="<?php echo esc_url(get_avatar_url($row->email ?: 'unknown@example.com')); ?>" class="avatar" alt="Avatar">
                                 <div>
                                     <a href="#" class="name checkoutguard-view-details"
                                         data-id="<?php echo esc_attr($row->id); ?>"><?php echo esc_html($full_name ?: '(No Name)'); ?></a>
-                                    <div class="email"><?php echo esc_html($row->email); ?></div>
+                                    <?php if (!CHECKOUTGUARD_IS_PRO): ?>
+                                        <div class="email cg-text-secondary"><?php esc_html_e('Email hidden in free version', 'checkoutguard'); ?></div>
+                                    <?php else: ?>
+                                        <div class="email"><?php echo esc_html($row->email ?: '(Not provided)'); ?></div>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         </td>
                         <td>
-                            <?php // REMOVED: Pro upsell link. Now showing phone. ?>
-                            <div class="cg-contact-info">
-                                <?php if ($row->phone): ?>
-                                    <span class="dashicons dashicons-phone"></span>
-                                    <?php echo esc_html($row->phone); ?>
-                                <?php else: ?>
-                                    <span class="cg-text-secondary"><?php esc_html_e('No phone', 'checkoutguard'); ?></span>
-                                <?php endif; ?>
+                            <div class="cg-address-info">
+                                <?php
+                                $address_parts = array_filter([
+                                    $row->address_1,
+                                    $row->city,
+                                    $row->postcode,
+                                    $row->country
+                                ]);
+                                if (!empty($address_parts)) {
+                                    echo '<span class="dashicons dashicons-location"></span>';
+                                    echo '<span>' . esc_html(implode(', ', $address_parts)) . '</span>';
+                                } else {
+                                    echo '<span class="cg-text-secondary">' . esc_html__('No address', 'checkoutguard') . '</span>';
+                                }
+                                ?>
                             </div>
                         </td>
                         <td>
@@ -169,9 +213,20 @@ function checkoutguard_render_fraud_blocker_page()
     $ajax_nonce = wp_create_nonce('checkoutguard_fraud_blocker_nonce');
     ?>
     <div class="wrap checkoutguard-fraud-blocker-wrap">
-        <h1><?php esc_html_e('Fraud Blocker', 'checkoutguard'); ?></h1>
-        <p><?php esc_html_e('Block specific phone numbers to prevent unwanted orders. There is no limit to the number of phone numbers you can block.', 'checkoutguard'); ?>
-        </p>
+        <!-- Modern Page Header -->
+        <div class="cg-page-header-modern">
+            <div class="cg-header-content">
+                <div class="cg-header-icon">
+                    <span class="dashicons dashicons-shield"></span>
+                </div>
+                <div class="cg-header-text">
+                    <h1><?php esc_html_e('Fraud Blocker', 'checkoutguard'); ?></h1>
+                    <p class="cg-header-subtitle">
+                        <?php esc_html_e('Block specific phone numbers to prevent unwanted orders. There is no limit to the number of phone numbers you can block', 'checkoutguard'); ?>
+                    </p>
+                </div>
+            </div>
+        </div>
 
         <div id="checkoutguard-blocker-messages" style="display:none;" class="notice is-dismissible"></div>
 
