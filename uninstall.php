@@ -10,7 +10,7 @@
  * - Scheduled cron events
  *
  * @package CheckoutGuard
- * @since 1.1.2.1
+ * @since 1.1.3
  */
 
 // If uninstall not called from WordPress, exit.
