@@ -3,7 +3,7 @@
  * Plugin Name: CheckoutGuard
  * Plugin URI: https://coderzonebd.com/
  * Description: Tracks incomplete WooCommerce checkouts to help you understand cart abandonment. Includes a dashboard widget, fraud protection, and courier success rate checking.
- * Version: 1.1.2
+ * Version: 1.1.2.1
  * Requires at least: 5.6
  * Tested up to: 6.9
  * Requires PHP: 7.4
@@ -114,7 +114,7 @@ function appsero_init_tracker_checkoutguard() {
     $client ->insights()
             ->add_plugin_data()
             ->init();
-            
+
     // Active automatic updater
     $client->updater();
 
