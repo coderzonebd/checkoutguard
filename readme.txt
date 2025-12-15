@@ -11,7 +11,7 @@ Stable tag: 1.1.2
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
-Track and manage incomplete WooCommerce checkouts, protect your store with fraud prevention, and check courier success rates.
+Track and manage incomplete WooCommerce checkouts, protect your store with fraud prevention, check courier success rates, and generate professional invoices.
 
 == Description ==
 
@@ -24,7 +24,9 @@ All data is stored securely in your *own* WordPress database, not on an external
 = Key Features =
 
 * **Track Incomplete Checkouts:** Automatically capture customer name, email, phone, and cart details for checkouts that aren't completed.
-* **Courier Success Rate Checker:** NEW! Check customer courier success rates across multiple courier services (Pathao, Steadfast, RedX) to assess delivery risk.
+* **Invoice & Shipping Slip Generator:** NEW! Create professional invoices and shipping slips for all WooCommerce orders with single and bulk printing.
+* **Courier Success Rate Checker:** Check customer courier success rates across multiple courier services (Pathao, Steadfast, RedX) to assess delivery risk.
+* **Settings Management:** Complete control over plugin features with dynamic menu visibility.
 * **Local Caching System:** Smart 6-hour caching reduces API calls and improves performance.
 * **No Limits:** See a complete list of all incomplete checkouts with no limits on the amount of data you can store.
 * **Simple Fraud Blocker:** Protect your store by blocking specific phone numbers from placing orders. You can block an unlimited number of phone numbers.
@@ -70,6 +72,52 @@ Yes, a Pro version with advanced features is available on our website. This free
 4.  The "Courier Checker" page where you can check unlimited courier results. (screenshot-4.png)
 
 == Changelog ==
+
+= 1.1.2 =
+* Feature: NEW Invoice & Shipping Slip Generator - Create professional invoices and shipping slips with print optimization.
+* Feature: Single and bulk printing for invoices and shipping slips.
+* Feature: Portrait A4 layout for invoices (one per page), Landscape A4 for shipping slips (two per page).
+* Feature: Display ALL WooCommerce orders with pagination (50 orders per page).
+* Feature: Order statistics showing Total Orders, Processing, and Completed counts.
+* Feature: Complete Settings page with feature management and dynamic menu visibility.
+* Feature: Enable/disable individual features (Incomplete Checkout Tracking, Fraud Blocker, Courier Check, Invoice & Shipping).
+* Feature: Dashboard Widget can now be enabled/disabled via settings.
+* Feature: All features enabled by default on first install.
+* Enhancement: Modern design system with CSS variables and consistent styling across all pages.
+* Enhancement: Professional page headers with gradient backgrounds on all admin pages.
+* Enhancement: Color-coded stat cards (Primary/Success/Info/Warning) for better visual hierarchy.
+* Enhancement: Branding footer ("Powered by Coder Zone BD") on all admin pages and printed documents.
+* Enhancement: Menu items automatically hide when features are disabled in settings.
+* Enhancement: Helper functions for settings management (checkoutguard_get_setting, checkoutguard_show_branding).
+* Fix: Shipping slip print layout - fixed 2-up printing for even-numbered pages.
+* Fix: CSS improvements and balanced braces validation across all stylesheets.
+* Tweak: Removed non-functional email notifications setting from free version.
+* Tweak: Branding footer is locked and non-removable in free version.
+* Tweak: Updated plugin version to 1.1.2.
+* Security: WordPress Settings API integration with nonce verification.
+* Security: Capability checks (manage_options, manage_woocommerce) on all admin pages.
+
+= 1.1.1 =
+* Enhancement: Complete CSS overhaul with modern design system implementation.
+* Enhancement: Unified styling with consistent color scheme across all admin pages.
+* Enhancement: Professional gradient headers on Dashboard, Incomplete Checkouts, Fraud Blocker, and Courier Check pages.
+* Enhancement: Color-coded stat cards for better visual hierarchy and information display.
+* Enhancement: Modern card-based layouts with shadows and hover effects.
+* Enhancement: Fixed Recent Searches card styling on Courier Check page.
+* Enhancement: Modern search item cards with hover effects and color-coded risk badges.
+* Enhancement: Icon backgrounds with circular gradients for better visual appeal.
+* Enhancement: Delete buttons with hover-to-reveal functionality.
+* Enhancement: Improved form input styling with modern design patterns.
+* Enhancement: Added "Powered by Coder Zone BD" branding footer to all admin pages.
+* Enhancement: Gradient background footer with purple brand color and hover effects.
+* Enhancement: Smooth fade-in animations and rounded corners for professional appearance.
+* Fix: CSS syntax errors and inconsistent styling between pages.
+* Fix: Recent Searches display issues and missing hover states.
+* Fix: Button and form alignment problems throughout the plugin.
+* Tweak: Removed bypass cache checkbox from Courier Check page (free version only).
+* Tweak: Updated modern class naming convention (cg-page-header-modern, cg-stat-card-modern).
+* Tweak: Improved spacing, padding, and color contrast for better accessibility.
+* Tweak: Updated CSS files - admin-styles.css (40KB to 43KB), courier-check.css (28KB to 33KB).
 
 = 1.1.0 =
 * Feature: NEW Courier Check - Check customer courier success rates across multiple services (Pathao, Steadfast, RedX).
