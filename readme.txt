@@ -7,7 +7,7 @@ Requires PHP: 7.4
 WC requires at least: 5.0
 WC tested up to: 10.4.2
 Tested up to: 6.9
-Stable tag: 1.1.2
+Stable tag: 1.1.2.1.1
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -72,6 +72,16 @@ Yes, a Pro version with advanced features is available on our website. This free
 4.  The "Courier Checker" page where you can check unlimited courier results. (screenshot-4.png)
 
 == Changelog ==
+
+= 1.1.2.1 =
+* Fixed settings page functionality for all WordPress installations
+* Resolved potential conflicts with other plugins
+* Fixed invoice generation for orders with special characters
+* Improved error handling in bulk print operations
+* Enhanced print window compatibility across browsers
+* Optimized database queries for large order lists
+* Reduced memory usage during bulk operations
+* Faster page load times on admin pages
 
 = 1.1.2 =
 * Feature: NEW Invoice & Shipping Slip Generator - Create professional invoices and shipping slips with print optimization.
