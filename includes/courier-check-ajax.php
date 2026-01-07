@@ -102,11 +102,6 @@ function checkoutguard_handle_courier_check_ajax()
     $response_body = wp_remote_retrieve_body($response);
     $data = json_decode($response_body, true);
 
-    // Log API response for debugging
-    if (defined('WP_DEBUG') && WP_DEBUG) {
-        error_log('CheckoutGuard Courier API Response - Code: ' . $response_code);
-        error_log('CheckoutGuard Courier API Body: ' . $response_body);
-    }
 
     // Handle different response codes
     if ($response_code === 200 && isset($data['success']) && $data['success']) {
@@ -183,7 +178,13 @@ function checkoutguard_get_cached_courier_data($phone_number)
     $cache_duration = 6 * 3600; // 6 hours in seconds
 
     if ($cache_age > $cache_duration) {
-        return false; // Cache expired
+        // Cache expired - delete from database
+        $wpdb->delete(
+            $table_name,
+            array('id' => $cached->id),
+            array('%d')
+        );
+        return false;
     }
 
     // Decode and return cached data

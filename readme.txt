@@ -5,13 +5,13 @@ Tags: woocommerce, checkout, incomplete orders, abandoned cart, tracker
 Requires at least: 5.6
 Requires PHP: 7.4
 WC requires at least: 5.0
-WC tested up to: 10.4.2
+WC tested up to: 10.4.3
 Tested up to: 6.9
-Stable tag: 1.1.3
+Stable tag: 1.1.4
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
-Track and manage incomplete WooCommerce checkouts, protect your store with fraud prevention, check courier success rates, and generate professional invoices.
+Track incomplete WooCommerce checkouts, block fraud, check courier risk, and generate invoices.
 
 == Description ==
 
@@ -72,6 +72,10 @@ Yes, a Pro version with advanced features is available on our website. This free
 4.  The "Courier Checker" page where you can check unlimited courier results. (screenshot-4.png)
 
 == Changelog ==
+
+= 1.1.4 =
+* Switched Courier Check to use bundled Chart.js (no external CDN).
+* Expanded privacy policy with data collection, external API, retention, and telemetry opt-in details.
 
 = 1.1.3 =
 * Fixed settings page functionality for all WordPress installations
@@ -158,11 +162,16 @@ Yes, a Pro version with advanced features is available on our website. This free
 * Feature: Full phone numbers are now visible for all incomplete checkouts.
 * Tweak: Streamlined admin interface and dashboard.
 
-## Privacy Policy 
-CheckoutGuard uses [Appsero](https://appsero.com) SDK to collect some telemetry data upon user's confirmation. This helps us to troubleshoot problems faster & make product improvements.
+## Privacy Policy
 
-Appsero SDK **does not gather any data by default.** The SDK only starts gathering basic telemetry data **when a user allows it via the admin notice**. We collect the data to ensure a great user experience for all our users. 
+**What we collect and where it lives**
+- On the checkout page we capture name, email, phone, billing/shipping addresses, cart line items, totals, IP address, user agent, and other checkout field values as the shopper types. These records are stored only in your WordPress database (custom CheckoutGuard tables). Data stays on your server unless you delete it.
+- Courier Check sends the phone number you enter to the external lookup endpoint at `https://licenses.coderzonebd.com` to fetch Pathao/Steadfast/RedX results. Results are cached locally for 6 hours and are stored in your WordPress database. You can delete single entries or clear all history from the Courier Check page.
+- Fraud Blocker stores the phone numbers you add to the blocklist in your WordPress database.
 
-Integrating Appsero SDK **DOES NOT IMMEDIATELY** start gathering data, **without confirmation from users in any case.**
+**Removal and retention**
+- You can delete individual checkouts, courier searches, and blocklist entries from the plugin pages. Deactivating does not remove data. Uninstalling the plugin runs `uninstall.php` and drops all CheckoutGuard tables/options to remove stored data.
 
-Learn more about how [Appsero collects and uses this data](https://appsero.com/privacy-policy/).
+**Telemetry (optional)**
+- CheckoutGuard uses the [Appsero](https://appsero.com) SDK for optional telemetry. Nothing is sent until an admin explicitly opts in via the Appsero notice. If you decline or dismiss the notice, no telemetry is collected. You can opt out at any time by dismissing/declining the notice or removing the Appsero opt-in.
+- Appsero collects basic site info (site URL, WP/PHP/WooCommerce versions, plugin version) to help improve the product. Learn more at the [Appsero privacy policy](https://appsero.com/privacy-policy/).

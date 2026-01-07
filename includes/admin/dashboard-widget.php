@@ -46,28 +46,28 @@ function checkoutguard_render_dashboard_widget_content()
     
     $incomplete_url = admin_url('admin.php?page=checkoutguard-incomplete-checkouts');
     ?>
-    <div class="checkoutguard-widget-container">
+    <div class="checkoutguard-widget-container-wrapper">
         <p><?php esc_html_e('Showing a summary of incomplete checkouts from the last 24 hours.', 'checkoutguard'); ?></p>
         
-        <div class="cg-stat-row">
-            <a href="<?php echo esc_url($incomplete_url); ?>" class="cg-stat-box cg-stat-box-link">
+        <div class="checkoutguard-stat-row">
+            <a href="<?php echo esc_url($incomplete_url); ?>" class="checkoutguard-stat-box checkoutguard-stat-box-link stat-incomplete">
                 <h3><?php esc_html_e('Incomplete Checkouts', 'checkoutguard'); ?></h3>
                 <p id="checkoutguard-stat-incomplete-count"><?php echo esc_html($count); ?></p>
             </a>
-            <div class="cg-stat-box">
+            <div class="checkoutguard-stat-box stat-hold">
                 <h3><?php esc_html_e('Incomplete Value', 'checkoutguard'); ?></h3>
                 <p id="checkoutguard-stat-incomplete-value"><?php echo wp_kses_post(wc_price($value)); ?></p>
             </div>
         </div>
 
-        <hr>
+        <hr style="margin: 20px 0; border: 0; border-top: 1px solid var(--checkoutguard-card-border);">
         
-        <div class="cg-upgrade-section">
-            <div class="cg-upgrade-text">
-                <h3><?php esc_html_e('Unlock Full Analytics & Recovery', 'checkoutguard'); ?></h3>
+        <div class="checkoutguard-upgrade-section" style="padding: 15px; border-radius: var(--checkoutguard-radius);">
+            <div class="checkoutguard-upgrade-text">
+                <h3 style="margin-top: 0;"><?php esc_html_e('Unlock Full Analytics & Recovery', 'checkoutguard'); ?></h3>
                 <p><?php esc_html_e('Upgrade to CheckoutGuard Pro to see detailed charts, filter by date, and recover lost sales with one click.', 'checkoutguard'); ?></p>
             </div>
-            <div class="cg-upgrade-actions">
+            <div class="checkoutguard-upgrade-actions" style="margin-top: 15px;">
                 <a href="https://coderzonebd.com/pricing" target="_blank" class="button button-primary"><?php esc_html_e('Upgrade Now', 'checkoutguard'); ?></a>
             </div>
         </div>

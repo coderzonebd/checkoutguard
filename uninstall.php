@@ -129,8 +129,3 @@ flush_rewrite_rules();
  * Clear any cached data
  */
 wp_cache_flush();
-
-// Log uninstallation for debugging purposes (only if WP_DEBUG is enabled)
-if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-    error_log( 'CheckoutGuard: Plugin data successfully removed during uninstallation.' );
-}
