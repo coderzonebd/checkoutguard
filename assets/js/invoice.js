@@ -16,19 +16,19 @@
 
         bindEvents: function() {
             // Single invoice print
-            $(document).on('click', '.cg-print-invoice', this.printInvoice.bind(this));
+            $(document).on('click', '.checkoutguard-print-invoice', this.printInvoice.bind(this));
             
             // Single shipping slip print
-            $(document).on('click', '.cg-print-shipping', this.printShippingSlip.bind(this));
+            $(document).on('click', '.checkoutguard-print-shipping', this.printShippingSlip.bind(this));
             
             // Select all orders
-            $('#cg-select-all-orders').on('change', this.toggleSelectAll.bind(this));
+            $('#checkoutguard-select-all-orders').on('change', this.toggleSelectAll.bind(this));
             
             // Bulk invoice
-            $('#cg-bulk-invoice').on('click', this.bulkInvoice.bind(this));
+            $('#checkoutguard-bulk-invoice').on('click', this.bulkInvoice.bind(this));
             
             // Bulk shipping slip
-            $('#cg-bulk-shipping').on('click', this.bulkShippingSlip.bind(this));
+            $('#checkoutguard-bulk-shipping').on('click', this.bulkShippingSlip.bind(this));
         },
 
         printInvoice: function(e) {
@@ -45,8 +45,8 @@
 
         generateAndPrint: function(orderId, type) {
             const $button = type === 'invoice' ? 
-                $(`.cg-print-invoice[data-order-id="${orderId}"]`) : 
-                $(`.cg-print-shipping[data-order-id="${orderId}"]`);
+                $(`.checkoutguard-print-invoice[data-order-id="${orderId}"]`) : 
+                $(`.checkoutguard-print-shipping[data-order-id="${orderId}"]`);
             
             $button.prop('disabled', true).css('opacity', '0.6');
 
@@ -117,12 +117,12 @@
                 }
                 
                 /* Invoice Styles */
-                .cg-invoice-document {
+                .checkoutguard-invoice-document {
                     max-width: 800px;
                     margin: 0 auto;
                 }
                 
-                .cg-invoice-header {
+                .checkoutguard-invoice-header {
                     display: flex;
                     justify-content: space-between;
                     align-items: flex-start;
@@ -131,92 +131,92 @@
                     border-bottom: 3px solid #4f46e5;
                 }
                 
-                .cg-invoice-logo img {
+                .checkoutguard-invoice-logo img {
                     max-width: 200px;
                     height: auto;
                 }
                 
-                .cg-invoice-logo h1 {
+                .checkoutguard-invoice-logo h1 {
                     font-size: 28px;
                     color: #4f46e5;
                 }
                 
-                .cg-invoice-title {
+                .checkoutguard-invoice-title {
                     text-align: right;
                 }
                 
-                .cg-invoice-title h2 {
+                .checkoutguard-invoice-title h2 {
                     font-size: 32px;
                     color: #4f46e5;
                     margin-bottom: 5px;
                 }
                 
-                .cg-invoice-addresses {
+                .checkoutguard-invoice-addresses {
                     display: grid;
                     grid-template-columns: 1fr 1fr 1fr;
                     gap: 30px;
                     margin-bottom: 40px;
                 }
                 
-                .cg-invoice-addresses h3 {
+                .checkoutguard-invoice-addresses h3 {
                     font-size: 14px;
                     text-transform: uppercase;
                     color: #666;
                     margin-bottom: 10px;
                 }
                 
-                .cg-invoice-addresses p {
+                .checkoutguard-invoice-addresses p {
                     margin-bottom: 5px;
                     line-height: 1.6;
                 }
                 
-                .cg-invoice-details table {
+                .checkoutguard-invoice-details table {
                     width: 100%;
                 }
                 
-                .cg-invoice-details th {
+                .checkoutguard-invoice-details th {
                     text-align: left;
                     padding: 5px 10px 5px 0;
                     font-weight: 600;
                 }
                 
-                .cg-invoice-details td {
+                .checkoutguard-invoice-details td {
                     padding: 5px 0 5px 10px;
                 }
                 
-                .cg-invoice-items {
+                .checkoutguard-invoice-items {
                     margin-bottom: 40px;
                 }
                 
-                .cg-invoice-items table {
+                .checkoutguard-invoice-items table {
                     width: 100%;
                     border-collapse: collapse;
                 }
                 
-                .cg-invoice-items thead th {
+                .checkoutguard-invoice-items thead th {
                     background: #f3f4f6;
                     padding: 12px;
                     text-align: left;
                     border-bottom: 2px solid #ddd;
                 }
                 
-                .cg-invoice-items tbody td {
+                .checkoutguard-invoice-items tbody td {
                     padding: 12px;
                     border-bottom: 1px solid #eee;
                 }
                 
-                .cg-invoice-items tfoot td {
+                .checkoutguard-invoice-items tfoot td {
                     padding: 12px;
                     border-top: 2px solid #ddd;
                 }
                 
-                .cg-invoice-items tfoot tr:last-child td {
+                .checkoutguard-invoice-items tfoot tr:last-child td {
                     font-size: 18px;
                     background: #f9fafb;
                     border-top: 3px solid #4f46e5;
                 }
                 
-                .cg-invoice-footer {
+                .checkoutguard-invoice-footer {
                     text-align: center;
                     margin-top: 60px;
                     padding-top: 20px;
@@ -225,58 +225,58 @@
                 }
                 
                 /* Shipping Slip Styles */
-                .cg-shipping-slip-document {
+                .checkoutguard-shipping-slip-document {
                     max-width: 400px;
                     margin: 0 auto;
                     padding: 15px;
                 }
                 
-                .cg-shipping-header {
+                .checkoutguard-shipping-header {
                     text-align: center;
                     margin-bottom: 20px;
                     padding-bottom: 15px;
                     border-bottom: 2px solid #4f46e5;
                 }
                 
-                .cg-shipping-header h2 {
+                .checkoutguard-shipping-header h2 {
                     font-size: 24px;
                     color: #4f46e5;
                     margin-bottom: 8px;
                 }
                 
-                .cg-shipping-header p {
+                .checkoutguard-shipping-header p {
                     font-size: 13px;
                     margin: 3px 0;
                 }
                 
-                .cg-shipping-addresses {
+                .checkoutguard-shipping-addresses {
                     display: grid;
                     grid-template-columns: 1fr 1fr;
                     gap: 15px;
                     margin-bottom: 20px;
                 }
                 
-                .cg-shipping-addresses h3 {
+                .checkoutguard-shipping-addresses h3 {
                     font-size: 12px;
                     text-transform: uppercase;
                     color: #666;
                     margin-bottom: 8px;
                 }
                 
-                .cg-shipping-addresses p {
+                .checkoutguard-shipping-addresses p {
                     margin-bottom: 3px;
                     line-height: 1.4;
                     font-size: 12px;
                 }
                 
-                .cg-shipping-items table {
+                .checkoutguard-shipping-items table {
                     width: 100%;
                     border-collapse: collapse;
                     margin-bottom: 15px;
                     font-size: 11px;
                 }
                 
-                .cg-shipping-items thead th {
+                .checkoutguard-shipping-items thead th {
                     background: #f3f4f6;
                     padding: 8px 6px;
                     text-align: left;
@@ -284,12 +284,12 @@
                     font-size: 11px;
                 }
                 
-                .cg-shipping-items tbody td {
+                .checkoutguard-shipping-items tbody td {
                     padding: 8px 6px;
                     border-bottom: 1px solid #eee;
                 }
                 
-                .cg-shipping-total {
+                .checkoutguard-shipping-total {
                     margin-bottom: 15px;
                     padding: 12px;
                     background: #f9fafb;
@@ -297,25 +297,25 @@
                     border-radius: 6px;
                 }
                 
-                .cg-total-row {
+                .checkoutguard-total-row {
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
                 }
                 
-                .cg-total-label {
+                .checkoutguard-total-label {
                     font-size: 14px;
                     font-weight: 600;
                     color: #374151;
                 }
                 
-                .cg-total-amount {
+                .checkoutguard-total-amount {
                     font-size: 18px;
                     font-weight: 700;
                     color: #4f46e5;
                 }
                 
-                .cg-shipping-notes {
+                .checkoutguard-shipping-notes {
                     margin-bottom: 15px;
                     padding: 10px;
                     background: #fffbeb;
@@ -323,24 +323,24 @@
                     font-size: 11px;
                 }
                 
-                .cg-shipping-notes h4 {
+                .checkoutguard-shipping-notes h4 {
                     margin-bottom: 6px;
                     font-size: 12px;
                 }
                 
-                .cg-shipping-signature {
+                .checkoutguard-shipping-signature {
                     margin-top: 20px;
                     font-size: 11px;
                 }
                 
-                .cg-signature-line {
+                .checkoutguard-signature-line {
                     margin: 15px 0;
                     padding-bottom: 2px;
                     border-bottom: 1px solid #333;
                 }
                 
                 /* Branding Footer */
-                .cg-invoice-branding {
+                .checkoutguard-invoice-branding {
                     text-align: center;
                     margin-top: 20px;
                     padding-top: 10px;
@@ -349,7 +349,7 @@
                     font-size: 10px;
                 }
                 
-                .cg-invoice-branding .cg-brand-name {
+                .checkoutguard-invoice-branding .checkoutguard-brand-name {
                     color: #7c3aed;
                     font-weight: 600;
                 }
@@ -370,7 +370,7 @@
                             align-content: flex-start;
                         }
                         
-                        .cg-shipping-slip-document {
+                        .checkoutguard-shipping-slip-document {
                             width: 48%;
                             max-width: 48%;
                             margin: 0 1%;
@@ -381,36 +381,36 @@
                             vertical-align: top;
                         }
                         
-                        .cg-shipping-slip-document:nth-child(2n+1) {
+                        .checkoutguard-shipping-slip-document:nth-child(2n+1) {
                             page-break-after: avoid;
                         }
                         
-                        .cg-shipping-slip-document:nth-child(2n) {
+                        .checkoutguard-shipping-slip-document:nth-child(2n) {
                             page-break-after: always;
                         }
                         
-                        .cg-shipping-slip-document:nth-child(2n+1):last-child {
+                        .checkoutguard-shipping-slip-document:nth-child(2n+1):last-child {
                             page-break-after: auto;
                         }
                         
-                        .cg-shipping-header h2 {
+                        .checkoutguard-shipping-header h2 {
                             font-size: 20px;
                         }
                         
-                        .cg-shipping-addresses h3,
-                        .cg-shipping-addresses p,
-                        .cg-shipping-items,
-                        .cg-shipping-notes,
-                        .cg-shipping-signature,
-                        .cg-invoice-branding {
+                        .checkoutguard-shipping-addresses h3,
+                        .checkoutguard-shipping-addresses p,
+                        .checkoutguard-shipping-items,
+                        .checkoutguard-shipping-notes,
+                        .checkoutguard-shipping-signature,
+                        .checkoutguard-invoice-branding {
                             font-size: 10px;
                         }
                         
-                        .cg-total-label {
+                        .checkoutguard-total-label {
                             font-size: 12px;
                         }
                         
-                        .cg-total-amount {
+                        .checkoutguard-total-amount {
                             font-size: 16px;
                         }
                     ` : `
@@ -424,16 +424,16 @@
                             padding: 20px;
                         }
                         
-                        .cg-invoice-document {
+                        .checkoutguard-invoice-document {
                             page-break-inside: avoid;
                         }
                         
-                        .cg-invoice-document ~ .cg-invoice-document {
+                        .checkoutguard-invoice-document ~ .checkoutguard-invoice-document {
                             page-break-before: always;
                         }
                     `}
                     
-                    .cg-invoice-branding {
+                    .checkoutguard-invoice-branding {
                         page-break-inside: avoid;
                     }
                 }
@@ -442,7 +442,7 @@
 
         toggleSelectAll: function(e) {
             const isChecked = $(e.currentTarget).is(':checked');
-            $('.cg-order-checkbox').prop('checked', isChecked);
+            $('.checkoutguard-order-checkbox').prop('checked', isChecked);
         },
 
         bulkInvoice: function(e) {
@@ -471,7 +471,7 @@
 
         getSelectedOrders: function() {
             const orders = [];
-            $('.cg-order-checkbox:checked').each(function() {
+            $('.checkoutguard-order-checkbox:checked').each(function() {
                 orders.push($(this).val());
             });
             return orders;
@@ -500,15 +500,12 @@
                     success: (response) => {
                         if (response.success) {
                             allHtml += response.data.html;
-                            // Only add page breaks for invoices (not shipping slips)
-                            if (type === 'invoice' && index < orderIds.length - 1) {
+                            if (index < orderIds.length - 1) {
                                 allHtml += '<div style="page-break-after: always;"></div>';
                             }
                         }
-                        completedCount++;
-                        printAll();
                     },
-                    error: () => {
+                    complete: () => {
                         completedCount++;
                         printAll();
                     }
@@ -517,11 +514,8 @@
         }
     };
 
-    // Initialize when document is ready
     $(document).ready(function() {
-        if ($('.cg-invoice-table').length) {
-            InvoiceManager.init();
-        }
+        InvoiceManager.init();
     });
 
 })(jQuery);

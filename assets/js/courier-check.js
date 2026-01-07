@@ -12,22 +12,22 @@
     // Wait for DOM to be ready
     $(document).ready(function() {
         // Handle courier check form submission
-        $('#cg-courier-check-form').on('submit', function(e) {
+        $('#checkoutguard-courier-check-form').on('submit', function(e) {
             e.preventDefault();
             performCourierCheck();
         });
 
         // Handle recent search item click
-        $(document).on('click', '.cg-recent-item-modern', function() {
+        $(document).on('click', '.checkoutguard-recent-item-modern', function() {
             const phoneNumber = $(this).data('phone');
             if (phoneNumber) {
-                $('#cg-phone-number').val(phoneNumber);
+                $('#checkoutguard-phone-number').val(phoneNumber);
                 performCourierCheck();
             }
         });
 
         // Format phone number input (remove non-digits)
-        $('#cg-phone-number').on('input', function() {
+        $('#checkoutguard-phone-number').on('input', function() {
             let value = $(this).val().replace(/\D/g, '');
             $(this).val(value);
         });
@@ -40,11 +40,11 @@
      * Checks if "Clear All" button should be visible.
      */
     function checkClearAllButtonVisibility() {
-        const itemCount = $('#cg-recent-list .cg-recent-item-modern').length;
+        const itemCount = $('#checkoutguard-recent-list .checkoutguard-recent-item-modern').length;
         if (itemCount === 0) {
-            $('#cg-clear-all-btn').hide();
+            $('#checkoutguard-clear-all-btn').hide();
         } else {
-            $('#cg-clear-all-btn').show();
+            $('#checkoutguard-clear-all-btn').show();
         }
     }
 
@@ -52,11 +52,11 @@
      * Performs the courier check via AJAX.
      */
     function performCourierCheck() {
-        const phoneNumber = $('#cg-phone-number').val().trim();
-        const bypassCache = $('#cg-bypass-cache').is(':checked');
-        const $button = $('#cg-check-courier-btn');
-        const $loading = $('#cg-loading');
-        const $resultsContainer = $('#cg-courier-results');
+        const phoneNumber = $('#checkoutguard-phone-number').val().trim();
+        const bypassCache = $('#checkoutguard-bypass-cache').is(':checked');
+        const $button = $('#checkoutguard-check-courier-btn');
+        const $loading = $('#checkoutguard-loading');
+        const $resultsContainer = $('#checkoutguard-courier-results');
 
         // Validate phone number
         if (!phoneNumber || !/^01[3-9]\d{8}$/.test(phoneNumber)) {
@@ -67,7 +67,7 @@
         // Disable form and show loading
         $button.prop('disabled', true);
         $loading.show();
-        $resultsContainer.html('<div class="cg-loading-modern"><span class="cg-spinner-modern"></span><span>Fetching courier data...</span></div>');
+        $resultsContainer.html('<div class="checkoutguard-loading-modern"><span class="checkoutguard-spinner-modern"></span><span>Fetching courier data...</span></div>');
 
         // Make AJAX request
         $.ajax({
@@ -89,7 +89,7 @@
             },
             error: function(xhr, status, error) {
                 showError('Network error: Unable to connect to the server. Please try again.');
-                console.error('AJAX Error:', status, error);
+                // Disabled for production: console.error('AJAX Error:', status, error);
             },
             complete: function() {
                 $button.prop('disabled', false);
@@ -131,63 +131,173 @@
                 cacheIcon = 'dashicons-cloud';
             }
             
-            html += '<div class="cg-cache-badge cg-cache-' + cacheSource + '">';
+            html += '<div class="checkoutguard-cache-badge checkoutguard-cache-' + cacheSource + '">';
             html += '<span class="dashicons ' + cacheIcon + '"></span> ' + cacheText;
             html += '</div>';
         }
 
-        // Summary Card
-        html += '<div class="cg-summary-card ' + getRiskClass(summary.risk_level) + '">';
-        html += '  <div class="cg-summary-header">';
-        html += '    <h3>Overall Assessment</h3>';
-        html += '    <div class="cg-risk-badge-large" style="background-color: ' + (summary.risk_color || '#757575') + '">';
-        html += '      ' + (summary.risk_level || 'N/A');
+        const riskClass = getRiskClass(summary.risk_level);
+        const riskColor = summary.risk_color || '#757575';
+        const successRate = summary.success_rate || 0;
+        const totalDeliveries = summary.total_deliveries || 0;
+        const successfulDeliveries = summary.successful_deliveries || 0;
+        const cancelledDeliveries = summary.cancelled_deliveries || 0;
+        const riskLevel = summary.risk_level || 'N/A';
+        
+        // Main Grid Layout - Improved sizing
+        html += '<div style="display: grid; grid-template-columns: 250px 1fr; gap: 24px; margin-bottom: 24px;">';
+        
+        // Chart Section - Larger chart
+        html += '  <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">';
+        html += '    <div style="position: relative; width: 220px; height: 220px;">';
+        html += '      <canvas id="courier-success-chart"></canvas>';
+        html += '      <div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;">';
+        html += '        <div style="font-size: 52px; font-weight: 800; line-height: 1; background: linear-gradient(to bottom right, #EEC343, #F97316); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">' + Math.round(successRate) + '%</div>';
+        html += '        <div style="margin-top: 6px; padding: 6px 18px; border-radius: 9999px; font-size: 13px; font-weight: 700; border: 1px solid;" class="' + riskClass + '">' + riskLevel + '</div>';
+        html += '      </div>';
         html += '    </div>';
         html += '  </div>';
-        html += '  <div class="cg-summary-stats">';
-        html += '    <div class="cg-stat-item">';
-        html += '      <span class="cg-stat-label">Total Deliveries</span>';
-        html += '      <span class="cg-stat-value">' + (summary.total_deliveries || 0) + '</span>';
+        
+        // Stats Cards Section - Better sizing
+        html += '  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">';
+        
+        // Total Orders Card
+        html += '    <div style="background: linear-gradient(to bottom right, #f9fafb, #f3f4f6); border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08); transition: all 0.2s;" onmouseover="this.style.transform=\'translateY(-3px)\';this.style.boxShadow=\'0 4px 12px rgba(0,0,0,0.12)\'" onmouseout="this.style.transform=\'translateY(0)\';this.style.boxShadow=\'0 2px 4px rgba(0,0,0,0.08)\'">';
+        html += '      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">';
+        html += '        <div style="padding: 10px; background: #6b7280; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">';
+        html += '          <span class="dashicons dashicons-archive" style="color: white; font-size: 20px; width: 20px; height: 20px;"></span>';
+        html += '        </div>';
+        html += '      </div>';
+        html += '      <div style="font-size: 32px; font-weight: 800; line-height: 1; color: #1f2937; margin-bottom: 6px;">' + totalDeliveries + '</div>';
+        html += '      <div style="font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em;">Total Orders</div>';
         html += '    </div>';
-        html += '    <div class="cg-stat-item">';
-        html += '      <span class="cg-stat-label">Successful</span>';
-        html += '      <span class="cg-stat-value cg-success">' + (summary.successful_deliveries || 0) + '</span>';
+        
+        // Delivered Card
+        html += '    <div style="background: linear-gradient(to bottom right, #d1fae5, #a7f3d0); border: 1px solid #6ee7b7; border-radius: 12px; padding: 20px; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.15); transition: all 0.2s;" onmouseover="this.style.transform=\'translateY(-3px)\';this.style.boxShadow=\'0 4px 12px rgba(16,185,129,0.25)\'" onmouseout="this.style.transform=\'translateY(0)\';this.style.boxShadow=\'0 2px 4px rgba(16,185,129,0.15)\'">';
+        html += '      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">';
+        html += '        <div style="padding: 10px; background: linear-gradient(to bottom right, #10b981, #059669); border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">';
+        html += '          <span class="dashicons dashicons-yes-alt" style="color: white; font-size: 20px; width: 20px; height: 20px;"></span>';
+        html += '        </div>';
+        html += '      </div>';
+        html += '      <div style="font-size: 32px; font-weight: 800; line-height: 1; color: #047857; margin-bottom: 6px;">' + successfulDeliveries + '</div>';
+        html += '      <div style="font-size: 11px; font-weight: 600; color: #065f46; text-transform: uppercase; letter-spacing: 0.05em;">Delivered</div>';
         html += '    </div>';
-        html += '    <div class="cg-stat-item">';
-        html += '      <span class="cg-stat-label">Cancelled</span>';
-        html += '      <span class="cg-stat-value cg-danger">' + (summary.cancelled_deliveries || 0) + '</span>';
+        
+        // Cancelled Card
+        html += '    <div style="background: linear-gradient(to bottom right, #fee2e2, #fecaca); border: 1px solid #fca5a5; border-radius: 12px; padding: 20px; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.15); transition: all 0.2s;" onmouseover="this.style.transform=\'translateY(-3px)\';this.style.boxShadow=\'0 4px 12px rgba(239,68,68,0.25)\'" onmouseout="this.style.transform=\'translateY(0)\';this.style.boxShadow=\'0 2px 4px rgba(239,68,68,0.15)\'">';
+        html += '      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">';
+        html += '        <div style="padding: 10px; background: linear-gradient(to bottom right, #ef4444, #dc2626); border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">';
+        html += '          <span class="dashicons dashicons-dismiss" style="color: white; font-size: 20px; width: 20px; height: 20px;"></span>';
+        html += '        </div>';
+        html += '      </div>';
+        html += '      <div style="font-size: 32px; font-weight: 800; line-height: 1; color: #b91c1c; margin-bottom: 6px;">' + cancelledDeliveries + '</div>';
+        html += '      <div style="font-size: 11px; font-weight: 600; color: #991b1b; text-transform: uppercase; letter-spacing: 0.05em;">Cancelled</div>';
         html += '    </div>';
-        html += '    <div class="cg-stat-item">';
-        html += '      <span class="cg-stat-label">Success Rate</span>';
-        html += '      <span class="cg-stat-value cg-rate">' + (summary.success_rate || 0) + '%</span>';
-        html += '    </div>';
+        
         html += '  </div>';
         html += '</div>';
 
-        // Courier Details
-        html += '<div class="cg-courier-details-grid">';
-        html += buildCourierCard('Pathao', pathao, '#FF5722');
-        html += buildCourierCard('Steadfast', steadfast, '#2196F3');
-        html += buildCourierCard('RedX', redx, '#E91E63');
+        // Courier Details Section Header
+        html += '<div style="background: linear-gradient(to right, #fef3c7, #fed7aa); padding: 14px 20px; border-radius: 12px 12px 0 0; border-bottom: 2px solid #fbbf24; margin-bottom: 0;">';
+        html += '  <h4 style="margin: 0; font-size: 15px; font-weight: 700; color: #1f2937; display: flex; align-items: center;">';
+        html += '    <span class="dashicons dashicons-chart-bar" style="color: #d97706; margin-right: 8px; font-size: 18px; width: 18px; height: 18px;"></span>';
+        html += '    Courier Breakdown';
+        html += '  </h4>';
+        html += '</div>';
+
+        // Courier List
+        html += '<div class="checkoutguard-courier-list" style="border: 2px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px; padding: 14px;">';
+        html += buildCourierRow('Pathao', pathao, '#FF5722');
+        
+        // Build Pathao note with rating label
+        let pathaoNote = 'Pathao data is estimated based on customer rating.';
+        if (pathao && pathao.rating_label) {
+            pathaoNote += ' Pathao customer rating: <strong>' + pathao.rating_label + '</strong>';
+        }
+        html += '<div style="padding: 8px 12px; font-size: 11px; color: #666; font-style: italic; background: #f9f9f9; border-left: 3px solid #FF5722; margin: 0 0 10px 0;">' + pathaoNote + '</div>';
+        
+        html += buildCourierRow('Steadfast', steadfast, '#2196F3');
+        html += buildCourierRow('RedX', redx, '#E91E63');
         html += '</div>';
 
         // Branding
-        html += '<div class="cg-branding">';
-        html += '  Powered by <strong>Coder Zone BD</strong>';
+        html += '<div class="checkoutguard-branding" style="text-align: center; padding: 12px; font-size: 12px; color: #6b7280;">';
+        html += '  Powered by <a href="https://coderzonebd.com/" target="_blank" style="font-weight: bold; color: #1f2937; text-decoration: none;">Coder Zone BD</a>';
         html += '</div>';
 
-        $('#cg-courier-results').html(html);
+        $('#checkoutguard-courier-results').html(html);
+        
+        // Render Chart
+        renderSuccessChart(successRate, riskColor);
     }
 
     /**
-     * Builds HTML for an individual courier card.
+     * Renders the success rate doughnut chart
+     */
+    function renderSuccessChart(successRate, riskColor) {
+        const canvas = document.getElementById('courier-success-chart');
+        if (!canvas) return;
+        
+        // Destroy existing chart if any
+        if (window.courierChart) {
+            window.courierChart.destroy();
+        }
+        
+        const ctx = canvas.getContext('2d');
+        const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+        
+        // Determine colors based on success rate
+        let color1, color2;
+        if (successRate >= 90) {
+            color1 = '#10b981';
+            color2 = '#059669';
+        } else if (successRate >= 75) {
+            color1 = '#EEC343';
+            color2 = '#F97316';
+        } else {
+            color1 = '#ef4444';
+            color2 = '#dc2626';
+        }
+        
+        gradient.addColorStop(0, color1);
+        gradient.addColorStop(1, color2);
+        
+        window.courierChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                datasets: [{
+                    data: [successRate, Math.max(0, 100 - successRate)],
+                    backgroundColor: [gradient, '#f3f4f6'],
+                    borderWidth: 0,
+                    cutout: '75%'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    tooltip: { enabled: false },
+                    legend: { display: false }
+                },
+                animation: {
+                    animateRotate: true,
+                    animateScale: true,
+                    duration: 1500,
+                    easing: 'easeInOutQuart'
+                }
+            }
+        });
+    }
+
+    /**
+     * Builds HTML for an individual courier row (Old Style).
      * 
      * @param {string} name - Courier name
      * @param {object} data - Courier data
      * @param {string} color - Brand color
      * @returns {string} HTML string
      */
-    function buildCourierCard(name, data, color) {
+    function buildCourierRow(name, data, color) {
         const hasError = data.error === true;
         const total = data.total || 0;
         const success = data.success || 0;
@@ -198,42 +308,56 @@
         const logoName = name.toLowerCase();
         const logoPath = checkoutguardCourier.pluginUrl + 'assets/img/' + logoName + '.svg';
 
-        let html = '<div class="cg-courier-card">';
-        html += '  <div class="cg-courier-header" style="border-left-color: ' + color + '">';
-        html += '    <div class="cg-courier-title-wrapper">';
-        html += '      <img src="' + logoPath + '" alt="' + name + ' Logo" class="cg-courier-logo" onerror="this.classList.add(\'cg-logo-error\'); this.nextElementSibling.style.display=\'block\';">';
-        html += '      <h4 class="cg-courier-name" style="display: none;">' + name + '</h4>';
+        let html = '<div class="checkoutguard-courier-row">';
+        
+        // Logo Column
+        html += '  <div class="checkoutguard-courier-logo-col">';
+        html += '    <div class="checkoutguard-courier-logo-wrapper">';
+        html += '      <img src="' + logoPath + '" alt="' + name + '" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'block\';">';
+        html += '      <span class="checkoutguard-courier-fallback" style="display:none; background:' + color + '">' + name.charAt(0) + '</span>';
         html += '    </div>';
-        if (hasError) {
-            html += '    <span class="cg-error-badge">No Data</span>';
-        }
+        html += '    <div class="checkoutguard-courier-name">' + name + '</div>';
         html += '  </div>';
-        html += '  <div class="cg-courier-body">';
         
+        // Stats Column
+        html += '  <div class="checkoutguard-courier-stats-col">';
         if (hasError) {
-            html += '    <p class="cg-no-data-text">No delivery history found</p>';
+            html += '    <div class="checkoutguard-courier-error">No data available</div>';
         } else {
-            html += '    <div class="cg-courier-stats">';
-            html += '      <div class="cg-courier-stat">';
-            html += '        <span class="label">Total</span>';
-            html += '        <span class="value">' + total + '</span>';
+            html += '    <div class="checkoutguard-row-stats">';
+            html += '      <div class="checkoutguard-row-stat">';
+            html += '        <span class="stat-label">Total</span>';
+            html += '        <span class="stat-value">' + total + '</span>';
             html += '      </div>';
-            html += '      <div class="cg-courier-stat">';
-            html += '        <span class="label">Successful</span>';
-            html += '        <span class="value cg-success">' + success + '</span>';
+            html += '      <div class="checkoutguard-row-stat">';
+            html += '        <span class="stat-label">Success</span>';
+            html += '        <span class="stat-value text-success">' + success + '</span>';
             html += '      </div>';
-            html += '      <div class="cg-courier-stat">';
-            html += '        <span class="label">Cancelled</span>';
-            html += '        <span class="value cg-danger">' + cancelled + '</span>';
+            html += '      <div class="checkoutguard-row-stat">';
+            html += '        <span class="stat-label">Cancelled</span>';
+            html += '        <span class="stat-value text-danger">' + cancelled + '</span>';
             html += '      </div>';
             html += '    </div>';
-            html += '    <div class="cg-progress-bar">';
-            html += '      <div class="cg-progress-fill" style="width: ' + successRate + '%; background-color: ' + color + '"></div>';
+            
+            // Progress Bar
+            html += '    <div class="checkoutguard-row-progress">';
+            html += '      <div class="checkoutguard-row-progress-bar" style="width: ' + successRate + '%; background-color: ' + color + '"></div>';
             html += '    </div>';
-            html += '    <div class="cg-success-rate">' + successRate + '% Success Rate</div>';
         }
-        
         html += '  </div>';
+        
+        // Rate Column
+        html += '  <div class="checkoutguard-courier-rate-col">';
+        if (!hasError) {
+            html += '    <div class="checkoutguard-row-rate" style="color: ' + color + '">';
+            html += '      ' + successRate + '%';
+            html += '      <small>Success</small>';
+            html += '    </div>';
+        } else {
+             html += '    <span class="dashicons dashicons-warning" style="color: #ccc"></span>';
+        }
+        html += '  </div>';
+        
         html += '</div>';
 
         return html;
@@ -262,11 +386,11 @@
      * @param {string} message - Error message to display
      */
     function showError(message) {
-        const html = '<div class="cg-error-message">' +
+        const html = '<div class="checkoutguard-error-message">' +
                     '  <span class="dashicons dashicons-warning"></span>' +
                     '  <p>' + message + '</p>' +
                     '</div>';
-        $('#cg-courier-results').html(html);
+        $('#checkoutguard-courier-results').html(html);
     }
 
     /**
@@ -282,7 +406,7 @@
             },
             success: function(response) {
                 if (response.success && response.data.html) {
-                    $('#cg-recent-list').html(response.data.html);
+                    $('#checkoutguard-recent-list').html(response.data.html);
                     checkClearAllButtonVisibility();
                 }
             }
@@ -292,11 +416,11 @@
     /**
      * Handles delete button clicks on recent searches.
      */
-    $(document).on('click', '.cg-delete-search', function(e) {
+    $(document).on('click', '.checkoutguard-delete-search', function(e) {
         e.stopPropagation(); // Prevent triggering the search item click
         
         const $button = $(this);
-        const $item = $button.closest('.cg-recent-item-modern');
+        const $item = $button.closest('.checkoutguard-recent-item-modern');
         const searchId = $button.data('search-id');
         const phoneNumber = $item.data('phone');
 
@@ -324,9 +448,9 @@
                         $(this).remove();
                         
                         // Check if there are any items left
-                        if ($('#cg-recent-list .cg-recent-item-modern').length === 0) {
-                            $('#cg-recent-list').html('<div class="cg-no-data-modern"><span class="dashicons dashicons-info"></span><p>' + checkoutguardCourier.noRecentSearches + '</p></div>');
-                            $('#cg-clear-all-btn').hide();
+                        if ($('#checkoutguard-recent-list .checkoutguard-recent-item-modern').length === 0) {
+                            $('#checkoutguard-recent-list').html('<div class="checkoutguard-no-data-modern"><span class="dashicons dashicons-info"></span><p>' + checkoutguardCourier.noRecentSearches + '</p></div>');
+                            $('#checkoutguard-clear-all-btn').hide();
                         }
                     });
                 } else {
@@ -348,11 +472,11 @@
     /**
      * Handles "Clear All" button click.
      */
-    $(document).on('click', '#cg-clear-all-btn', function(e) {
+    $(document).on('click', '#checkoutguard-clear-all-btn', function(e) {
         e.preventDefault();
         
         const $button = $(this);
-        const itemCount = $('#cg-recent-list .cg-recent-item-modern').length;
+        const itemCount = $('#checkoutguard-recent-list .checkoutguard-recent-item-modern').length;
 
         // Check if there are items to delete
         if (itemCount === 0) {
@@ -383,13 +507,13 @@
             success: function(response) {
                 if (response.success) {
                     // Fade out all items
-                    $('#cg-recent-list .cg-recent-item-modern').fadeOut(300, function() {
+                    $('#checkoutguard-recent-list .checkoutguard-recent-item-modern').fadeOut(300, function() {
                         $(this).remove();
                     });
                     
                     // Update list with empty state
                     setTimeout(function() {
-                        $('#cg-recent-list').html('<div class="cg-no-data-modern"><span class="dashicons dashicons-info"></span><p>' + checkoutguardCourier.noRecentSearches + '</p></div>');
+                        $('#checkoutguard-recent-list').html('<div class="checkoutguard-no-data-modern"><span class="dashicons dashicons-info"></span><p>' + checkoutguardCourier.noRecentSearches + '</p></div>');
                         $button.hide();
                     }, 350);
                     

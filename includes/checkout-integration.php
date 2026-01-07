@@ -5,6 +5,37 @@ if (!defined('ABSPATH')) {
 }
 
 /**
+ * Extract a billing phone number from mixed checkout payloads (classic + block checkout).
+ */
+function checkoutguard_extract_billing_phone($data = null) {
+    $candidates = array();
+
+    if (is_array($data)) {
+        $candidates[] = $data['billing_phone'] ?? '';
+        $candidates[] = isset($data['billing']['phone']) ? $data['billing']['phone'] : '';
+        $candidates[] = isset($data['billing_address']['phone']) ? $data['billing_address']['phone'] : '';
+    }
+
+    // Posted form / Store API request payloads
+    $candidates[] = isset($_POST['billing_phone']) ? $_POST['billing_phone'] : '';
+    $candidates[] = (isset($_POST['billing']['phone']) && is_array($_POST['billing'])) ? $_POST['billing']['phone'] : '';
+    $candidates[] = (isset($_POST['billing_address']['phone']) && is_array($_POST['billing_address'])) ? $_POST['billing_address']['phone'] : '';
+
+    // Fallback to customer session
+    if (WC()->customer) {
+        $candidates[] = WC()->customer->get_billing_phone();
+    }
+
+    foreach ($candidates as $candidate) {
+        if (!empty($candidate)) {
+            return sanitize_text_field( wp_unslash( $candidate ) );
+        }
+    }
+
+    return '';
+}
+
+/**
  * Deletes the corresponding incomplete checkout record when a WooCommerce order is completed.
  */
 function checkoutguard_delete_incomplete_checkout_on_order_completion($order_id)
@@ -28,9 +59,16 @@ function checkoutguard_delete_incomplete_checkout_on_order_completion($order_id)
         global $wpdb;
         $table_name = $wpdb->prefix . 'checkoutguard_incomplete_checkouts';
 
-        $wpdb->delete(
+        // Update status to 'recovered' instead of deleting to preserve analytics
+        $wpdb->update(
             $table_name,
+            [
+                'status' => 'recovered',
+                'recovered_order_id' => $order_id,
+                'updated_at' => current_time('mysql')
+            ],
             ['session_id' => $session_id_to_delete],
+            ['%s', '%d', '%s'],
             ['%s']
         );
     }
@@ -39,27 +77,88 @@ function checkoutguard_delete_incomplete_checkout_on_order_completion($order_id)
 /**
  * Checks customer's phone number against the blocklist during checkout processing.
  * This is the simplified version for the free plugin.
+ * 
+ * @param array $data Posted checkout data (optional, for woocommerce_after_checkout_validation hook)
+ * @param WP_Error $errors Error object (optional, for woocommerce_after_checkout_validation hook)
  */
-function checkoutguard_check_customer_against_blocklists()
+function checkoutguard_check_customer_against_blocklists($data = null, $errors = null)
 {
-    // Only check phone numbers in the free version.
-    if (isset($_POST['billing_phone'])) {
-        $customer_phone = checkoutguard_normalize_phone_number(sanitize_text_field(wp_unslash($_POST['billing_phone'])));
+    // Prevent duplicate error messages across multiple hooks
+    static $error_already_added = false;
+    
+    // Check if fraud blocker is enabled
+    if (!checkoutguard_get_setting('enable_fraud_blocker', true)) {
+        return;
+    }
 
-        if (!empty($customer_phone)) {
-            global $wpdb;
-            $table_blocked_numbers = $wpdb->prefix . 'checkoutguard_blocked_numbers';
+    // Get phone number from either $data parameter, Store API shapes, or posted form data
+    $customer_phone = checkoutguard_extract_billing_phone($data);
 
-            $is_phone_blocked = $wpdb->get_var($wpdb->prepare(
-                "SELECT id FROM {$table_blocked_numbers} WHERE phone_number = %s LIMIT 1",
-                $customer_phone
-            ));
+    if (empty($customer_phone)) {
+        return;
+    }
 
-            if ($is_phone_blocked) {
-                wc_add_notice(esc_html__('Your order cannot be processed at this time. Please contact support.', 'checkoutguard'), 'error');
-            }
+    // Normalize the phone number
+    $normalized_phone = checkoutguard_normalize_phone_number($customer_phone);
+    
+    if (empty($normalized_phone)) {
+        return;
+    }
+
+    global $wpdb;
+    $table_blocked_numbers = $wpdb->prefix . 'checkoutguard_blocked_numbers';
+
+    // Check if phone is blocked
+    $is_phone_blocked = $wpdb->get_var($wpdb->prepare(
+        "SELECT id FROM {$table_blocked_numbers} WHERE phone_number = %s LIMIT 1",
+        $normalized_phone
+    ));
+
+    if ($is_phone_blocked && !$error_already_added) {
+        // Mark that we've added the error
+        $error_already_added = true;
+        
+        // Get custom error message from settings
+        $error_message = checkoutguard_get_setting(
+            'blocked_phone_error_message',
+            'Your order cannot be processed at this time. Please contact support.'
+        );
+        
+        // Add error to WP_Error object if available (for woocommerce_after_checkout_validation hook)
+        if ($errors && is_wp_error($errors)) {
+            $errors->add('blocked_phone_number', esc_html($error_message));
+        }
+        
+        // Also add notice for woocommerce_checkout_process hook (only if WP_Error not available)
+        if (!$errors && function_exists('wc_add_notice')) {
+            wc_add_notice(esc_html($error_message), 'error');
         }
     }
+}
+
+/**
+ * Validate blocked phone before processing checkout data
+ * This runs very early in the checkout process
+ * 
+ * @param array $data Posted checkout data
+ * @return array Modified checkout data
+ */
+function checkoutguard_validate_blocked_phone_on_checkout($data)
+{
+    // Skip - main validation happens in checkoutguard_check_customer_against_blocklists
+    // This filter just normalizes the phone data for consistency
+    if (!checkoutguard_get_setting('enable_fraud_blocker', true)) {
+        return $data;
+    }
+
+    $customer_phone = checkoutguard_extract_billing_phone($data);
+
+    if (!empty($customer_phone)) {
+        // Ensure downstream filters can also see the phone in the classic key
+        $data['billing_phone'] = $customer_phone;
+    }
+    
+    return $data;
 }
 
 /**
