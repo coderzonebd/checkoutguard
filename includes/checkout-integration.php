@@ -141,17 +141,15 @@ function cg_maybe_auto_block($ip, $email, $phone)
                 $ip
             ));
             if (!$exists) {
-                $inserted = $wpdb->insert($wpdb->prefix . 'cg_blocked_ips', [
+                // Automatic blocks are not counted toward the plan's usage (1.5.0).
+                cg_insert_auto_block($wpdb->prefix . 'cg_blocked_ips', [
                     'ip_address'  => $ip,
                     'added_by'    => 0,
                     'auto_blocked' => 1,
                     'reason'      => "Auto-blocked: {$count} failed attempts",
                     'expires_at'  => $expires_at,
                     'created_at'  => current_time('mysql'),
-                ]);
-                if ($inserted) {
-                    cg_increment_usage_count('fraud_ips');
-                }
+                ], 'fraud_ips');
             }
         }
     }
@@ -168,17 +166,15 @@ function cg_maybe_auto_block($ip, $email, $phone)
                 $email
             ));
             if (!$exists) {
-                $inserted = $wpdb->insert($wpdb->prefix . 'cg_blocked_emails', [
+                // Automatic blocks are not counted toward the plan's usage (1.5.0).
+                cg_insert_auto_block($wpdb->prefix . 'cg_blocked_emails', [
                     'email_address' => $email,
                     'added_by'      => 0,
                     'auto_blocked'  => 1,
                     'reason'        => "Auto-blocked: {$count} failed attempts",
                     'expires_at'    => $expires_at,
                     'created_at'    => current_time('mysql'),
-                ]);
-                if ($inserted) {
-                    cg_increment_usage_count('fraud_emails');
-                }
+                ], 'fraud_emails');
             }
         }
     }
@@ -195,17 +191,15 @@ function cg_maybe_auto_block($ip, $email, $phone)
                 $phone
             ));
             if (!$exists) {
-                $inserted = $wpdb->insert($wpdb->prefix . 'cg_blocked_numbers', [
+                // Automatic blocks are not counted toward the plan's usage (1.5.0).
+                cg_insert_auto_block($wpdb->prefix . 'cg_blocked_numbers', [
                     'phone_number' => $phone,
                     'added_by'     => 0,
                     'auto_blocked' => 1,
                     'reason'       => "Auto-blocked: {$count} failed attempts",
                     'expires_at'   => $expires_at,
                     'created_at'   => current_time('mysql'),
-                ]);
-                if ($inserted) {
-                    cg_increment_usage_count('fraud_phones');
-                }
+                ], 'fraud_phones');
             }
         }
     }

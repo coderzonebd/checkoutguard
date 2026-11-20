@@ -312,21 +312,19 @@ function cg_handle_delete_blocked_item_ajax()
             return;
     }
 
-    $deleted = false;
-    // Prioritize deleting by ID if it's provided (from the main Fraud Blocker page)
+    // Prioritize deleting by ID if it's provided (from the main Fraud Blocker page),
+    // otherwise by value (from the order meta box "Unblock" button). Usage is
+    // given back only when a counted row was really deleted.
     if ($item_id > 0) {
-        $deleted = $wpdb->delete($table_name, ['id' => $item_id], ['%d']);
-    }
-    // Otherwise, delete by value (from the order meta box "Unblock" button)
-    elseif (!empty($value_to_delete)) {
-        $deleted = $wpdb->delete($table_name, [$column_name => $value_to_delete], ['%s']);
+        $deleted = cg_delete_blocklist_row($table_name, 'id', $item_id, $action_type);
+    } elseif (!empty($value_to_delete)) {
+        $deleted = cg_delete_blocklist_row($table_name, $column_name, $value_to_delete, $action_type);
     } else {
         wp_send_json_error(['message' => __('No item ID or value provided for deletion.', 'checkoutguard')]);
         return;
     }
 
     if ($deleted !== false) {
-        cg_decrement_usage_count($action_type);
         wp_send_json_success(['message' => __('Item removed from blocklist.', 'checkoutguard')]);
     } else {
         wp_send_json_error(['message' => __('Could not remove item from the database.', 'checkoutguard')]);
@@ -636,9 +634,7 @@ function cg_handle_bulk_delete_blocked_items_ajax()
     $deleted_count = 0;
 
     foreach ($item_ids as $id) {
-        $deleted = $wpdb->delete($table, ['id' => $id], ['%d']);
-        if ($deleted) {
-            cg_decrement_usage_count($action_type);
+        if (cg_delete_blocklist_row($table, 'id', $id, $action_type) > 0) {
             $deleted_count++;
         }
     }

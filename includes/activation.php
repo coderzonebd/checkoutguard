@@ -14,7 +14,11 @@ function cg_plugin_activate()
     cg_create_database_tables();
     cg_create_blocked_orders_table();
     cg_upgrade_fraud_tables();
-    update_option('cg_db_version', CG_VERSION);
+    // Only record the schema version once every blocklist table really has
+    // usage_counted; otherwise cg_maybe_run_migrations() retries on a later load.
+    if (cg_ensure_usage_counted_columns()) {
+        update_option('cg_db_version', CG_VERSION);
+    }
     // Set initial status and trigger first sync
     if (!get_option('cg_license_status')) {
         update_option('cg_license_status', 'active');
@@ -183,6 +187,7 @@ function cg_create_database_tables()
         phone_number VARCHAR(30) NOT NULL,
         added_by BIGINT(20) UNSIGNED DEFAULT NULL,
         reason TEXT DEFAULT NULL,
+        usage_counted TINYINT(1) DEFAULT 1,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         UNIQUE KEY phone_number (phone_number)
@@ -195,6 +200,7 @@ function cg_create_database_tables()
         email_address VARCHAR(100) NOT NULL,
         added_by BIGINT(20) UNSIGNED DEFAULT NULL,
         reason TEXT DEFAULT NULL,
+        usage_counted TINYINT(1) DEFAULT 1,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         UNIQUE KEY email_address (email_address)
@@ -207,6 +213,7 @@ function cg_create_database_tables()
         ip_address VARCHAR(45) NOT NULL,
         added_by BIGINT(20) UNSIGNED DEFAULT NULL,
         reason TEXT DEFAULT NULL,
+        usage_counted TINYINT(1) DEFAULT 1,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         UNIQUE KEY ip_address (ip_address)
@@ -234,6 +241,7 @@ function cg_upgrade_fraud_tables()
         reason TEXT DEFAULT NULL,
         expires_at DATETIME DEFAULT NULL,
         auto_blocked TINYINT(1) DEFAULT 0,
+        usage_counted TINYINT(1) DEFAULT 1,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         UNIQUE KEY domain (domain)
@@ -249,6 +257,7 @@ function cg_upgrade_fraud_tables()
         reason TEXT DEFAULT NULL,
         expires_at DATETIME DEFAULT NULL,
         auto_blocked TINYINT(1) DEFAULT 0,
+        usage_counted TINYINT(1) DEFAULT 1,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         UNIQUE KEY address_hash (address_hash)
@@ -264,6 +273,7 @@ function cg_upgrade_fraud_tables()
         reason TEXT DEFAULT NULL,
         expires_at DATETIME DEFAULT NULL,
         auto_blocked TINYINT(1) DEFAULT 0,
+        usage_counted TINYINT(1) DEFAULT 1,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         UNIQUE KEY device_fingerprint (device_fingerprint)
@@ -317,6 +327,35 @@ function cg_upgrade_fraud_tables()
 
 
 /**
+ * Makes sure every blocklist table has the usage_counted column (1.5.0).
+ *
+ * usage_counted = 1: the row counts toward the plan's fraud_* usage (manual
+ * blocks, and every row that existed before 1.5.0). usage_counted = 0: an
+ * automatic block, which is never counted, so deleting it never decrements.
+ *
+ * $wpdb->query() does not throw when ALTER fails, so the column is checked
+ * again afterwards. Returns true only when all six tables have it; callers
+ * must not bump cg_db_version otherwise.
+ */
+function cg_ensure_usage_counted_columns()
+{
+    global $wpdb;
+    $all_present = true;
+    foreach (cg_blocklist_usage_tables() as $table => $action_type) {
+        $col = $wpdb->get_results("SHOW COLUMNS FROM {$table} LIKE 'usage_counted'");
+        if (empty($col)) {
+            $wpdb->query("ALTER TABLE {$table} ADD COLUMN usage_counted TINYINT(1) DEFAULT 1");
+            $col = $wpdb->get_results("SHOW COLUMNS FROM {$table} LIKE 'usage_counted'");
+        }
+        if (empty($col)) {
+            $all_present = false;
+        }
+    }
+    cg_blocklist_has_usage_counted(null, true);
+    return $all_present;
+}
+
+/**
  * Handles tasks upon plugin deactivation.
  */
 function cg_plugin_deactivate()
@@ -341,7 +380,7 @@ function cg_plugin_deactivate()
 function cg_maybe_run_migrations()
 {
     $installed_ver = get_option('cg_db_version', '1.0.0');
-    if (version_compare($installed_ver, CG_VERSION, '<')) {
+    if (version_compare($installed_ver, CG_VERSION, '<') && !get_transient('cg_migration_retry_pause')) {
         cg_create_database_tables();
         cg_create_blocked_orders_table();
         cg_upgrade_fraud_tables();
@@ -368,7 +407,15 @@ function cg_maybe_run_migrations()
             update_option('cg_plugin_options', $options);
         }
 
-        update_option('cg_db_version', CG_VERSION);
+        // Bump the version only when the 1.5.0 column is really there. On
+        // failure the next page load (after a short pause, so a host that
+        // refuses ALTER is not hit with dbDelta on every request) tries again.
+        if (cg_ensure_usage_counted_columns()) {
+            update_option('cg_db_version', CG_VERSION);
+            delete_transient('cg_migration_retry_pause');
+        } else {
+            set_transient('cg_migration_retry_pause', 1, (int) apply_filters('cg_migration_retry_pause_seconds', 60));
+        }
     }
 }
 add_action('init', 'cg_maybe_run_migrations', 5);

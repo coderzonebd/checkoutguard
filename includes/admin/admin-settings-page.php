@@ -357,7 +357,7 @@ add_action('admin_init', 'cg_register_settings');
 /**
  * Helper: render a single usage progress bar row.
  */
-function cg_render_usage_row($label, $used, $limit)
+function cg_render_usage_row($label, $used, $limit, $uncounted_auto = 0)
 {
     $used = (int) $used;
     $limit = (int) $limit;
@@ -388,6 +388,12 @@ function cg_render_usage_row($label, $used, $limit)
             <div class="cg-usage-bar-fill <?php echo esc_attr($bar_class); ?>"
                 style="width: <?php echo $is_unlimited ? '0' : esc_attr($percentage); ?>%"></div>
         </div>
+        <?php if ((int) $uncounted_auto > 0): ?>
+            <span class="cg-usage-row__note"><?php
+                /* translators: %d: number of automatic blocks that do not count toward the plan limit */
+                echo esc_html(sprintf(__('+%d auto-blocked (not counted)', 'checkoutguard'), (int) $uncounted_auto));
+            ?></span>
+        <?php endif; ?>
         <?php if (!$is_unlimited && $percentage >= 80): ?>
             <span class="cg-usage-row__warning"><?php echo esc_html($percentage); ?>% <?php _e('used', 'checkoutguard'); ?></span>
         <?php endif; ?>
@@ -529,8 +535,14 @@ function cg_render_account_usage_tab()
                     'fraud_addresses' => __('Blocked Addresses', 'checkoutguard'),
                     'fraud_devices' => __('Blocked Devices', 'checkoutguard'),
                 ];
+                $fraud_tables = array_flip(cg_blocklist_usage_tables());
                 foreach ($fraud_items as $key => $label) {
-                    cg_render_usage_row($label, $cache['usage'][$key] ?? 0, $cache['limits'][$key] ?? 0);
+                    cg_render_usage_row(
+                        $label,
+                        $cache['usage'][$key] ?? 0,
+                        $cache['limits'][$key] ?? 0,
+                        isset($fraud_tables[$key]) ? cg_count_uncounted_auto_blocks($fraud_tables[$key]) : 0
+                    );
                 }
                 ?>
             </div>

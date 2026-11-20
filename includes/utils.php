@@ -589,9 +589,16 @@ function cg_cleanup_expired_blocks_handler()
     ];
 
     foreach ($tables as $table => $action_type) {
-        // Count how many expired rows will be deleted
+        // Only rows that were counted toward usage give a decrement back;
+        // automatic blocks (usage_counted = 0) were never counted. Without
+        // the column (migration not done yet) behave like 1.4.2.
+        $counted_sql = cg_blocklist_has_usage_counted($table) ? ' AND COALESCE(usage_counted, 1) = 1' : '';
         $expired_count = (int) $wpdb->get_var($wpdb->prepare(
             "SELECT COUNT(*) FROM {$table} WHERE expires_at IS NOT NULL AND expires_at < %s",
+            $now
+        ));
+        $counted_count = $counted_sql === '' ? $expired_count : (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$table} WHERE expires_at IS NOT NULL AND expires_at < %s{$counted_sql}",
             $now
         ));
 
@@ -600,8 +607,7 @@ function cg_cleanup_expired_blocks_handler()
                 "DELETE FROM {$table} WHERE expires_at IS NOT NULL AND expires_at < %s",
                 $now
             ));
-            // Decrement usage count for each expired item removed
-            for ($i = 0; $i < $expired_count; $i++) {
+            for ($i = 0; $i < $counted_count; $i++) {
                 cg_decrement_usage_count($action_type);
             }
         }
@@ -1020,4 +1026,107 @@ function cg_is_checkout_context()
     return (bool) apply_filters('cg_is_checkout_context', false);
 }
 
+/**
+ * Blocklist tables and the usage key each one is counted under.
+ */
+function cg_blocklist_usage_tables()
+{
+    global $wpdb;
+    return [
+        $wpdb->prefix . 'cg_blocked_ips'       => 'fraud_ips',
+        $wpdb->prefix . 'cg_blocked_emails'    => 'fraud_emails',
+        $wpdb->prefix . 'cg_blocked_numbers'   => 'fraud_phones',
+        $wpdb->prefix . 'cg_blocked_domains'   => 'fraud_domains',
+        $wpdb->prefix . 'cg_blocked_addresses' => 'fraud_addresses',
+        $wpdb->prefix . 'cg_blocked_devices'   => 'fraud_devices',
+    ];
+}
 
+/**
+ * Runtime guard: does this blocklist table have the usage_counted column?
+ * Cached per request. When it is missing (migration failed or has not run)
+ * every caller falls back to the 1.4.2 behaviour instead of writing or
+ * filtering on a column that does not exist.
+ *
+ * @param string|null $table Full table name.
+ * @param bool        $reset Clear the per-request cache (after a migration).
+ */
+function cg_blocklist_has_usage_counted($table, $reset = false)
+{
+    static $cache = [];
+    if ($reset) {
+        $cache = [];
+        return false;
+    }
+    if (!isset($cache[$table])) {
+        global $wpdb;
+        $cache[$table] = !empty($wpdb->get_results("SHOW COLUMNS FROM {$table} LIKE 'usage_counted'"));
+    }
+    return $cache[$table];
+}
+
+/**
+ * Inserts an automatic block. Automatic blocks do not count toward the
+ * plan's fraud_* usage (1.5.0), so no increment is sent and the row is
+ * stored with usage_counted = 0. Without the column it behaves like 1.4.2
+ * (counted and incremented), so nothing breaks before the migration.
+ *
+ * @return int|false Result of $wpdb->insert().
+ */
+function cg_insert_auto_block($table, array $data, $action_type)
+{
+    global $wpdb;
+    $has_column = cg_blocklist_has_usage_counted($table);
+    if ($has_column) {
+        $data['usage_counted'] = 0;
+    }
+    $inserted = $wpdb->insert($table, $data);
+    if ($inserted && !$has_column) {
+        cg_increment_usage_count($action_type);
+    }
+    return $inserted;
+}
+
+/**
+ * Deletes one blocklist row and gives usage back only if that row was
+ * counted. Returns the number of rows deleted (0 when nothing matched, in
+ * which case no decrement is sent either).
+ *
+ * @param string $table       Full table name.
+ * @param string $column      Column to match on ('id' or the value column).
+ * @param mixed  $value       Value to match.
+ * @param string $action_type Usage key (fraud_*).
+ */
+function cg_delete_blocklist_row($table, $column, $value, $action_type)
+{
+    global $wpdb;
+    $has_column = cg_blocklist_has_usage_counted($table);
+    $format = $column === 'id' ? '%d' : '%s';
+    $select = $has_column ? 'id, usage_counted' : 'id';
+    $row = $wpdb->get_row($wpdb->prepare("SELECT {$select} FROM {$table} WHERE {$column} = {$format} LIMIT 1", $value));
+    if (!$row) {
+        return 0;
+    }
+    $deleted = (int) $wpdb->delete($table, ['id' => (int) $row->id], ['%d']);
+    $counted = !$has_column || $row->usage_counted === null || (int) $row->usage_counted === 1;
+    if ($deleted > 0 && $counted) {
+        cg_decrement_usage_count($action_type);
+    }
+    return $deleted;
+}
+
+/**
+ * Number of active automatic blocks that are not counted toward usage.
+ * Shown next to the usage row as "+N auto-blocked (not counted)".
+ */
+function cg_count_uncounted_auto_blocks($table)
+{
+    global $wpdb;
+    if (!cg_blocklist_has_usage_counted($table)) {
+        return 0;
+    }
+    return (int) $wpdb->get_var($wpdb->prepare(
+        "SELECT COUNT(*) FROM {$table} WHERE usage_counted = 0 AND (expires_at IS NULL OR expires_at >= %s)",
+        current_time('mysql')
+    ));
+}
