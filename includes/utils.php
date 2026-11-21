@@ -341,14 +341,28 @@ function cg_verify_signed_payload($response)
     }
 
     $public_key = base64_decode(CG_HQ_PUBLIC_KEY);
-    $signature = base64_decode($response['signature']);
-    $is_valid = sodium_crypto_sign_verify_detached($signature, $response['payload_string'], $public_key);
+    $signature = base64_decode((string) $response['signature'], true);
+    $is_valid = false;
+    if (is_string($signature) && strlen($signature) === SODIUM_CRYPTO_SIGN_BYTES && is_string($response['payload_string'])) {
+        try {
+            $is_valid = sodium_crypto_sign_verify_detached($signature, $response['payload_string'], $public_key);
+        } catch (Throwable $e) {
+            $is_valid = false;
+        }
+    }
 
     if (!$is_valid) {
         return new WP_Error('signature_invalid', __('Cryptographic signature verification failed — the server response may have been tampered with.', 'checkoutguard'));
     }
 
     $payload = json_decode($response['payload_string'], true);
+
+    // The same HQ key signs site key nonce deliveries, which always carry a
+    // purpose field; a status payload never does, so one can never pass as
+    // the other.
+    if (!is_array($payload) || array_key_exists('purpose', $payload)) {
+        return new WP_Error('signature_invalid', __('Cryptographic signature verification failed — the server response may have been tampered with.', 'checkoutguard'));
+    }
 
     // Generous freshness window — this is a periodic poll (daily cron +
     // manual force-sync), not a nonce challenge-response, so this only
