@@ -26,6 +26,9 @@ define('CG_REVEAL_ACTION', 'contact_reveals');
 define('CG_PERIOD_SYNC_LOCK_OPTION', 'cg_period_sync_lock');
 define('CG_PERIOD_SYNCED_FOR_OPTION', 'cg_period_synced_for');
 define('CG_PERIOD_SYNC_BACKOFF_TRANSIENT', 'cg_period_sync_backoff');
+// The reveal increment runs while a guest's checkout data is being saved,
+// so it must not hold that request for the default 15 seconds.
+define('CG_REVEAL_INCREMENT_TIMEOUT', 5);
 define('CG_PERIOD_SYNC_LOCK_STALE_AFTER', 60);
 
 /**
@@ -245,6 +248,12 @@ function cg_contact_reveal_period_sync($period_end_raw, $now)
         if ((string) cg_reveal_read_option_raw(CG_PERIOD_SYNCED_FOR_OPTION) === (string) $period_end_raw) {
             return false;
         }
+        // Read the backoff again under the lock, so the next step is based on
+        // the latest failure and a retry that is not due yet is skipped.
+        $backoff = get_transient(CG_PERIOD_SYNC_BACKOFF_TRANSIENT);
+        if (is_array($backoff) && isset($backoff['next_try_at']) && $now < (int) $backoff['next_try_at']) {
+            return false;
+        }
         $previous = $GLOBALS['cg_hq_timeout_override'] ?? null;
         $GLOBALS['cg_hq_timeout_override'] = max(1, (int) CG_PERIOD_SYNC_TIMEOUT);
         try {
@@ -341,7 +350,17 @@ function cg_contact_reveal_commit($record_id, array $decision)
             $config['usage'][CG_REVEAL_ACTION] = cg_contact_reveal_usage($config) + 1;
             set_transient('cg_api_cache', $config, DAY_IN_SECONDS);
         }
-        $response = cg_call_hq_api('/sites/increment-usage', ['action_type' => CG_REVEAL_ACTION]);
+        $previous = $GLOBALS['cg_hq_timeout_override'] ?? null;
+        $GLOBALS['cg_hq_timeout_override'] = max(1, (int) CG_REVEAL_INCREMENT_TIMEOUT);
+        try {
+            $response = cg_call_hq_api('/sites/increment-usage', ['action_type' => CG_REVEAL_ACTION]);
+        } finally {
+            if ($previous === null) {
+                unset($GLOBALS['cg_hq_timeout_override']);
+            } else {
+                $GLOBALS['cg_hq_timeout_override'] = $previous;
+            }
+        }
         if (is_wp_error($response) || !is_array($response) || ($response['status'] ?? '') !== 'success') {
             return false;
         }

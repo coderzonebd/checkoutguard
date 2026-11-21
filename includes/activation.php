@@ -493,4 +493,3 @@ function cg_render_migration_failed_notice()
         . '</p></div>';
 }
 add_action('admin_notices', 'cg_render_migration_failed_notice');
-
