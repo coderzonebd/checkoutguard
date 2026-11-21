@@ -62,6 +62,20 @@ jobs:
           set -euo pipefail
           find . -name '*.php' -not -path './.git/*' -not -path './includes/vendor/*' -print0 | xargs -0 -n1 php -l > /dev/null
 
+      - name: Refuse if the SVN tag already exists
+        env:
+          WANT: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          # 404 = tag is free. 200 = already released. Anything else = unknown, stop.
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "https://plugins.svn.wordpress.org/checkoutguard/tags/${WANT}/")
+          echo "tags/${WANT} -> HTTP ${code}"
+          case "$code" in
+            404) ;;
+            200) echo "::error::SVN tag ${WANT} already exists. Bump the version."; exit 1 ;;
+            *)   echo "::error::Could not check SVN tag (HTTP ${code})."; exit 1 ;;
+          esac
+
       - name: Deploy to WordPress.org SVN
         id: deploy
         uses: 10up/action-wordpress-plugin-deploy@54bd289b8525fd23a5c365ec369185f2966529c2 # 2.3.0
@@ -80,3 +94,4 @@ jobs:
           name: checkoutguard-${{ inputs.version }}
           path: ${{ steps.deploy.outputs.zip-path }}
           retention-days: 30
+          if-no-files-found: error
