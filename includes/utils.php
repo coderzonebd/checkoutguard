@@ -942,6 +942,11 @@ function cg_effective_plan()
     if ($failure === 'expired') {
         return $none;
     }
+    // A key refusal gets no 72-hour allowance past the hard end: only an HQ
+    // outage (network or 5xx) does (SiteKey contract §7).
+    if ($failure === 'key' && $now >= CG_LEGACY_HARD_END) {
+        return $none;
+    }
     if (($now - $synced_at) > CG_LAST_KNOWN_PLAN_MAX_AGE) {
         $grace = cg_plan_key_grace_until();
         if ($failure !== 'key' || $last === null || $grace === null || $now >= $grace) {

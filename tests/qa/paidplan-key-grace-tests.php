@@ -141,4 +141,14 @@ $GLOBALS['__now'] = $HE - 1; $a = cg_is_paid_plan() && strpos(cg_sitekey_plan_no
 $GLOBALS['__now'] = $HE; $b = !cg_is_paid_plan() && strpos(cg_sitekey_plan_note(), 'are off') !== false;
 ok('D2b mismatch: stored deadline is the hard end, paid 1 s before, free and notice off at it', $HE > 0 && $st === $HE && $a && $b);
 $GLOBALS['__N'] = $N;
+// F1 hard end beats the 72-hour rule for a key refusal; an HQ outage keeps the 72 hours.
+if ($HE > 0) { $GLOBALS['__N'] = $HE - $H; }
+reset_all(); sync($paid($iso($HE + 10 * $D))); refuse('site_key_mismatch');
+$GLOBALS['__now'] = $HE - 1; $a = cg_is_paid_plan();
+$GLOBALS['__now'] = $HE; $b = !cg_is_paid_plan() && strpos(cg_sitekey_plan_note(), 'are off') !== false;
+$GLOBALS['__now'] = $HE + $H; $c = !cg_is_paid_plan() && strpos(cg_sitekey_plan_note(), 'are off') !== false;
+ok('F1a key refusal synced HE-1h: paid at HE-1s, Free with note off at HE and HE+1h', $HE > 0 && $a && $b && $c);
+reset_all(); sync($paid($iso($HE + 10 * $D))); $GLOBALS['__now'] = $HE + $H; $a = cg_is_paid_plan(); drop_cache(); $b = cg_is_paid_plan();
+ok('F1b control: no refusal (HQ down) synced HE-1h, still paid at HE+1h, cache or not', $HE > 0 && $a && $b && cg_sitekey_plan_note() === '');
+$GLOBALS['__N'] = $N;
 echo "RESULT $pass/" . ($pass + $fail) . "\n";
