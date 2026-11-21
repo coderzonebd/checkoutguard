@@ -47,6 +47,7 @@ function cg_sync_with_hq()
     if ($config && is_array($config) && isset($config['status'])) {
         update_option('cg_license_status', $config['status']);
         set_transient('cg_api_cache', $config, DAY_IN_SECONDS);
+        cg_remember_last_known_plan($config);
         set_transient('cg_last_synced', time(), WEEK_IN_SECONDS);
 
         if (isset($config['settings'])) {

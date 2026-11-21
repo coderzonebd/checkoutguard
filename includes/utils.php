@@ -708,6 +708,90 @@ function cg_is_grandfathered($cache)
     return $now < (int) $until;
 }
 
+define('CG_LAST_KNOWN_PLAN_OPTION', 'cg_last_known_plan');
+define('CG_LAST_KNOWN_PLAN_MAX_AGE', 72 * HOUR_IN_SECONDS);
+
+/**
+ * Remembers the plan from a verified /sites/status sync, so the paid features
+ * survive an HQ outage longer than the 24-hour cg_api_cache transient.
+ *
+ * @param array $config Verified /sites/status payload.
+ */
+function cg_remember_last_known_plan($config)
+{
+    if (!is_array($config)) {
+        return;
+    }
+    update_option(CG_LAST_KNOWN_PLAN_OPTION, [
+        'plan_slug' => cg_plan_slug($config),
+        'status' => is_string($config['status'] ?? null) ? strtolower(trim($config['status'])) : null,
+        'synced_at' => function_exists('cg_reveal_now') ? cg_reveal_now() : time(),
+    ], false);
+}
+
+/**
+ * The plan to decide paid features on, never older than 72 hours after the
+ * last verified sync. The cg_api_cache transient alone is not enough: local
+ * usage writes (cg_increment_usage_count() and friends) re-save it with a new
+ * 24-hour TTL, so on a busy shop it can outlive an HQ outage indefinitely.
+ * The age therefore comes from the last verified sync (cg_last_known_plan,
+ * or cg_last_synced for a site upgraded from 1.4.x before its first sync).
+ *
+ * @return array{plan_slug: ?string, status: ?string, source: string}
+ */
+function cg_effective_plan()
+{
+    $none = ['plan_slug' => null, 'status' => null, 'source' => 'none'];
+    $now = function_exists('cg_reveal_now') ? cg_reveal_now() : time();
+    $last = get_option(CG_LAST_KNOWN_PLAN_OPTION, null);
+    $last = is_array($last) ? $last : null;
+
+    $synced_at = null;
+    if ($last !== null && isset($last['synced_at']) && is_int($last['synced_at'])) {
+        $synced_at = $last['synced_at'];
+    } else {
+        $legacy = get_transient('cg_last_synced');
+        if (is_numeric($legacy)) {
+            $synced_at = (int) $legacy;
+        }
+    }
+    if ($synced_at === null || $synced_at > $now || ($now - $synced_at) > CG_LAST_KNOWN_PLAN_MAX_AGE) {
+        return $none;
+    }
+
+    $cache = get_transient('cg_api_cache');
+    if (is_array($cache)) {
+        return [
+            'plan_slug' => cg_plan_slug($cache),
+            'status' => is_string($cache['status'] ?? null) ? strtolower(trim($cache['status'])) : null,
+            'source' => 'cache',
+        ];
+    }
+    if ($last !== null) {
+        return [
+            'plan_slug' => is_string($last['plan_slug'] ?? null) ? $last['plan_slug'] : null,
+            'status' => is_string($last['status'] ?? null) ? $last['status'] : null,
+            'source' => 'last_known',
+        ];
+    }
+    return $none;
+}
+
+/**
+ * Paid plan (Basic, Standard, Pro, Custom, ...): any known slug other than
+ * "free" with status "active". Expired, suspended or inactive sites count as
+ * Free, and so does a site whose plan is unknown (no cache and no verified
+ * sync in the last 72 hours). Separate from cg_is_pro_plan(): a Basic site
+ * after its grandfather window is paid but not Pro.
+ *
+ * @return bool
+ */
+function cg_is_paid_plan()
+{
+    $plan = cg_effective_plan();
+    return $plan['plan_slug'] !== null && $plan['plan_slug'] !== 'free' && $plan['status'] === 'active';
+}
+
 /**
  * Checks if the current site may use the Pro features.
  * Pro and Custom always; Basic and Standard only while grandfathered.
