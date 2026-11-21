@@ -689,7 +689,8 @@ function cg_plan_slug($cache)
  * Parses the `grandfathered_until` value of the signed status payload.
  * Accepted forms:
  *   - an RFC 3339 date-time in UTC or with an offset, with or without a
- *     fraction of a second (the HQ format, e.g. `2026-12-15T10:23:45.123456Z`;
+ *     fraction of a second of 1-9 digits (the HQ format, e.g.
+ *     `2026-12-15T10:23:45.123456Z`; a longer fraction is rejected;
  *     lifetime plans send `2099-12-31T00:00:00Z`). It is read with
  *     DateTimeImmutable in UTC. A fraction rounds the result up to the next
  *     whole second, so `now >= until` never ends the window early.
