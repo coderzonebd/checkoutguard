@@ -18,3 +18,7 @@
 *.pdf   binary
 *.zip   binary
 *.mo    binary
+
+# Not shipped in the plugin zip.
+/tests export-ignore
+/.gitattributes export-ignore
