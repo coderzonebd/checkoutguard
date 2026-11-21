@@ -17,6 +17,9 @@ if (!defined('ABSPATH')) {
  * failed increment) stays masked. contact_reveals is never decremented: HQ
  * answers 400 to that, and the quota must not come back when a record or an
  * order is deleted.
+ * A record saved after the cached period ended, before this request has the
+ * new period (sync held by another request, or failed), stays masked and is
+ * not counted, so a burst at the period roll cannot use up the new quota.
  */
 
 if (!defined('CG_PERIOD_SYNC_TIMEOUT')) {
@@ -321,7 +324,14 @@ function cg_contact_reveal_decide()
                 }
             }
         }
-        if (cg_contact_reveal_usage($cache) < $limit && $now < $end) {
+        if ($now >= $end) {
+            // The cached period is over and this request did not get the new
+            // one (another request holds the sync, or it failed). The record
+            // stays hidden, so it must not use up the next period's quota.
+            $decision['count'] = false;
+            return $decision;
+        }
+        if (cg_contact_reveal_usage($cache) < $limit) {
             $decision['until'] = gmdate('Y-m-d H:i:s', $end);
         }
     } catch (\Throwable $e) {
