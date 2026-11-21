@@ -2,6 +2,16 @@
 if (!defined('ABSPATH'))
     exit;
 
+// Database schema version, kept apart from CG_VERSION: migrations run when
+// the stored cg_db_version is older than this, so a schema change does not
+// need a plugin version bump, and an older plugin (downgrade) never sees a
+// newer schema as something to migrate.
+if (!defined('CG_DB_SCHEMA_VERSION')) {
+    define('CG_DB_SCHEMA_VERSION', '1.5.0');
+}
+define('CG_MIGRATION_FAIL_OPTION', 'cg_migration_fail_count');
+define('CG_MIGRATION_NOTICE_AFTER', 3);
+
 function cg_plugin_activate()
 {
     // Buffer output to prevent "unexpected output during activation" errors
@@ -17,7 +27,8 @@ function cg_plugin_activate()
     // Only record the schema version once every 1.5.0 column really exists
     // (blocklist usage_counted, checkouts contact_revealed_until); otherwise cg_maybe_run_migrations() retries on a later load.
     if (cg_ensure_150_schema()) {
-        update_option('cg_db_version', CG_VERSION);
+        update_option('cg_db_version', CG_DB_SCHEMA_VERSION);
+        delete_option(CG_MIGRATION_FAIL_OPTION);
     }
     // Set initial status and trigger first sync
     if (!get_option('cg_license_status')) {
@@ -405,13 +416,13 @@ function cg_plugin_deactivate()
 }
 
 /**
- * Runs database migrations automatically on plugin update if stored DB version is older
- * than CG_VERSION, or if essential tables/columns are missing.
+ * Runs database migrations automatically when the stored cg_db_version is
+ * older than CG_DB_SCHEMA_VERSION.
  */
 function cg_maybe_run_migrations()
 {
     $installed_ver = get_option('cg_db_version', '1.0.0');
-    if (version_compare($installed_ver, CG_VERSION, '<') && !get_transient('cg_migration_retry_pause')) {
+    if (version_compare($installed_ver, CG_DB_SCHEMA_VERSION, '<') && !get_transient('cg_migration_retry_pause')) {
         cg_create_database_tables();
         cg_create_blocked_orders_table();
         cg_upgrade_fraud_tables();
@@ -441,13 +452,45 @@ function cg_maybe_run_migrations()
         // Bump the version only when the 1.5.0 columns are really there. On
         // failure the next page load (after a short pause, so a host that
         // refuses ALTER is not hit with dbDelta on every request) tries again.
+        // The pause is a transient: without a persistent object cache it is
+        // stored in wp_options, so it works on every host. Consecutive
+        // failures are counted in an option for the settings-page notice.
         if (cg_ensure_150_schema()) {
-            update_option('cg_db_version', CG_VERSION);
+            update_option('cg_db_version', CG_DB_SCHEMA_VERSION);
             delete_transient('cg_migration_retry_pause');
+            delete_option(CG_MIGRATION_FAIL_OPTION);
         } else {
             set_transient('cg_migration_retry_pause', 1, (int) apply_filters('cg_migration_retry_pause_seconds', 60));
+            update_option(CG_MIGRATION_FAIL_OPTION, (int) get_option(CG_MIGRATION_FAIL_OPTION, 0) + 1, false);
         }
     }
 }
 add_action('init', 'cg_maybe_run_migrations', 5);
+
+/**
+ * After CG_MIGRATION_NOTICE_AFTER failed migrations in a row (usually a host
+ * that does not allow ALTER TABLE), tell the admin, on the CheckoutGuard
+ * settings page only.
+ */
+function cg_render_migration_failed_notice()
+{
+    if (!current_user_can('manage_options')) {
+        return;
+    }
+    if (!isset($_GET['page']) || $_GET['page'] !== 'cg-settings') {
+        return;
+    }
+    $fails = (int) get_option(CG_MIGRATION_FAIL_OPTION, 0);
+    if ($fails < CG_MIGRATION_NOTICE_AFTER) {
+        return;
+    }
+    echo '<div class="notice notice-error cg-migration-failed-notice"><p>'
+        . esc_html(sprintf(
+            /* translators: %d: number of failed attempts */
+            __('CheckoutGuard could not update its database tables (%d attempts). Your hosting may not allow ALTER TABLE for the WordPress database user. Please ask your host to allow it, or contact CheckoutGuard support. The plugin keeps working with the old table layout and retries automatically.', 'checkoutguard'),
+            $fails
+        ))
+        . '</p></div>';
+}
+add_action('admin_notices', 'cg_render_migration_failed_notice');
 
