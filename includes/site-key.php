@@ -35,7 +35,10 @@ function cg_sitekey_now()
 
 /**
  * Reads an option straight from the database (bypasses the object cache, so
- * a value written by a parallel request is seen).
+ * a value written by a parallel request is seen). Only this option's cache
+ * entry is dropped: every site-key option is stored with autoload off, so it
+ * is never part of alloptions, and alloptions is left alone (dropping it on
+ * every HQ answer would cost object-cache sites a reload each time).
  */
 function cg_sitekey_read_raw($name)
 {
@@ -45,7 +48,6 @@ function cg_sitekey_read_raw($name)
         $name
     ));
     wp_cache_delete($name, 'options');
-    wp_cache_delete('alloptions', 'options');
     return $value;
 }
 
@@ -174,9 +176,21 @@ function cg_sitekey_needed()
  */
 function cg_sitekey_on_response($http_code, $code, $sent_key)
 {
+    $legacy_code = ($http_code === 409 && $code === 'claim_required') || ($http_code === 403 && $code === 'legacy_key_expired');
+    // Hot path (every HQ answer, e.g. each checkout's courier check): with the
+    // shared key and no deadline code there is nothing to do, so no database
+    // read. A pending key always means the request carried a czsite_ key.
+    if (!$legacy_code && !cg_sitekey_is_site_key($sent_key)) {
+        return;
+    }
+
     $state = cg_sitekey_state();
 
-    if (!empty($state['pending_until']) && $sent_key !== '' && cg_sitekey_is_site_key($sent_key)) {
+    // Only an answer to the exact pending key may commit or roll it back.
+    $is_pending_key = !empty($state['pending_until'])
+        && cg_sitekey_is_site_key($sent_key)
+        && hash_equals(cg_sitekey_current_key(), (string) $sent_key);
+    if ($is_pending_key) {
         if ($http_code >= 200 && $http_code < 300) {
             cg_sitekey_commit();
             return;
@@ -187,7 +201,7 @@ function cg_sitekey_on_response($http_code, $code, $sent_key)
         }
     }
 
-    if (($http_code === 409 && $code === 'claim_required') || ($http_code === 403 && $code === 'legacy_key_expired')) {
+    if ($legacy_code) {
         $state = cg_sitekey_state();
         $state['legacy_blocked_at'] = cg_sitekey_now();
         $state['legacy_code'] = $code;
@@ -333,8 +347,10 @@ function cg_sitekey_request($reason = 'auto')
 
 /**
  * REST: HQ posts the nonce here. Accepted only while a request of ours is
- * open, only in the documented shape, at most 3 per request. The answer is the
- * same 200 in every case, so the route tells an outsider nothing.
+ * open and only in the documented shape. The last 3 are kept (newest wins),
+ * so junk posted first cannot push out HQ's real nonce; the claim tries the
+ * newest first. The answer is the same 200 in every case, so the route tells
+ * an outsider nothing.
  */
 function cg_sitekey_receive_nonce(WP_REST_Request $request)
 {
@@ -345,9 +361,9 @@ function cg_sitekey_receive_nonce(WP_REST_Request $request)
         $open = !empty($state['window_until']) && $now <= (int) $state['window_until'];
         $nonces = isset($state['nonces']) && is_array($state['nonces']) ? $state['nonces'] : [];
         $seen = in_array($nonce, array_column($nonces, 'n'), true);
-        if ($open && !$seen && count($nonces) < CG_SITEKEY_MAX_NONCES) {
+        if ($open && !$seen) {
             $nonces[] = ['n' => $nonce, 'at' => $now];
-            $state['nonces'] = $nonces;
+            $state['nonces'] = array_slice($nonces, -CG_SITEKEY_MAX_NONCES);
             cg_sitekey_save_state($state);
             cg_sitekey_schedule('cg_sitekey_claim_event');
             if (function_exists('spawn_cron')) {
@@ -435,7 +451,11 @@ function cg_sitekey_claim()
             break;
         }
 
-        if ($result === 'invalid' || $result === 'failed') {
+        // A round where every nonce got 401 does not grow the backoff: the
+        // nonces may have been posted by an outsider, and the request gate
+        // (set before the request) still limits the next try. Other failures
+        // back off as usual.
+        if ($result === 'failed') {
             $state = cg_sitekey_state();
             $fails = (int) ($state['fails'] ?? 0);
             $state['fails'] = $fails + 1;
