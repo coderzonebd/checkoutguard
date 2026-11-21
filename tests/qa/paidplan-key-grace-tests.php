@@ -26,6 +26,7 @@ function wp_date($f, $ts) { return gmdate('Y-m-d', $ts); }
 function cg_reveal_now() { return $GLOBALS['__now']; }
 function apply_filters($h, $v) { return $h === 'cg_sitekey_now' ? $GLOBALS['__now'] : $v; }
 function wp_cache_delete(...$a) {}
+function wp_next_scheduled(...$a) { return false; } function wp_schedule_single_event(...$a) { return true; }
 function maybe_unserialize($v) { return is_string($v) ? unserialize($v) : $v; }
 class StubWpdb { public $options = 'wp_options';
   function prepare($q, ...$a) { return $a[0]; }
@@ -46,10 +47,8 @@ function age($sec) { $GLOBALS['__now'] += $sec; }
 function drop_cache() { delete_transient('cg_api_cache'); }
 function src() { return cg_effective_plan()['source']; }
 $D = 86400; $H = 3600;
-// Base time 200 days before the hard end, so the signed deadline and the +60 day bound
-// are the earlier bounds in every case except H1-H3.
-$HE = defined('CG_LEGACY_HARD_END') ? CG_LEGACY_HARD_END : null;
-if ($HE !== null) { $GLOBALS['__N'] = $HE - 200 * $D; }
+// Base time 2033 ($GLOBALS['__N']), long after the old placeholder 1806451200:
+// the plugin has no hard end, only the HQ deadline and the +60 day bound.
 $N = $GLOBALS['__N']; reset_all();
 $iso = function ($ts) { return gmdate('Y-m-d\TH:i:s\Z', $ts); };
 $paid = function ($dl = null) { $c = ['status' => 'active', 'plan' => 'pro', 'plan_slug' => 'pro']; if ($dl !== null) $c['legacy_key_deadline'] = $dl; return $c; };
@@ -87,17 +86,32 @@ reset_all(); refuse('site_key_required', $N - 10); sync($paid($iso($N + 10 * $D)
 reset_all(); sync($paid('2099-12-31T00:00:00Z')); refuse('site_key_required'); drop_cache(); $GLOBALS['__now'] = $N + 60 * $D - 1; $a = cg_is_paid_plan(); $GLOBALS['__now'] = $N + 60 * $D; ok('B8 clamp R+60 enforced', $a && !cg_is_paid_plan());
 // B9 free plan stays free under grace
 reset_all(); sync(['status' => 'active', 'plan_slug' => 'free', 'legacy_key_deadline' => $iso($N + 10 * $D)]); refuse('site_key_required'); drop_cache(); age(4 * $D); ok('B9 free stays free', !cg_is_paid_plan());
-// H hard end (CG_LEGACY_HARD_END): third bound of the effective deadline
-$HE = $HE ?? 0;
-ok('H0 hard end is an int timestamp', is_int($HE) && $HE > $N);
-ok('H1a later signed deadline clamped to hard end', $HE > 0 && cg_parse_legacy_key_deadline($iso($HE + 10 * $D), $HE - 30 * $D) === $HE);
-ok('H1b deadline exactly at hard end kept', $HE > 0 && cg_parse_legacy_key_deadline($iso($HE), $HE - 30 * $D) === $HE);
-ok('H1c deadline 1s before hard end kept', $HE > 0 && cg_parse_legacy_key_deadline($iso($HE - 1), $HE - 30 * $D) === $HE - 1);
-ok('H2 synced+60d past hard end still clamped', $HE > 0 && cg_parse_legacy_key_deadline('2099-12-31T00:00:00Z', $HE - $D) === $HE);
-if ($HE > 0) { $GLOBALS['__N'] = $HE - 30 * $D; }
-reset_all(); sync($paid($iso($HE + 10 * $D))); refuse('site_key_required'); drop_cache();
-$GLOBALS['__now'] = $HE - 1; $a = cg_is_paid_plan(); $GLOBALS['__now'] = $HE;
-ok('H3 key grace ends at hard end', $HE > 0 && $a && !cg_is_paid_plan());
+// H no plugin hard end (Tanvir 21 Nov): the only deadline is legacy_key_deadline
+// from HQ. $N (2033) is long after the old placeholder 1806451200 (2027).
+$OLD = 1806451200;
+ok('H0 no CG_LEGACY_HARD_END constant', !defined('CG_LEGACY_HARD_END'));
+ok('H1 HQ deadline after the old placeholder is not clamped to it', $N > $OLD && cg_parse_legacy_key_deadline($iso($N + 10 * $D), $N) === $N + 10 * $D);
+ok('H1b only the +60 day bound clamps', cg_parse_legacy_key_deadline($iso($N + 61 * $D), $N) === $N + 60 * $D);
+// (b) No deadline from HQ: no hard end; a key refusal follows the 72-hour rule only.
+reset_all(); sync($paid()); refuse('site_key_required'); drop_cache();
+$GLOBALS['__now'] = $N + 72 * $H; $a = cg_is_paid_plan() && src() !== 'none';
+$GLOBALS['__now'] = $N + 72 * $H + 1; $b = !cg_is_paid_plan();
+ok('H2 no HQ deadline: paid up to 72h after the last sync, free after, nothing earlier', $a && $b && get_option('cg_last_known_plan')['legacy_key_deadline'] === null);
+reset_all(); sync($paid()); $GLOBALS['__now'] = $N + 71 * $H; $a = cg_is_paid_plan(); drop_cache(); $b = cg_is_paid_plan();
+ok('H2b no HQ deadline, no refusal (HQ down) after the old placeholder: still paid, no note', $a && $b && cg_sitekey_plan_note() === '');
+// A key refusal ends exactly at the HQ deadline, after the old placeholder too.
+reset_all(); sync($paid($iso($N + 10 * $D))); refuse('site_key_mismatch'); drop_cache();
+$GLOBALS['__now'] = $N + 10 * $D - 1; $a = cg_is_paid_plan() && src() === 'key_grace';
+$GLOBALS['__now'] = $N + 10 * $D; ok('H3 key refusal: the HQ deadline is the only end (paid 1 s before, free at it)', $a && !cg_is_paid_plan());
+// (a) HQ deadline passed: HQ answers 403 legacy_expired (real handler, dummy key);
+// the paid plan is paused at once, even inside 72h with the cache present.
+$K = CG_SITEKEY_PREFIX . 'qa-dummy-not-a-key';
+reset_all(); update_option('cg_plugin_options', ['api_key' => $K]); sync($paid($iso($N + $H)));
+$GLOBALS['__now'] = $N + 2 * $H; cg_sitekey_on_response(403, 'legacy_expired', $K);
+ok('H4 HQ deadline passed, 403 legacy_expired: paused at once, paused sentence', (cg_sitekey_state()['legacy_code'] ?? '') === 'legacy_expired' && !cg_is_paid_plan() && src() === 'none' && cg_sitekey_plan_note() === 'Your paid plan is paused on this site until it is reconnected.');
+reset_all(); update_option('cg_plugin_options', ['api_key' => $K]); sync($paid($iso($N + $H)));
+$GLOBALS['__now'] = $N + 2 * $H; cg_sitekey_on_response(403, 'site_key_required', $K);
+ok('H4b control: same time, site_key_required instead: still paid inside 72h', cg_is_paid_plan());
 $GLOBALS['__N'] = $N;
 // M repeat site_key_mismatch after a good sync (real handler, dummy key)
 $K = CG_SITEKEY_PREFIX . 'qa-dummy-not-a-key';
@@ -132,25 +146,8 @@ reset_all(); sync($cx); refuse('site_key_required'); $a = cg_sitekey_plan_note()
 reset_all(); sync($cx); refuse('legacy_expired');
 ok('N10 paid slug but cancelled, key or legacy refusal: no note', $a === '' && cg_sitekey_plan_note() === '');
 // D2 clone DB / site_key_mismatch: paid at most 60 days after the last good sync, never at
-// or after CG_LEGACY_HARD_END (strict "<"), with the admin notice the whole time.
+// or after the HQ deadline (strict "<"), with the admin notice the whole time.
 reset_all(); sync($paid($iso($N + 90 * $D))); refuse('site_key_mismatch'); drop_cache();
 $GLOBALS['__now'] = $N + 60 * $D - 1; $a = cg_is_paid_plan() && src() === 'key_grace' && strpos(cg_sitekey_plan_note(), gmdate('Y-m-d', $N + 60 * $D)) !== false;
 $GLOBALS['__now'] = $N + 60 * $D; ok('D2a mismatch: paid with dated notice until +60d, free at +60d', $a && !cg_is_paid_plan() && cg_sitekey_plan_note() === 'Your paid plan is paused on this site until it is reconnected.');
-if ($HE > 0) { $GLOBALS['__N'] = $HE - 30 * $D; }
-reset_all(); sync($paid($iso($HE + 10 * $D))); refuse('site_key_mismatch'); drop_cache();
-$st = get_option('cg_last_known_plan')['legacy_key_deadline'] ?? null;
-$GLOBALS['__now'] = $HE - 1; $a = cg_is_paid_plan() && strpos(cg_sitekey_plan_note(), gmdate('Y-m-d', $HE)) !== false;
-$GLOBALS['__now'] = $HE; $b = !cg_is_paid_plan() && cg_sitekey_plan_note() === 'Your paid plan is paused on this site until it is reconnected.';
-ok('D2b mismatch: stored deadline is the hard end, paid 1 s before, free and notice off at it', $HE > 0 && $st === $HE && $a && $b);
-$GLOBALS['__N'] = $N;
-// F1 hard end beats the 72-hour rule for a key refusal; an HQ outage keeps the 72 hours.
-if ($HE > 0) { $GLOBALS['__N'] = $HE - $H; }
-reset_all(); sync($paid($iso($HE + 10 * $D))); refuse('site_key_mismatch');
-$GLOBALS['__now'] = $HE - 1; $a = cg_is_paid_plan();
-$GLOBALS['__now'] = $HE; $b = !cg_is_paid_plan() && cg_sitekey_plan_note() === 'Your paid plan is paused on this site until it is reconnected.';
-$GLOBALS['__now'] = $HE + $H; $c = !cg_is_paid_plan() && cg_sitekey_plan_note() === 'Your paid plan is paused on this site until it is reconnected.';
-ok('F1a key refusal synced HE-1h: paid at HE-1s, Free with note off at HE and HE+1h', $HE > 0 && $a && $b && $c);
-reset_all(); sync($paid($iso($HE + 10 * $D))); $GLOBALS['__now'] = $HE + $H; $a = cg_is_paid_plan(); drop_cache(); $b = cg_is_paid_plan();
-ok('F1b control: no refusal (HQ down) synced HE-1h, still paid at HE+1h, cache or not', $HE > 0 && $a && $b && cg_sitekey_plan_note() === '');
-$GLOBALS['__N'] = $N;
 echo "RESULT $pass/" . ($pass + $fail) . "\n";

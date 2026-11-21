@@ -134,7 +134,7 @@ ok('S9b gate == now: button and A1 shown, no next attempt line', strpos($html, '
 
 // Paid plan sentence inside the notice: a signed deadline 90 days out is shown
 // as the +60 day bound (date only, no key).
-$D = 86400; $N = $GLOBALS['__now'] = CG_LEGACY_HARD_END - 200 * $D;
+$D = 86400; $N = $GLOBALS['__now'] = 2000000000;
 reset_all(OWN); $GLOBALS['__now'] = $N;
 $cfg = ['status' => 'active', 'plan' => 'pro', 'plan_slug' => 'pro', 'legacy_key_deadline' => gmdate('Y-m-d\TH:i:s\Z', $N + 90 * $D)];
 cg_remember_last_known_plan($cfg); set_transient('cg_api_cache', $cfg);
@@ -151,6 +151,15 @@ $cfg = ['status' => 'active', 'plan' => 'pro', 'plan_slug' => 'pro'];
 cg_remember_last_known_plan($cfg); set_transient('cg_api_cache', $cfg);
 $GLOBALS['__now'] = $N + 1; cg_sitekey_on_response(403, 'site_key_required', SHARED); $t = text(notice());
 ok('S12 no deadline: 72-hour sentence in the notice, no key', strpos($t, $T2_TITLE . ' ' . $T2_BODY . ' Your paid plan stays active for up to 72 hours after the last successful connection. ') === 0
+    && preg_match('/key/i', $t) === 0);
+
+// HQ deadline passed: HQ answers 403 legacy_expired; the notice shows the
+// paused sentence at once, inside 72h with the cache present.
+reset_all(SHARED); $GLOBALS['__now'] = $N;
+$cfg = ['status' => 'active', 'plan' => 'pro', 'plan_slug' => 'pro', 'legacy_key_deadline' => gmdate('Y-m-d\TH:i:s\Z', $N + 3600)];
+cg_remember_last_known_plan($cfg); set_transient('cg_api_cache', $cfg);
+$GLOBALS['__now'] = $N + 7200; cg_sitekey_on_response(403, 'legacy_expired', SHARED); $t = text(notice());
+ok('S13 HQ deadline passed, 403 legacy_expired: T2 and paused sentence, no key', strpos($t, $T2_TITLE . ' ' . $T2_BODY . ' Your paid plan is paused on this site until it is reconnected. ') === 0
     && preg_match('/key/i', $t) === 0);
 
 echo "== $pass pass, $fail fail\n";
