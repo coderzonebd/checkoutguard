@@ -168,6 +168,17 @@ function cg_sitekey_needed()
 }
 
 /**
+ * True after HQ answered 403 site_key_mismatch: the stored own key belongs to
+ * another domain. Never claimed again on its own (no loop, contract §5); only
+ * the admin's Reconnect starts a new round.
+ */
+function cg_sitekey_mismatch()
+{
+    $state = cg_sitekey_state();
+    return !empty($state['mismatch_at']);
+}
+
+/**
  * Called by cg_call_hq_api() after every HQ answer (never for request-site-key
  * or claim-key themselves). Commits or rolls back a pending key and reacts to
  * the legacy deadline codes. Only schedules work; never calls HQ itself, so a
@@ -179,11 +190,15 @@ function cg_sitekey_needed()
  */
 function cg_sitekey_on_response($http_code, $code, $sent_key)
 {
-    $legacy_code = ($http_code === 409 && $code === 'claim_required') || ($http_code === 403 && $code === 'legacy_key_expired');
+    // Contract v10 §5: act on the code, never on the status alone or the text.
+    $code = (string) $code;
+    $legacy_code = ($http_code === 409 && $code === 'claim_required')
+        || ($http_code === 403 && in_array($code, ['legacy_expired', 'site_key_required'], true));
+    $mismatch = $http_code === 403 && $code === 'site_key_mismatch';
     // Hot path (every HQ answer, e.g. each checkout's courier check): with the
     // shared key and no deadline code there is nothing to do, so no database
     // read. A pending key always means the request carried a czsite_ key.
-    if (!$legacy_code && !cg_sitekey_is_site_key($sent_key)) {
+    if (!$legacy_code && !$mismatch && !cg_sitekey_is_site_key($sent_key)) {
         return;
     }
 
@@ -198,10 +213,22 @@ function cg_sitekey_on_response($http_code, $code, $sent_key)
             cg_sitekey_commit();
             return;
         }
-        if ($http_code === 401) {
+        if ($http_code === 401 || $mismatch) {
             cg_sitekey_rollback('rejected');
             return;
         }
+    }
+
+    if ($mismatch) {
+        // Show the reconnect notice; do not schedule a claim round.
+        $state = cg_sitekey_state();
+        if (empty($state['mismatch_at'])) {
+            $state['mismatch_at'] = cg_sitekey_now();
+            $state['legacy_blocked_at'] = $state['mismatch_at'];
+            $state['legacy_code'] = $code;
+            cg_sitekey_save_state($state);
+        }
+        return;
     }
 
     if ($legacy_code) {
@@ -223,7 +250,7 @@ function cg_sitekey_schedule($hook)
 function cg_sitekey_commit()
 {
     $state = cg_sitekey_state();
-    unset($state['pending_until'], $state['legacy_key'], $state['legacy_blocked_at'], $state['legacy_code']);
+    unset($state['pending_until'], $state['legacy_key'], $state['legacy_blocked_at'], $state['legacy_code'], $state['mismatch_at']);
     $state['committed_at'] = cg_sitekey_now();
     $state['fails'] = 0;
     cg_sitekey_save_state($state);
@@ -292,7 +319,8 @@ function cg_sitekey_request($reason = 'auto')
 {
     cg_sitekey_expire_pending();
     $state = cg_sitekey_state();
-    if (!cg_sitekey_needed() || !empty($state['pending_until'])) {
+    $wanted = cg_sitekey_needed() || ($reason === 'manual' && !empty($state['mismatch_at']));
+    if (!$wanted || !empty($state['pending_until'])) {
         return 'not_needed';
     }
     if (cg_sitekey_now() < cg_sitekey_gate()) {
@@ -411,7 +439,7 @@ function cg_sitekey_claim()
         $state['nonces'] = [];
         $state['window_until'] = 0;
         cg_sitekey_save_state($state);
-        if (!empty($state['pending_until']) || !cg_sitekey_needed()) {
+        if (!empty($state['pending_until']) || (!cg_sitekey_needed() && empty($state['mismatch_at']))) {
             return 'none';
         }
 
@@ -518,7 +546,8 @@ function cg_render_sitekey_notice()
         return;
     }
     $state = cg_sitekey_state();
-    if (empty($state['legacy_blocked_at']) || (cg_sitekey_is_site_key(cg_sitekey_current_key()) && empty($state['pending_until']))) {
+    $mismatch = cg_sitekey_mismatch();
+    if (empty($state['legacy_blocked_at']) || (!$mismatch && cg_sitekey_is_site_key(cg_sitekey_current_key()) && empty($state['pending_until']))) {
         return;
     }
     $page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : '';
@@ -530,7 +559,9 @@ function cg_render_sitekey_notice()
     $gate = cg_sitekey_gate();
     $url = wp_nonce_url(admin_url('admin-post.php?action=cg_sitekey_reconnect'), 'cg_sitekey_reconnect');
     echo '<div class="notice notice-error"><p><strong>' . esc_html__('CheckoutGuard is not protecting checkouts right now.', 'checkoutguard') . '</strong> ';
-    echo esc_html__('Headquarters needs this site to use its own key. Orders still go through, but without the fraud check.', 'checkoutguard') . ' ';
+    echo ($mismatch
+        ? esc_html__('The key stored here belongs to another domain (the site address changed or the key was copied). Orders still go through, but without the fraud check. Reconnect to get a key for this domain.', 'checkoutguard')
+        : esc_html__('Headquarters needs this site to use its own key. Orders still go through, but without the fraud check.', 'checkoutguard')) . ' ';
     if ($gate > cg_sitekey_now()) {
         echo esc_html(sprintf(
             /* translators: %s: time of the next automatic attempt */
