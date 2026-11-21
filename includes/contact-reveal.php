@@ -12,9 +12,14 @@ if (!defined('ABSPATH')) {
  * contact_revealed_until (UTC DATETIME) = the HQ usage_period_end of that
  * moment. A record shows its full email and phone only while
  *   - the plan's contact_reveals limit is unlimited (< 0), or
- *   - now < contact_revealed_until AND usage[contact_reveals] <= limit.
+ *   - the limit is known AND now < contact_revealed_until.
+ * The decision is per record (Tanvir, 21 Nov): until is written only when
+ * HQ's usage after this record's increment is <= limit, so the first N
+ * records of a period stay visible and only the (N+1)th and later are
+ * masked. HQ's counter gives the order, so two saves at the same moment
+ * cannot both take the last slot.
  * Everything else (no cache, no limit key, no period end, unparseable time,
- * failed increment) stays masked. contact_reveals is never decremented: HQ
+ * failed increment, no usage in HQ's answer) stays masked. contact_reveals is never decremented: HQ
  * answers 400 to that, and the quota must not come back when a record or an
  * order is deleted.
  * A record saved after the cached period ended, before this request has the
@@ -142,7 +147,7 @@ function cg_can_show_contact($row)
     if ($until_ts === null) {
         return false;
     }
-    return cg_reveal_now() < $until_ts && cg_contact_reveal_usage($cache) <= $limit;
+    return cg_reveal_now() < $until_ts;
 }
 
 /**
@@ -374,14 +379,19 @@ function cg_contact_reveal_commit($record_id, array $decision)
         if (is_wp_error($response) || !is_array($response) || ($response['status'] ?? '') !== 'success') {
             return false;
         }
-        if (isset($response['usage']) && is_numeric($response['usage'])) {
-            $config = get_transient('cg_api_cache');
-            if (is_array($config)) {
-                $config['usage'][CG_REVEAL_ACTION] = (int) $response['usage'];
-                set_transient('cg_api_cache', $config, DAY_IN_SECONDS);
-            }
+        $hq_usage = (isset($response['usage']) && is_numeric($response['usage'])) ? (int) $response['usage'] : null;
+        $config = get_transient('cg_api_cache');
+        if ($hq_usage !== null && is_array($config)) {
+            $config['usage'][CG_REVEAL_ACTION] = $hq_usage;
+            set_transient('cg_api_cache', $config, DAY_IN_SECONDS);
         }
         if (empty($decision['until']) || !$record_id || !cg_checkouts_has_reveal_column()) {
+            return false;
+        }
+        // Per record: only a record whose own increment kept HQ's usage
+        // within the limit gets a slot.
+        $limit = cg_contact_reveal_limit($config);
+        if ($hq_usage === null || $limit === null || $limit < 0 || $hq_usage > $limit) {
             return false;
         }
         global $wpdb;
