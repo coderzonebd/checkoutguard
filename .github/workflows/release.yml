@@ -1,0 +1,168 @@
+name: Release (draft)
+
+# Push a tag "vX.Y.Z" on a commit that is already on prod. This workflow
+# checks the version strings, builds the plugin zip exactly as it will go to
+# WordPress.org (.distignore applied), and opens a DRAFT GitHub release with
+# the zip, SHA256SUMS and a build provenance attestation.
+#
+# Nothing goes to WordPress.org here. Publishing the draft release on GitHub
+# starts wporg-publish.yml, which deploys this same zip to SVN.
+#
+# A tag with a "-" (v1.5.0-rc.1) becomes a prerelease and is never sent to
+# WordPress.org.
+#
+# workflow_dispatch = dry run: build and check only, no release is created.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to dry-run (e.g. v1.4.2). Builds and checks only."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  draft:
+    name: Draft ${{ github.event.inputs.tag || github.ref_name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      SLUG: checkoutguard
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve version
+        id: meta
+        run: |
+          set -euo pipefail
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "::error::Tag '$TAG' is not vX.Y.Z or vX.Y.Z-suffix"; exit 1; }
+          VERSION="${TAG#v}"
+          if [[ "$VERSION" == *-* ]]; then PRE=true; else PRE=false; fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRE"  >> "$GITHUB_OUTPUT"
+          echo "Tag $TAG -> version $VERSION (prerelease=$PRE)"
+
+      - name: Tag must be on prod
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor HEAD origin/prod \
+            || { echo "::error::Tag $TAG ($(git rev-parse --short HEAD)) is not on prod. Merge dev into prod first, then tag prod."; exit 1; }
+          echo "$(git rev-parse --short HEAD) is on prod: OK"
+
+      - name: Check version strings
+        run: .github/scripts/check-version.sh "${{ steps.meta.outputs.version }}"
+
+      - name: PHP lint
+        run: |
+          set -euo pipefail
+          find . -name '*.php' -not -path './.git/*' -not -path './includes/vendor/*' -print0 | xargs -0 -n1 php -l > /dev/null
+
+      - name: SVN tag must be free
+        if: steps.meta.outputs.prerelease == 'false'
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          code=$(.github/scripts/svn-tag-status.sh "$VERSION")
+          echo "tags/${VERSION} -> HTTP ${code}"
+          case "$code" in
+            404) ;;
+            200) echo "::error::SVN tag ${VERSION} already exists on WordPress.org. Bump the version."; exit 1 ;;
+            *)   echo "::error::Could not check SVN tag (HTTP ${code})."; exit 1 ;;
+          esac
+
+      - name: Build zip
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          rm -rf build dist && mkdir -p "build/$SLUG" dist
+          # Same file list the 10up deploy action sends to SVN trunk.
+          rsync -rc --exclude-from=.distignore --exclude=/build --exclude=/dist ./ "build/$SLUG/"
+          # Stable timestamps so a rebuild of the same tag gives the same zip.
+          find "build/$SLUG" -exec touch -h -d "@$(git log -1 --format=%ct)" {} +
+          (cd build && find "$SLUG" -print | LC_ALL=C sort | zip -X -q -@ "../dist/$SLUG-$VERSION.zip")
+          (cd dist && sha256sum "$SLUG-$VERSION.zip" > SHA256SUMS && cat SHA256SUMS)
+          unzip -l "dist/$SLUG-$VERSION.zip" | tail -n 1
+          # The packaged files must carry the same version.
+          .github/scripts/check-version.sh "$VERSION" "build/$SLUG"
+
+      - name: Release notes from readme.txt
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          awk -v want="= $VERSION =" '
+            /^== /{insec=($0 ~ /^== Changelog ==/); if (grab) exit}
+            insec && /^= .* =$/ { if (grab) exit; if ($0==want) {grab=1; next} }
+            grab {print}
+          ' readme.txt > notes.body
+          {
+            echo "## CheckoutGuard ${VERSION}"
+            echo
+            if [ -s notes.body ]; then cat notes.body; else echo "_No changelog entry for ${VERSION}._"; fi
+            echo
+            echo "### Verify"
+            echo '```'
+            cat dist/SHA256SUMS
+            echo '```'
+            echo
+            echo "Publishing this release sends \`${SLUG}-${VERSION}.zip\` to WordPress.org (stable releases only)."
+          } > notes.md
+          cat notes.md
+
+      - name: Attest build provenance
+        if: github.event_name == 'push'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/${{ env.SLUG }}-${{ steps.meta.outputs.version }}.zip
+
+      - name: Create or update the draft release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          PRE: ${{ steps.meta.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          if state=$(gh release view "$TAG" --json isDraft --jq '.isDraft' 2>/dev/null); then
+            if [ "$state" != "true" ]; then
+              echo "::error::Release $TAG is already published. Not touching it."; exit 1
+            fi
+            echo "Draft $TAG exists: replacing assets and notes."
+            gh release upload "$TAG" dist/* --clobber
+            gh release edit "$TAG" --notes-file notes.md
+          else
+            args=(--draft --verify-tag --title "CheckoutGuard ${VERSION}" --notes-file notes.md)
+            [ "$PRE" = "true" ] && args+=(--prerelease)
+            gh release create "$TAG" dist/* "${args[@]}"
+          fi
+          echo "### Draft release ready: $TAG" >> "$GITHUB_STEP_SUMMARY"
+          echo "Open Releases, check the notes and the zip, then press **Publish release**." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the dry-run zip
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ env.SLUG }}-${{ steps.meta.outputs.version }}-dry-run
+          path: dist/
+          retention-days: 7
+          if-no-files-found: error
