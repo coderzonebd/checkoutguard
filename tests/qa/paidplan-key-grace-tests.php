@@ -125,6 +125,8 @@ reset_all(); sync($paid($iso($N + 90 * $D))); refuse('site_key_required'); $dl =
 ok('N7 clamped deadline: one date, the stored one', $dl === $N + 60 * $D && cg_sitekey_plan_note() === 'Your paid plan stays active until ' . gmdate('Y-m-d', $dl) . '.');
 reset_all(); sync($paid($iso($N + 10 * $D))); refuse('site_key_required'); drop_cache(); age(11 * $D); ok('N8 past deadline: note paused', !cg_is_paid_plan() && cg_sitekey_plan_note() === 'Your paid plan is paused on this site until it is reconnected.');
 reset_all(); sync($paid($iso($N + $H))); refuse('site_key_required'); age(2 * $H); ok('N9 deadline passed inside 72h: still paid, 72h sentence', cg_is_paid_plan() && cg_sitekey_plan_note() === 'Your paid plan stays active for up to 72 hours after the last successful connection.');
+// grace == now is not "until" any more: the 72-hour sentence, not the date.
+reset_all(); sync($paid($iso($N + $H))); refuse('site_key_required'); age($H); ok('N9b deadline == now inside 72h: 72h sentence, no date', cg_is_paid_plan() && cg_plan_key_grace_until() === $N + $H && cg_sitekey_plan_note() === 'Your paid plan stays active for up to 72 hours after the last successful connection.');
 $cx = ['status' => 'cancelled', 'plan' => 'pro', 'plan_slug' => 'pro'];
 reset_all(); sync($cx); refuse('site_key_required'); $a = cg_sitekey_plan_note();
 reset_all(); sync($cx); refuse('legacy_expired');
