@@ -197,7 +197,7 @@ function cg_sitekey_mismatch()
  */
 function cg_sitekey_on_response($http_code, $code, $sent_key)
 {
-    // Contract-13 §5: act on the code, never on the status alone or the text.
+    // SiteKey contract §5: act on the code, never on the status alone or the text.
     $code = (string) $code;
     $legacy_code = ($http_code === 409 && $code === 'claim_required')
         || ($http_code === 403 && in_array($code, ['legacy_expired', 'site_key_required'], true));
