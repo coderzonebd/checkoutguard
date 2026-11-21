@@ -192,15 +192,24 @@ function cg_call_hq_api($endpoint, $body = [], $method = 'POST', $require_api_ke
 
     $response_body = json_decode(wp_remote_retrieve_body($response), true);
 
+    // Site key (1.5.0): HQ tells the legacy-deadline answers apart by "code",
+    // never by the message text.
+    $error_code_field = (is_array($response_body) && isset($response_body['code']) && is_string($response_body['code']))
+        ? sanitize_key($response_body['code'])
+        : '';
+    if (function_exists('cg_sitekey_on_response') && empty($GLOBALS['cg_sitekey_in_flow'])) {
+        cg_sitekey_on_response($response_code, $error_code_field, (string) ($headers['X-Api-Key'] ?? ''));
+    }
+
     if ($response_code >= 300) {
         $error_message = $response_body['message'] ?? $response_body['error'] ?? 'Unknown API Error';
         cg_log_api_hit($endpoint, $method, false, $response_code, $error_message);
-        $error_data = ['status' => $response_code];
-        if ($response_code === 429) {
-            // Raw header; the caller decides how to use it (SiteKey T1).
-            $error_data['retry_after'] = wp_remote_retrieve_header($response, 'retry-after');
-        }
-        return new WP_Error('api_error', $error_message, $error_data);
+        $retry_after = wp_remote_retrieve_header($response, 'retry-after');
+        return new WP_Error('api_error', $error_message, [
+            'status' => $response_code,
+            'code' => $error_code_field,
+            'retry_after' => (is_string($retry_after) && ctype_digit(trim($retry_after))) ? min((int) trim($retry_after), DAY_IN_SECONDS) : 0,
+        ]);
     }
 
     // A 2xx response with an endpoint-shaped-but-empty api_key (HQ has no key

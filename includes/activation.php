@@ -413,6 +413,8 @@ function cg_plugin_deactivate()
     wp_clear_scheduled_hook('cg_daily_sync_hook');
     wp_clear_scheduled_hook('cg_cleanup_expired_blocks');
     wp_clear_scheduled_hook('cg_sitekey_retry_event');
+    wp_clear_scheduled_hook('cg_sitekey_request_event');
+    wp_clear_scheduled_hook('cg_sitekey_claim_event');
 }
 
 /**

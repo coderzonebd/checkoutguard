@@ -71,8 +71,13 @@ if (!empty($options['delete_on_uninstall'])) {
     delete_transient('cg_period_sync_backoff');
     delete_transient('cg_api_cache');
     delete_transient('cg_last_synced');
+    delete_option('cg_sitekey_state');
+    delete_option('cg_sitekey_next_allowed_at');
+    delete_option('cg_sitekey_lock');
 
     // Clear scheduled cron hooks.
     wp_clear_scheduled_hook('cg_daily_sync_hook');
     wp_clear_scheduled_hook('cg_cleanup_expired_blocks');
+    wp_clear_scheduled_hook('cg_sitekey_request_event');
+    wp_clear_scheduled_hook('cg_sitekey_claim_event');
 }
