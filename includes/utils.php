@@ -590,26 +590,26 @@ function cg_cleanup_expired_blocks_handler()
 
     foreach ($tables as $table => $action_type) {
         // Only rows that were counted toward usage give a decrement back;
-        // automatic blocks (usage_counted = 0) were never counted. Without
-        // the column (migration not done yet) behave like 1.4.2.
-        $counted_sql = cg_blocklist_has_usage_counted($table) ? ' AND COALESCE(usage_counted, 1) = 1' : '';
-        $expired_count = (int) $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM {$table} WHERE expires_at IS NOT NULL AND expires_at < %s",
+        // automatic blocks (usage_counted = 0) were never counted. The
+        // decrements follow the rows this DELETE really removed (no separate
+        // COUNT), so a row deleted by someone else in between is never
+        // decremented twice. Without the column (migration not done yet)
+        // behave like 1.4.2: every expired row is counted.
+        $has_column = cg_blocklist_has_usage_counted($table);
+        $counted_sql = $has_column ? ' AND COALESCE(usage_counted, 1) = 1' : '';
+        $counted_deleted = $wpdb->query($wpdb->prepare(
+            "DELETE FROM {$table} WHERE expires_at IS NOT NULL AND expires_at < %s{$counted_sql}",
             $now
         ));
-        $counted_count = $counted_sql === '' ? $expired_count : (int) $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM {$table} WHERE expires_at IS NOT NULL AND expires_at < %s{$counted_sql}",
-            $now
-        ));
-
-        if ($expired_count > 0) {
+        for ($i = 0; $i < (int) $counted_deleted; $i++) {
+            cg_decrement_usage_count($action_type);
+        }
+        if ($has_column) {
+            // Expired automatic blocks: removed without any decrement.
             $wpdb->query($wpdb->prepare(
-                "DELETE FROM {$table} WHERE expires_at IS NOT NULL AND expires_at < %s",
+                "DELETE FROM {$table} WHERE expires_at IS NOT NULL AND expires_at < %s AND usage_counted = 0",
                 $now
             ));
-            for ($i = 0; $i < $counted_count; $i++) {
-                cg_decrement_usage_count($action_type);
-            }
         }
     }
 
@@ -1089,8 +1089,10 @@ function cg_insert_auto_block($table, array $data, $action_type)
 
 /**
  * Deletes one blocklist row and gives usage back only if that row was
- * counted. Returns the number of rows deleted (0 when nothing matched, in
- * which case no decrement is sent either).
+ * counted.
+ *
+ * @return int|false Rows deleted: 1 on success, 0 when nothing matched (no
+ *                   decrement is sent), false on a database error.
  *
  * @param string $table       Full table name.
  * @param string $column      Column to match on ('id' or the value column).
@@ -1103,16 +1105,20 @@ function cg_delete_blocklist_row($table, $column, $value, $action_type)
     $has_column = cg_blocklist_has_usage_counted($table);
     $format = $column === 'id' ? '%d' : '%s';
     $select = $has_column ? 'id, usage_counted' : 'id';
+    $wpdb->last_error = '';
     $row = $wpdb->get_row($wpdb->prepare("SELECT {$select} FROM {$table} WHERE {$column} = {$format} LIMIT 1", $value));
     if (!$row) {
-        return 0;
+        return $wpdb->last_error !== '' ? false : 0;
     }
-    $deleted = (int) $wpdb->delete($table, ['id' => (int) $row->id], ['%d']);
+    $deleted = $wpdb->delete($table, ['id' => (int) $row->id], ['%d']);
+    if ($deleted === false) {
+        return false;
+    }
     $counted = !$has_column || $row->usage_counted === null || (int) $row->usage_counted === 1;
     if ($deleted > 0 && $counted) {
         cg_decrement_usage_count($action_type);
     }
-    return $deleted;
+    return (int) $deleted;
 }
 
 /**

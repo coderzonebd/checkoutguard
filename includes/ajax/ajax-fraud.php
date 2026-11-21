@@ -324,10 +324,12 @@ function cg_handle_delete_blocked_item_ajax()
         return;
     }
 
-    if ($deleted !== false) {
-        wp_send_json_success(['message' => __('Item removed from blocklist.', 'checkoutguard')]);
-    } else {
+    if ($deleted === false) {
         wp_send_json_error(['message' => __('Could not remove item from the database.', 'checkoutguard')]);
+    } elseif ($deleted === 0) {
+        wp_send_json_error(['message' => __('Item not found in the blocklist. It may have been removed already.', 'checkoutguard')]);
+    } else {
+        wp_send_json_success(['message' => __('Item removed from blocklist.', 'checkoutguard')]);
     }
 }
 
