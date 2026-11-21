@@ -748,32 +748,37 @@ add_action('admin_notices', 'cg_render_sitekey_notice');
  */
 function cg_sitekey_plan_note()
 {
-    if (!function_exists('cg_plan_key_grace_until')) {
+    if (!function_exists('cg_plan_key_grace_until') || !function_exists('cg_is_paid_plan')) {
         return '';
     }
     $last = get_option(CG_LAST_KNOWN_PLAN_OPTION, null);
     if (!is_array($last) || !isset($last['synced_at']) || !is_int($last['synced_at'])) {
         return '';
     }
-    $failure = cg_plan_key_failure($last['synced_at']);
-    if ($failure === 'expired') {
-        return __('Paid features are off until this site is reconnected.', 'checkoutguard');
-    }
-    if ($failure !== 'key') {
+    // Only a site whose last verified plan was paid gets a sentence; a Free
+    // site never had paid features to keep (SiteKey contract §7).
+    $slug = $last['plan_slug'] ?? null;
+    if (!is_string($slug) || $slug === 'free' || ($last['status'] ?? null) !== 'active') {
         return '';
     }
-    $grace = cg_plan_key_grace_until();
-    if ($grace === null) {
-        return __('Paid features stay on for up to 72 hours after the last successful sync.', 'checkoutguard');
+    $failure = cg_plan_key_failure($last['synced_at']);
+    if ($failure !== 'key' && $failure !== 'expired') {
+        return '';
     }
-    if ($grace <= cg_sitekey_now()) {
+    // The sentence follows the plan rule itself, so it never says "on" once
+    // the 72-hour rule or the deadline has switched paid features off.
+    if (!cg_is_paid_plan()) {
         return __('Paid features are off until this site is reconnected.', 'checkoutguard');
     }
-    return sprintf(
-        /* translators: %s: date until which paid features stay on */
-        __('Paid features stay on until %s.', 'checkoutguard'),
-        wp_date(get_option('date_format'), $grace)
-    );
+    $grace = cg_plan_key_grace_until();
+    if ($grace !== null && $grace > cg_sitekey_now()) {
+        return sprintf(
+            /* translators: %s: date until which paid features stay on */
+            __('Paid features stay on until %s.', 'checkoutguard'),
+            wp_date(get_option('date_format'), $grace)
+        );
+    }
+    return __('Paid features stay on for up to 72 hours after the last successful connection.', 'checkoutguard');
 }
 
 function cg_handle_sitekey_reconnect()

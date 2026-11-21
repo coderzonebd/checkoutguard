@@ -114,7 +114,15 @@ $l['grandfathered_until'] = '2099-12-31'; update_option('cg_last_known_plan', $l
 ok('G2 valid grandfathered_until kept on key_grace', $e['source'] === 'key_grace' && $e['grandfathered_until'] === '2099-12-31');
 // B10 notice sentence
 reset_all(); sync($paid($iso($N + 10 * $D))); refuse('site_key_required'); ok('N1 note with date', strpos(cg_sitekey_plan_note(), gmdate('Y-m-d', $N + 10 * $D)) !== false);
-reset_all(); sync($paid()); refuse('site_key_required'); ok('N2 note 72h', strpos(cg_sitekey_plan_note(), '72 hours') !== false);
+reset_all(); sync($paid()); refuse('site_key_required'); ok('N2 note 72h', strpos(cg_sitekey_plan_note(), 'up to 72 hours after the last successful connection.') !== false);
 reset_all(); sync($paid()); refuse('legacy_expired'); ok('N3 note off', strpos(cg_sitekey_plan_note(), 'are off') !== false);
 reset_all(); sync($paid()); ok('N4 no refusal no note', cg_sitekey_plan_note() === '');
+$free = ['status' => 'active', 'plan' => 'free', 'plan_slug' => 'free'];
+reset_all(); sync($free); refuse('site_key_required'); ok('N5 free site key refusal no note', cg_sitekey_plan_note() === '');
+reset_all(); sync($free); refuse('legacy_expired'); ok('N5b free site legacy_expired no note', cg_sitekey_plan_note() === '');
+reset_all(); sync($paid()); refuse('site_key_required'); drop_cache(); age(73 * $H); ok('N6 73h after last sync, no deadline: note off', !cg_is_paid_plan() && strpos(cg_sitekey_plan_note(), 'are off') !== false);
+reset_all(); sync($paid($iso($N + 90 * $D))); refuse('site_key_required'); $dl = get_option('cg_last_known_plan')['legacy_key_deadline'];
+ok('N7 clamped deadline: one date, the stored one', $dl === $N + 60 * $D && strpos(cg_sitekey_plan_note(), gmdate('Y-m-d', $dl)) !== false && strpos(cg_sitekey_plan_note(), gmdate('Y-m-d', $N + 90 * $D)) === false);
+reset_all(); sync($paid($iso($N + 10 * $D))); refuse('site_key_required'); drop_cache(); age(11 * $D); ok('N8 past deadline: note off', !cg_is_paid_plan() && strpos(cg_sitekey_plan_note(), 'are off') !== false);
+reset_all(); sync($paid($iso($N + $H))); refuse('site_key_required'); age(2 * $H); ok('N9 deadline passed inside 72h: still paid, 72h sentence', cg_is_paid_plan() && strpos(cg_sitekey_plan_note(), 'last successful connection') !== false);
 echo "RESULT $pass/" . ($pass + $fail) . "\n";
