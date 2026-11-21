@@ -815,8 +815,9 @@ function cg_remember_last_known_plan($config)
         $previous = is_array($previous) ? ($previous['grandfathered_until'] ?? null) : null;
         $grandfathered_until = cg_grandfathered_until_or_previous($grandfathered_until, $previous);
         error_log(sprintf(
-            '[CheckoutGuard] grandfathered_until from HQ could not be parsed (%s); %s',
-            substr((string) wp_json_encode($config['grandfathered_until']), 0, 64),
+            '[CheckoutGuard] grandfathered_until from HQ could not be parsed (type %s, length %d); %s',
+            gettype($config['grandfathered_until']),
+            is_string($config['grandfathered_until']) ? strlen($config['grandfathered_until']) : 0,
             $grandfathered_until === null ? 'no earlier verified value' : 'keeping the last verified value'
         ));
     }

@@ -71,6 +71,7 @@ gf_reset(); gf_sync($basic('2026-12-15T10:23:45.123456Z')); gf_sync($basic('garb
 $lk = get_option('cg_last_known_plan'); $logged = (string) file_get_contents($log);
 gf_check('G14 garbage after a valid value: still Pro, last-known keeps the valid value', gf_state() === [true, true] && ($lk['grandfathered_until'] ?? null) === '2026-12-15T10:23:45.123456Z', json_encode([gf_state(), $lk['grandfathered_until'] ?? null]));
 gf_check('G15 the bad value is logged once', substr_count($logged, 'grandfathered_until from HQ could not be parsed') === 1 && strpos($logged, 'keeping the last verified value') !== false);
+gf_check('G15b the log has the type and length, never the value itself', strpos($logged, '(type string, length 7)') !== false && strpos($logged, 'garbage') === false);
 gf_now($U + 1);
 gf_check('G16 kept value still ends on its own date', gf_state() === [true, false]);
 gf_now($U - 3600);
