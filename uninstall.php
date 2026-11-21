@@ -1,0 +1,72 @@
+<?php
+/**
+ * Fired when the plugin is uninstalled.
+ *
+ * @package CheckoutGuard
+ */
+
+// If uninstall not called from WordPress, exit.
+if (!defined('WP_UNINSTALL_PLUGIN')) {
+    exit;
+}
+
+$options = get_option('cg_plugin_options', array());
+
+if (!empty($options['delete_on_uninstall'])) {
+    global $wpdb;
+
+    // Drop all custom tables.
+    $tables = array(
+        $wpdb->prefix . 'cg_incomplete_checkouts',
+        $wpdb->prefix . 'cg_blocked_numbers',
+        $wpdb->prefix . 'cg_blocked_emails',
+        $wpdb->prefix . 'cg_blocked_ips',
+        $wpdb->prefix . 'cg_blocked_orders',
+        $wpdb->prefix . 'cg_blocked_domains',
+        $wpdb->prefix . 'cg_blocked_addresses',
+        $wpdb->prefix . 'cg_blocked_devices',
+        $wpdb->prefix . 'cg_checkout_attempts',
+    );
+
+    foreach ($tables as $table) {
+        $wpdb->query("DROP TABLE IF EXISTS {$table}"); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+    }
+
+    // Delete all plugin options and transients.
+    delete_option('cg_plugin_options');
+    delete_option('cg_license_status');
+    delete_option('cg_plugin_version');
+    delete_option('cg_recent_courier_checks');
+    delete_option('cg_custom_order_statuses');
+    delete_option('cg_invoice_settings');
+    delete_option('cg_api_log');
+    delete_option('cg_sitekey_next_allowed_at');
+    delete_option('cg_sitekey_backoff_step');
+    delete_option('cg_sitekey_recent_calls');
+    delete_option('cg_sitekey_retry_lock');
+    delete_transient('cg_key_requested');
+
+    // Invoice numbering sequences and free-tier usage counters are stored
+    // under dynamically-named options (cg_invoice_seq_all, cg_invoice_seq_2026,
+    // cg_invoice_seq_202601, cg_invoice_usage_2026-01, ...), so they have to be
+    // matched by prefix rather than deleted by name.
+    $dynamic_option_prefixes = array('cg_invoice_seq_', 'cg_invoice_usage_');
+    foreach ($dynamic_option_prefixes as $prefix) {
+        $names = $wpdb->get_col(
+            $wpdb->prepare(
+                "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s",
+                $wpdb->esc_like($prefix) . '%'
+            )
+        );
+        foreach ($names as $name) {
+            delete_option($name);
+        }
+    }
+
+    delete_transient('cg_api_cache');
+    delete_transient('cg_last_synced');
+
+    // Clear scheduled cron hooks.
+    wp_clear_scheduled_hook('cg_daily_sync_hook');
+    wp_clear_scheduled_hook('cg_cleanup_expired_blocks');
+}
