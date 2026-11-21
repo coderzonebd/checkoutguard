@@ -4,7 +4,7 @@ Tags: woocommerce, abandoned cart, checkout, invoice, fraud blocker
 Requires at least: 5.8
 Tested up to: 7.1
 Requires PHP: 8.0
-Stable tag: 1.4.1
+Stable tag: 1.4.3
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -286,8 +286,10 @@ Yes, with the Pro version. Blank manual invoices let you build a custom invoice 
 = Is the invoice and shipping label feature free? =
 The core invoicing and printing features (automatic PDF invoices, packing slips, and the Print page) are available on the free plan with usage limits. Blank manual invoices, custom numbering/tax fields, bulk ZIP download, and higher limits are part of the Pro plan.
 
-= Is there a premium version? =
-Yes. A Pro version with extended limits and dedicated support is available at [coderzonebd.com/pricing](https://coderzonebd.com/pricing). The free version provides full functionality with usage limits.
+= Is there a free version? =
+Yes. The free plan includes a limited number of courier success-ratio checks per month. Your current limit and usage are shown on the plugin's Settings page. The Courier Analytics page is a paid feature. The Pro plan includes unlimited courier checks.
+
+When a limit is reached, the plugin tells you clearly. Pricing and plan details: https://coderzonebd.com/products/checkoutguard#pricing
 
 = How do I get my license activated? =
 After installation, go to **CheckoutGuard > Settings** and click **Sync Now**. If your site shows as inactive, contact support via the WhatsApp group link provided on the settings page or visit [coderzonebd.com/contact](https://coderzonebd.com/contact).
@@ -305,6 +307,16 @@ After installation, go to **CheckoutGuard > Settings** and click **Sync Now**. I
 9. WordPress Dashboard widget (screenshot-9.png)
 
 == Changelog ==
+
+= 1.4.3 =
+* Security fix: escape admin order data
+
+= 1.4.2 =
+* Fixed: a repeating key-rotation loop that could make the plugin call our server again and again after a new API key was issued. The plugin now retries once with the new key.
+* Improved: when a sync fails, the plugin now keeps its status instead of resetting it.
+* Security: the live courier success-ratio lookup on the checkout page is now available to shop staff only (not to guests or logged-in customers).
+* Fixed: blocked customers saw an empty error message after the settings were saved; the default message is shown again.
+* Improved: settings sync. Changes that our server rejects or ignores are now rolled back with a clear admin notice, changes that cannot be confirmed show a warning and are matched at the next sync, and the settings request now times out after 5 seconds. A "Settings saved." message is shown after a successful save.
 
 = 1.4.1 =
 * Feature: Universal 6-Layer Validation Engine (`CG_Validation_Engine`) — complete fraud, duplicate, and courier protection across Classic WooCommerce, Gutenberg Checkout Block (Twenty Twenty-Five theme / FSE), CartFlows funnels, and Custom Landing Page order systems (`co-landing-pages` etc.).
@@ -472,6 +484,12 @@ After installation, go to **CheckoutGuard > Settings** and click **Sync Now**. I
 * Admin settings for data retention and module toggles
 
 == Upgrade Notice ==
+
+= 1.4.3 =
+Security fix: escape admin order data.
+
+= 1.4.2 =
+Fixes a connection loop after API key changes. Recommended for all sites.
 
 = 1.4.1 =
 Universal multi-platform release: Introduces the Universal 6-Layer Validation Engine protecting Classic WooCommerce, Gutenberg Checkout Blocks (Twenty Twenty-Five theme / FSE), CartFlows, and Custom Landing Pages. Adds dynamic Incomplete Checkout Tracking, Universal Live Courier Ratio checks, and restored native order bulk actions. Highly recommended for all users.

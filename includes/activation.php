@@ -83,7 +83,7 @@ function cg_register_site_with_hq()
     if (!is_wp_error($response) && !empty($response['api_key'])) {
         $options = get_option('cg_plugin_options', []);
         $options['api_key'] = sanitize_text_field($response['api_key']);
-        update_option('cg_plugin_options', $options);
+        cg_update_options_from_hq($options);
         return;
     }
 

@@ -56,7 +56,7 @@ function cg_sync_with_hq()
             $options['enable_fraud_blocker'] = !empty($hq_settings['fraud_blocker_enabled']);
             $options['enable_courier_service'] = !empty($hq_settings['courier_service_enabled']);
             $options['data_retention_policy'] = $hq_settings['data_retention_days'] ?? 90;
-            update_option('cg_plugin_options', $options);
+            cg_update_options_from_hq($options);
         }
         return true;
     }
@@ -87,13 +87,17 @@ function cg_handle_force_sync_ajax()
         // one (bad signature, no API key returned, etc.) — surface that
         // instead of a generic message that reads as a network problem even
         // when the real cause is something else entirely.
+        //
+        // A failed sync (network error, timeout, 5xx, 401/403) must NOT change
+        // the license status: the site keeps its last known status and the
+        // owner is asked to try again. Only a verified, signed /sites/status
+        // response (handled in cg_sync_with_hq()) may set inactive/suspended.
         $status = get_option('cg_license_status', '');
         $reason = (is_string($status) && str_starts_with($status, 'failed:'))
             ? trim(substr($status, strlen('failed:')))
             : __('Please check API connectivity.', 'checkoutguard');
-        update_option('cg_license_status', 'inactive');
         wp_send_json_error([
-            'message' => __('Could not sync with Headquarters: ', 'checkoutguard') . $reason,
+            'message' => __('Could not sync with Headquarters: ', 'checkoutguard') . $reason . ' ' . __('Your current status was kept. Please try again in a few minutes.', 'checkoutguard'),
         ]);
     }
 }
@@ -151,20 +155,193 @@ function cg_sanitize_and_sync_settings($input)
         }
     }
 
-    // Prepare data for HQ sync
-    $settings_to_sync = [
-        'checkout_tracking_enabled' => $new_options['enable_checkout_tracking'],
-        'fraud_blocker_enabled' => $new_options['enable_fraud_blocker'],
-        'courier_service_enabled' => $new_options['enable_courier_service'],
-        'data_retention_days' => $new_options['data_retention_policy'],
-    ];
-
-    // Send the update to the HQ in the background — the backend expects the
-    // settings nested under a "settings" key, not sent flat at the top level.
-    cg_call_hq_api('/sites/settings', ['settings' => $settings_to_sync], 'POST');
-
+    // No HQ call here: a sanitize callback runs on EVERY update_option() of
+    // this option (including key rotation and HQ syncs), so pushing from here
+    // caused a request loop. The push now happens in cg_push_settings_to_hq()
+    // after the value is saved, and only when a synced field really changed.
     return $new_options;
 }
+
+/**
+ * Builds the settings payload HQ stores for this site.
+ *
+ * @param array $options cg_plugin_options value.
+ * @return array
+ */
+function cg_get_hq_synced_settings($options)
+{
+    $options = is_array($options) ? $options : [];
+    return [
+        'checkout_tracking_enabled' => !empty($options['enable_checkout_tracking']),
+        'fraud_blocker_enabled' => !empty($options['enable_fraud_blocker']),
+        'courier_service_enabled' => !empty($options['enable_courier_service']),
+        'data_retention_days' => isset($options['data_retention_policy']) ? absint($options['data_retention_policy']) : 90,
+    ];
+}
+
+/**
+ * Pushes the site owner's settings to HQ after cg_plugin_options is saved.
+ * Skipped when the write came from HQ itself (sync, registration, key
+ * rotation) or when none of the synced fields changed, and guarded against
+ * re-entry, so it can never call itself in a loop.
+ *
+ * @param mixed $old_value Previous option value.
+ * @param mixed $new_value New option value.
+ */
+function cg_push_settings_to_hq($old_value, $new_value)
+{
+    static $pushing = false;
+    if ($pushing || !empty($GLOBALS['cg_suppress_hq_settings_push'])) {
+        return;
+    }
+
+    $settings_to_sync = cg_get_hq_synced_settings($new_value);
+    if ($settings_to_sync === cg_get_hq_synced_settings($old_value)) {
+        return;
+    }
+
+    $pushing = true;
+    try {
+        // The backend expects the settings nested under a "settings" key.
+        $response = cg_call_hq_api('/sites/settings', ['settings' => $settings_to_sync], 'POST');
+        cg_handle_settings_push_result($response, $old_value);
+    } finally {
+        $pushing = false;
+    }
+}
+add_action('update_option_cg_plugin_options', 'cg_push_settings_to_hq', 10, 2);
+
+/**
+ * Handles HQ's answer to a settings push.
+ *
+ * - HQ ignored part of the change (`ignored` in a 2xx answer, a list of HQ
+ *   setting names): only those settings go back to their previous values;
+ *   settings HQ accepted stay as saved. A bool/string `ignored` or an empty
+ *   list of known names reverts all four synced settings.
+ * - HQ rejected the whole request (4xx other than 408/429): all four synced
+ *   settings go back to their previous values.
+ * - HQ could not be reached, timed out or failed (network error, 5xx, 408,
+ *   429): HQ may or may not have stored the change, so nothing is reverted.
+ *   The owner gets a separate warning and the next sync (cron, Sync Now)
+ *   writes HQ's effective value from /sites/status over the local one.
+ * - An empty `ignored` list means HQ accepted everything: nothing to do.
+ *
+ * @param array|WP_Error $response  Result of cg_call_hq_api().
+ * @param mixed          $old_value cg_plugin_options before the save.
+ */
+function cg_handle_settings_push_result($response, $old_value)
+{
+    $ignored = is_array($response) && !empty($response['ignored']);
+    $status = is_wp_error($response) ? (int) (($response->get_error_data()['status'] ?? 0)) : 0;
+    $rejected = $ignored || ($status >= 400 && $status < 500 && $status !== 408 && $status !== 429);
+    $unconfirmed = is_wp_error($response) && !$rejected;
+
+    if (!$rejected && !$unconfirmed) {
+        return;
+    }
+
+    $reason = '';
+    $reverted = [];
+    if ($rejected) {
+        // Map HQ setting names to the local option keys.
+        $map = [
+            'checkout_tracking_enabled' => 'enable_checkout_tracking',
+            'fraud_blocker_enabled' => 'enable_fraud_blocker',
+            'courier_service_enabled' => 'enable_courier_service',
+            'data_retention_days' => 'data_retention_policy',
+        ];
+        $labels = [
+            'enable_checkout_tracking' => __('Checkout tracking', 'checkoutguard'),
+            'enable_fraud_blocker' => __('Fraud blocker', 'checkoutguard'),
+            'enable_courier_service' => __('Courier service', 'checkoutguard'),
+            'data_retention_policy' => __('Data retention', 'checkoutguard'),
+        ];
+        $revert = array_values($map);
+        if ($ignored && is_array($response['ignored'])) {
+            $names = array_map('strval', array_filter(array_merge(array_keys($response['ignored']), array_values($response['ignored'])), 'is_scalar'));
+            $partial = array_values(array_intersect_key($map, array_flip($names)));
+            if ($partial) {
+                $revert = $partial;
+            }
+        }
+        $current = get_option('cg_plugin_options', []);
+        $current = is_array($current) ? $current : [];
+        $previous = is_array($old_value) ? $old_value : [];
+        $changed_to = $current;
+        foreach ($revert as $key) {
+            if (array_key_exists($key, $previous)) {
+                $current[$key] = $previous[$key];
+            }
+        }
+        cg_update_options_from_hq($current);
+        $reverted = [];
+        foreach ($revert as $key) {
+            // Name only settings the owner actually changed in this save.
+            if (array_key_exists($key, $previous) && $changed_to[$key] !== $previous[$key]) {
+                $reverted[] = $labels[$key];
+            }
+        }
+    }
+
+    if ($ignored) {
+        $reason = (string) ($response['message'] ?? '');
+        if ($reason === '' && is_string($response['ignored'])) {
+            $reason = $response['ignored'];
+        }
+    } elseif ($rejected) {
+        $reason = $response->get_error_message();
+    }
+
+    set_transient(
+        'cg_settings_push_notice_' . get_current_user_id(),
+        [
+            'kind' => $rejected ? 'rejected' : 'unconfirmed',
+            'reason' => mb_substr(sanitize_text_field($reason), 0, 200),
+            'reverted' => array_map('sanitize_text_field', $reverted),
+        ],
+        5 * MINUTE_IN_SECONDS
+    );
+}
+
+/**
+ * Shows the notice stored by cg_handle_settings_push_result() once.
+ */
+function cg_render_settings_push_notice()
+{
+    $key = 'cg_settings_push_notice_' . get_current_user_id();
+    $notice = get_transient($key);
+    if (!is_array($notice)) {
+        // Custom admin pages do not get core's "Settings saved." message, so
+        // show it after a save that HQ did not reject or leave unconfirmed.
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+        if (isset($_GET['page'], $_GET['settings-updated']) && $_GET['page'] === 'cg-settings' && $_GET['settings-updated'] === 'true') {
+            echo '<div class="notice notice-success is-dismissible"><p><strong>CheckoutGuard:</strong> ' . esc_html__('Settings saved.', 'checkoutguard') . '</p></div>';
+        }
+        return;
+    }
+    delete_transient($key);
+
+    if ($notice['kind'] === 'rejected') {
+        $reverted = isset($notice['reverted']) && is_array($notice['reverted']) ? $notice['reverted'] : [];
+        if (count($reverted) === 1) {
+            /* translators: %s: setting name, e.g. "Fraud blocker" */
+            $text = sprintf(__('Headquarters did not save your change to "%s", so it was restored to its previous value.', 'checkoutguard'), $reverted[0]);
+        } elseif ($reverted) {
+            /* translators: %s: comma-separated setting names */
+            $text = sprintf(__('Headquarters did not save your change to these settings, so they were restored to their previous values: %s.', 'checkoutguard'), implode(', ', $reverted));
+        } else {
+            $text = __('Headquarters did not save your settings change, so the affected settings were restored to their previous values.', 'checkoutguard');
+        }
+    } else {
+        $text = __('Your settings change could not be confirmed with Headquarters. It will be matched at the next sync.', 'checkoutguard');
+    }
+    ?>
+    <div class="notice notice-warning is-dismissible">
+        <p><strong>CheckoutGuard:</strong> <?php echo esc_html($text); ?><?php echo $notice['reason'] !== '' ? ' ' . esc_html($notice['reason']) : ''; ?></p>
+    </div>
+    <?php
+}
+add_action('admin_notices', 'cg_render_settings_push_notice');
 
 /**
  * Register all settings under a SINGLE options group.

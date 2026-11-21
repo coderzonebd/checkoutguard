@@ -128,7 +128,15 @@ function cg_call_hq_api($endpoint, $body = [], $method = 'POST', $require_api_ke
         $headers['X-Api-Key'] = $api_key;
     }
 
-    $timeout = ($endpoint === '/sites/courier-check') ? 30 : 15;
+    // Settings pushes run inside the admin Save request, so fail fast; an
+    // unconfirmed push is reported to the user and matched at the next sync.
+    if ($endpoint === '/sites/courier-check') {
+        $timeout = 30;
+    } elseif ($endpoint === '/sites/settings') {
+        $timeout = defined('CG_SETTINGS_PUSH_TIMEOUT') ? (int) CG_SETTINGS_PUSH_TIMEOUT : 5;
+    } else {
+        $timeout = 15;
+    }
 
     $args = [
         'method' => $method,
@@ -147,17 +155,36 @@ function cg_call_hq_api($endpoint, $body = [], $method = 'POST', $require_api_ke
         return $response;
     }
 
+    $response_code = (int) wp_remote_retrieve_response_code($response);
+
     // HQ may issue a fresh, site-specific API key (e.g. migrating this site off
     // a legacy shared key). Adopt it immediately so future calls use it.
-    // Fully automatic — no action required from the site owner.
+    // HQ sends it on 2xx responses and on 401/403 (the old key was rejected
+    // before auth); never adopted from 5xx, timeouts or other errors. Stored
+    // through cg_store_rotated_api_key(), which only saves a non-empty key that
+    // differs from the current one and never calls HQ again while saving.
     $rotated_key = wp_remote_retrieve_header($response, 'x-new-api-key');
-    if (!empty($rotated_key)) {
-        $options = get_option('cg_plugin_options', []);
-        $options['api_key'] = sanitize_text_field($rotated_key);
-        update_option('cg_plugin_options', $options);
+    $rotation_allowed = ($response_code >= 200 && $response_code < 300)
+        || $response_code === 401
+        || $response_code === 403;
+    if (!empty($rotated_key) && $rotation_allowed) {
+        $key_adopted = cg_store_rotated_api_key($rotated_key);
+
+        // The request was rejected only because it carried the old key: repeat
+        // it exactly once with the new key, so the caller (e.g. "Sync Now")
+        // succeeds on the first try. The static flag prevents any second retry.
+        static $retrying_with_rotated_key = false;
+        if ($key_adopted && ($response_code === 401 || $response_code === 403) && !$retrying_with_rotated_key) {
+            cg_log_api_hit($endpoint, $method, false, $response_code, __('API key rotated by Headquarters; retrying once with the new key.', 'checkoutguard'));
+            $retrying_with_rotated_key = true;
+            try {
+                return cg_call_hq_api($endpoint, $body, $method, $require_api_key);
+            } finally {
+                $retrying_with_rotated_key = false;
+            }
+        }
     }
 
-    $response_code = wp_remote_retrieve_response_code($response);
     $response_body = json_decode(wp_remote_retrieve_body($response), true);
 
     if ($response_code >= 300) {
@@ -181,6 +208,60 @@ function cg_call_hq_api($endpoint, $body = [], $method = 'POST', $require_api_ke
     }
 
     return $response_body;
+}
+
+/**
+ * Saves cg_plugin_options for a change that came FROM Headquarters (API key
+ * rotation, registration, settings pulled by a sync). Such a write must never
+ * be pushed back to HQ: pushing from inside the write is what used to turn a
+ * single X-New-Api-Key header into an unbounded request loop (the push ran
+ * with the old key still in the database, HQ answered with the rotation
+ * header again, and so on).
+ *
+ * @param array $options Full options array to store.
+ */
+function cg_update_options_from_hq($options)
+{
+    $previous = !empty($GLOBALS['cg_suppress_hq_settings_push']);
+    $GLOBALS['cg_suppress_hq_settings_push'] = true;
+    try {
+        update_option('cg_plugin_options', $options);
+    } finally {
+        $GLOBALS['cg_suppress_hq_settings_push'] = $previous;
+    }
+}
+
+/**
+ * Stores an API key rotated by HQ. Re-entrancy safe: a nested call while a
+ * rotation is being saved is ignored, and an unchanged key is not re-saved.
+ *
+ * @param string $new_key Key from the X-New-Api-Key response header.
+ * @return bool True when a new key was stored.
+ */
+function cg_store_rotated_api_key($new_key)
+{
+    static $in_progress = false;
+    if ($in_progress) {
+        return false;
+    }
+
+    $new_key = sanitize_text_field($new_key);
+    $options = get_option('cg_plugin_options', []);
+    if (!is_array($options)) {
+        $options = [];
+    }
+    if ($new_key === '' || (isset($options['api_key']) && $options['api_key'] === $new_key)) {
+        return false;
+    }
+
+    $in_progress = true;
+    try {
+        $options['api_key'] = $new_key;
+        cg_update_options_from_hq($options);
+    } finally {
+        $in_progress = false;
+    }
+    return true;
 }
 
 /**

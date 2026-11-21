@@ -5,6 +5,22 @@ if (!defined('ABSPATH')) {
 }
 
 /**
+ * Front-end flag for the live ratio lookup (shop staff only, courier service
+ * on). Mirrors cg_is_live_ratio_check_enabled() (defined in ajax-courier.php,
+ * which is not loaded on front-end page views).
+ *
+ * @return bool
+ */
+function cg_live_ratio_enabled_for_frontend()
+{
+    if (!current_user_can('manage_woocommerce')) {
+        return false;
+    }
+    $options = get_option('cg_plugin_options', []);
+    return !empty($options['enable_courier_service']);
+}
+
+/**
  * Enqueues scripts and styles for the FRONT-END checkout page.
  */
 function cg_enqueue_checkout_assets()
@@ -26,7 +42,9 @@ function cg_enqueue_checkout_assets()
             array(
                 'ajax_url' => admin_url('admin-ajax.php'),
                 'save_data_nonce' => wp_create_nonce('cg_save_checkout_data_nonce'),
-                'live_ratio_check_nonce' => wp_create_nonce('cg_live_ratio_check_nonce'),
+                // Live courier ratio lookup: shop staff only, courier service on.
+                'live_ratio_enabled' => cg_live_ratio_enabled_for_frontend(),
+                'live_ratio_check_nonce' => cg_live_ratio_enabled_for_frontend() ? wp_create_nonce('cg_live_ratio_check_nonce') : '',
                 'tracked_fields' => apply_filters('cg_tracked_checkout_fields', array(
                     '#billing_first_name',
                     '#billing_last_name',
