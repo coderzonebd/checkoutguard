@@ -118,6 +118,12 @@ ok('S9 gated: T2, next attempt time, no button and no A1, no key', strpos($t, $T
     && strpos($t, 'Next automatic attempt:') !== false && strpos($html, 'button') === false
     && strpos($t, $A1) === false && preg_match('/key/i', $t) === 0 && substr_count($html, 'class="notice') === 1);
 
+// The gate is the first second an attempt is allowed: at gate == now the
+// button and A1 are back.
+cg_sitekey_set_gate($GLOBALS['__now']); $html = notice(); $t = text($html);
+ok('S9b gate == now: button and A1 shown, no next attempt line', strpos($html, 'class="button') !== false
+    && strpos($t, 'Reconnect now ' . $A1) !== false && strpos($t, 'Next automatic attempt:') === false);
+
 // Paid plan sentence inside the notice: a signed deadline 90 days out is shown
 // as the +60 day bound (date only, no key).
 $D = 86400; $N = $GLOBALS['__now'] = CG_LEGACY_HARD_END - 200 * $D;
