@@ -464,7 +464,8 @@ function cg_get_incomplete_checkout_details_ajax_handler()
             $entry->device_fingerprint ?? '',
             $entry->address_1 ?? '',
             $entry->city ?? '',
-            $entry->postcode ?? ''
+            $entry->postcode ?? '',
+            'checkout:' . (int) $entry->id
         );
         ?>
         <?php if (!cg_is_pro_plan()): ?>

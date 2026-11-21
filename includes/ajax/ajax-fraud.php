@@ -120,6 +120,16 @@ function cg_handle_add_blocked_item_ajax()
 
     $value = isset($_POST['value']) ? sanitize_text_field(wp_unslash($_POST['value'])) : '';
     $reason = isset($_POST['reason']) ? sanitize_textarea_field(wp_unslash($_POST['reason'])) : '';
+    // Popup and order buttons send a reference, not the email or phone.
+    $ref = isset($_POST['ref']) ? sanitize_text_field(wp_unslash($_POST['ref'])) : '';
+    if ($ref !== '') {
+        $resolved = cg_resolve_block_ref($ref, $block_type);
+        if (is_wp_error($resolved)) {
+            wp_send_json_error(['message' => $resolved->get_error_message()], 403);
+            return;
+        }
+        $value = $resolved;
+    }
 
     global $wpdb;
     $table_name = '';
@@ -241,6 +251,11 @@ function cg_handle_add_blocked_item_ajax()
     if ($inserted) {
         cg_increment_usage_count($action_type);
         $new_item_id = $wpdb->insert_id;
+        if ($ref !== '') {
+            // The list-item HTML shows the value; a reference caller gets none.
+            wp_send_json_success(['blocked' => true]);
+            return;
+        }
         $item = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table_name} WHERE id = %d", $new_item_id));
         $html = cg_get_blocked_list_item_html($item, $column_name, $block_type);
         wp_send_json_success(['html' => $html]);
@@ -279,6 +294,15 @@ function cg_handle_delete_blocked_item_ajax()
     $action_type = isset($action_type_map[$block_type]) ? $action_type_map[$block_type] : 'fraud_' . $block_type . 's';
     $item_id = isset($_POST['item_id']) ? intval($_POST['item_id']) : 0;
     $value_to_delete = isset($_POST['value']) ? sanitize_text_field(wp_unslash($_POST['value'])) : '';
+    $ref = isset($_POST['ref']) ? sanitize_text_field(wp_unslash($_POST['ref'])) : '';
+    if ($ref !== '') {
+        $resolved = cg_resolve_block_ref($ref, $block_type);
+        if (is_wp_error($resolved)) {
+            wp_send_json_error(['message' => $resolved->get_error_message()], 403);
+            return;
+        }
+        $value_to_delete = $resolved;
+    }
 
     $table_name = '';
     $column_name = '';
@@ -492,7 +516,11 @@ function cg_get_blocked_order_details_ajax_handler()
             $entry->ip_address ?? '',
             $entry->email_address ?? '',
             $entry->phone_number ?? '',
-            $device_fp
+            $device_fp,
+            '',
+            '',
+            '',
+            'blocked_order:' . (int) $entry->id
         );
         ?>
         <?php if (!cg_is_pro_plan()): ?>

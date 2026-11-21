@@ -1892,6 +1892,7 @@ jQuery(function ($) {
             const $button = $(this),
                 blockType = $button.data('block-type'),
                 value = $button.data('value'),
+                ref = $button.data('ref') || '',
                 nonce = $button.data('nonce'),
                 deviceInfo = $button.data('device-info') || '';
             $button.prop('disabled', true).html('<span class="spinner is-active" style="float:left; margin: 2px 5px 0 0;"></span> Blocking...');
@@ -1900,9 +1901,14 @@ jQuery(function ($) {
                 action: 'cg_add_blocked_item',
                 nonce,
                 block_type: blockType,
-                value,
                 reason: `Blocked from Order #${$('#post_ID').val()}`
             };
+            // Email/phone buttons carry a reference only (cg_resolve_block_ref).
+            if (ref) {
+                postData.ref = ref;
+            } else {
+                postData.value = value;
+            }
             if (blockType === 'device' && deviceInfo) {
                 postData.device_info = deviceInfo;
             }
@@ -1914,11 +1920,15 @@ jQuery(function ($) {
                     // Built with .attr() so value and device info are escaped.
                     const $newUnblockButton = $('<button type="button" class="button cg-unblock-from-order"></button>')
                         .attr('data-block-type', blockType)
-                        .attr('data-value', value)
                         .attr('data-nonce', unblockNonce)
                         .html('<span class="dashicons dashicons-unlock"></span> Unblock');
                     if (deviceInfo) {
                         $newUnblockButton.attr('data-device-info', deviceInfo);
+                    }
+                    if (ref) {
+                        $newUnblockButton.attr('data-ref', ref);
+                    } else {
+                        $newUnblockButton.attr('data-value', value);
                     }
                     $button.replaceWith($newUnblockButton);
                 } else {
@@ -1940,24 +1950,34 @@ jQuery(function ($) {
             const $button = $(this),
                 blockType = $button.data('block-type'),
                 value = $button.data('value'),
+                ref = $button.data('ref') || '',
                 nonce = $button.data('nonce');
             $button.prop('disabled', true).html('<span class="spinner is-active" style="float:left; margin: 2px 5px 0 0;"></span> Unblocking...');
 
-            $.post(cg_admin_params.ajax_url, {
+            var postData = {
                 action: 'cg_delete_blocked_item',
                 nonce,
-                block_type: blockType,
-                value
+                block_type: blockType
+            };
+            if (ref) {
+                postData.ref = ref;
+            } else {
+                postData.value = value;
+            }
 
-            }).done(function (response) {
+            $.post(cg_admin_params.ajax_url, postData).done(function (response) {
 
                 if (response.success) {
                     const newNonce = cg_admin_params.fraud_blocker_nonce;
                     const $newBlockButton = $('<button type="button" class="button cg-block-from-order"></button>')
                         .attr('data-block-type', blockType)
-                        .attr('data-value', value)
                         .attr('data-nonce', newNonce)
                         .html('<span class="dashicons dashicons-shield-alt"></span> Block');
+                    if (ref) {
+                        $newBlockButton.attr('data-ref', ref);
+                    } else {
+                        $newBlockButton.attr('data-value', value);
+                    }
                     $button.replaceWith($newBlockButton);
                 } else {
                     cgToast.error(response.data.message || 'Could not unblock item.');
@@ -2247,10 +2267,11 @@ jQuery(function ($) {
         var $button = $(this);
         var blockType = $button.data('block-type');
         var value = $button.data('value');
+        var ref = $button.data('ref') || '';
         var nonce = $button.data('nonce');
         var deviceInfo = $button.data('device-info') || '';
 
-        if (!blockType || !value) return;
+        if (!blockType || (!value && !ref)) return;
 
         $button.prop('disabled', true).html('<span class="dashicons dashicons-update spin"></span>');
 
@@ -2258,9 +2279,14 @@ jQuery(function ($) {
             action: 'cg_add_blocked_item',
             nonce: nonce,
             block_type: blockType,
-            value: value,
             reason: 'Blocked from checkout details popup'
         };
+        // Email/phone buttons carry a reference only (cg_resolve_block_ref).
+        if (ref) {
+            postData.ref = ref;
+        } else {
+            postData.value = value;
+        }
         if (blockType === 'device' && deviceInfo) {
             postData.device_info = deviceInfo;
         }
@@ -2290,18 +2316,25 @@ jQuery(function ($) {
         var $button = $(this);
         var blockType = $button.data('block-type');
         var value = $button.data('value');
+        var ref = $button.data('ref') || '';
         var nonce = $button.data('nonce');
 
-        if (!blockType || !value) return;
+        if (!blockType || (!value && !ref)) return;
 
         $button.prop('disabled', true).html('<span class="dashicons dashicons-update spin"></span>');
 
-        $.post(cg_admin_params.ajax_url, {
+        var postData = {
             action: 'cg_delete_blocked_item',
             nonce: nonce,
-            block_type: blockType,
-            value: value
-        }).done(function (response) {
+            block_type: blockType
+        };
+        if (ref) {
+            postData.ref = ref;
+        } else {
+            postData.value = value;
+        }
+
+        $.post(cg_admin_params.ajax_url, postData).done(function (response) {
             if (response.success) {
                 var blockNonce = cg_admin_params.fraud_blocker_nonce;
                 $button

@@ -156,7 +156,7 @@ function cg_render_fraud_blocker_meta_box_content($post_or_order_object)
             "SELECT id FROM {$wpdb->prefix}cg_blocked_emails WHERE email_address = %s AND (expires_at IS NULL OR expires_at > %s) LIMIT 1",
             $email, $now
         ));
-        $items[] = ['type' => 'email', 'value' => $email, 'label' => 'Email', 'blocked' => $is_blocked];
+        $items[] = ['type' => 'email', 'value' => $email, 'label' => 'Email', 'blocked' => $is_blocked, 'ref' => 'order:' . (int) $order_id];
     }
 
     if ($phone) {
@@ -165,7 +165,7 @@ function cg_render_fraud_blocker_meta_box_content($post_or_order_object)
             "SELECT id FROM {$wpdb->prefix}cg_blocked_numbers WHERE phone_number = %s AND (expires_at IS NULL OR expires_at > %s) LIMIT 1",
             $check_phone, $now
         ));
-        $items[] = ['type' => 'phone', 'value' => $check_phone, 'label' => 'Phone', 'blocked' => $is_blocked];
+        $items[] = ['type' => 'phone', 'value' => $check_phone, 'label' => 'Phone', 'blocked' => $is_blocked, 'ref' => 'order:' . (int) $order_id];
     }
 
     if ($device_fp) {
@@ -193,19 +193,26 @@ function cg_render_fraud_blocker_meta_box_content($post_or_order_object)
             $items[] = ['type' => 'address', 'value' => wp_json_encode(['address_1' => $address_1, 'city' => $city, 'postcode' => $postcode]), 'label' => 'Address', 'display' => $address_display, 'blocked' => $is_blocked];
         }
     }
+    $is_pro = cg_is_pro_plan();
     ?>
     <div class="cg-order-blocker">
         <?php foreach ($items as $item):
             $display_val = isset($item['display']) ? $item['display'] : $item['value'];
+            // Same masking as the popups; the full value stays on the server.
+            if (!$is_pro && $item['type'] === 'phone') {
+                $display_val = cg_mask_phone($display_val);
+            } elseif (!$is_pro && $item['type'] === 'email') {
+                $display_val = cg_mask_email($display_val);
+            }
             $short_val = (strlen($display_val) > 25) ? substr($display_val, 0, 22) . '...' : $display_val;
         ?>
         <div class="cg-order-blocker-row">
             <div class="cg-order-blocker-label"><strong><?php echo esc_html($item['label']); ?>:</strong> <?php echo esc_html($short_val); ?></div>
             <div class="cg-order-blocker-action">
                 <?php if ($item['blocked']): ?>
-                    <button type="button" class="button cg-unblock-from-order" data-block-type="<?php echo esc_attr($item['type']); ?>" data-value="<?php echo esc_attr($item['value']); ?>" data-nonce="<?php echo esc_attr($unblock_nonce); ?>"<?php if (!empty($item['device_info'])): ?> data-device-info="<?php echo esc_attr($item['device_info']); ?>"<?php endif; ?>><span class="dashicons dashicons-unlock"></span> Unblock</button>
+                    <button type="button" class="button cg-unblock-from-order" data-block-type="<?php echo esc_attr($item['type']); ?>"<?php echo cg_block_button_target_attr($item); ?> data-nonce="<?php echo esc_attr($unblock_nonce); ?>"<?php if (!empty($item['device_info'])): ?> data-device-info="<?php echo esc_attr($item['device_info']); ?>"<?php endif; ?>><span class="dashicons dashicons-unlock"></span> Unblock</button>
                 <?php else: ?>
-                    <button type="button" class="button cg-block-from-order" data-block-type="<?php echo esc_attr($item['type']); ?>" data-value="<?php echo esc_attr($item['value']); ?>" data-nonce="<?php echo esc_attr($block_nonce); ?>"<?php if (!empty($item['device_info'])): ?> data-device-info="<?php echo esc_attr($item['device_info']); ?>"<?php endif; ?>><span class="dashicons dashicons-shield-alt"></span> Block</button>
+                    <button type="button" class="button cg-block-from-order" data-block-type="<?php echo esc_attr($item['type']); ?>"<?php echo cg_block_button_target_attr($item); ?> data-nonce="<?php echo esc_attr($block_nonce); ?>"<?php if (!empty($item['device_info'])): ?> data-device-info="<?php echo esc_attr($item['device_info']); ?>"<?php endif; ?>><span class="dashicons dashicons-shield-alt"></span> Block</button>
                 <?php endif; ?>
             </div>
         </div>

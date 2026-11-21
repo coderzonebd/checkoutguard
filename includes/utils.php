@@ -849,6 +849,74 @@ function cg_mask_email($email)
 }
 
 /**
+ * Block/unblock buttons never carry a full email or phone in the HTML. They
+ * carry an opaque reference to the record instead ("checkout:12",
+ * "blocked_order:7", "order:55"); the server turns it back into the value
+ * with cg_resolve_block_ref(). Other types keep data-value.
+ *
+ * @param array $item Button item: type, value, and ref for email/phone.
+ * @return string Escaped attribute with a leading space.
+ */
+function cg_block_button_target_attr(array $item)
+{
+    if (in_array($item['type'] ?? '', ['email', 'phone'], true)) {
+        return ' data-ref="' . esc_attr((string) ($item['ref'] ?? '')) . '"';
+    }
+    return ' data-value="' . esc_attr((string) ($item['value'] ?? '')) . '"';
+}
+
+/**
+ * Resolves a block-button reference to the full email or phone, on the
+ * server, and only for a user who may see it. The AJAX handler has already
+ * checked the nonce and manage_options. Per source:
+ * - checkout: the record must be visible under the plan (cg_can_show_contact);
+ * - blocked_order: Pro plan (the popup masks these for everyone else);
+ * - order: manage_woocommerce (WooCommerce shows the billing fields there).
+ *
+ * @param string $ref  Reference from data-ref.
+ * @param string $type 'email' or 'phone'.
+ * @return string|WP_Error The value (phone normalized), or an error that
+ *                         does not say whether the record exists.
+ */
+function cg_resolve_block_ref($ref, $type)
+{
+    global $wpdb;
+    $denied = new WP_Error('cg_ref_denied', __('This item cannot be blocked from here.', 'checkoutguard'));
+    if (!in_array($type, ['email', 'phone'], true) || !is_string($ref)
+        || !preg_match('/^(checkout|blocked_order|order):([1-9][0-9]{0,18})$/', $ref, $m)) {
+        return $denied;
+    }
+    $id = (int) $m[2];
+    $value = '';
+    if ($m[1] === 'checkout') {
+        $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}cg_incomplete_checkouts WHERE id = %d", $id));
+        if (!$row || !function_exists('cg_can_show_contact') || !cg_can_show_contact($row)) {
+            return $denied;
+        }
+        $value = (string) ($type === 'email' ? $row->email : $row->phone);
+    } elseif ($m[1] === 'blocked_order') {
+        if (!cg_is_pro_plan()) {
+            return $denied;
+        }
+        $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}cg_blocked_orders WHERE id = %d", $id));
+        if (!$row) {
+            return $denied;
+        }
+        $value = (string) ($type === 'email' ? $row->email_address : $row->phone_number);
+    } else {
+        $order = function_exists('wc_get_order') ? wc_get_order($id) : false;
+        if (!$order || !current_user_can('manage_woocommerce')) {
+            return $denied;
+        }
+        $value = (string) ($type === 'email' ? $order->get_billing_email() : $order->get_billing_phone());
+    }
+    if ($type === 'phone' && $value !== '' && function_exists('cg_normalize_phone_number')) {
+        $value = (string) cg_normalize_phone_number($value);
+    }
+    return $value === '' ? $denied : $value;
+}
+
+/**
  * Neutralizes CSV formula injection by prefixing values that start with a
  * formula-triggering character (=, +, -, @, tab, CR) with a single quote.
  * Spreadsheet apps (Excel, Sheets, LibreOffice) treat such cells as literal

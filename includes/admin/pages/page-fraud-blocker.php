@@ -710,8 +710,10 @@ function cg_get_blocked_list_item_html($item, $value_column, $type)
 /**
  * Renders inline block/unblock buttons for a popup detail view.
  * Checks whether each identifier (IP, email, phone, device) is currently blocked.
+ * Email and phone buttons carry only $ref (e.g. "checkout:12"), never the
+ * value; without a $ref they are not shown.
  */
-function cg_render_popup_block_buttons($ip, $email, $phone, $device_fp = '', $address_1 = '', $city = '', $postcode = '')
+function cg_render_popup_block_buttons($ip, $email, $phone, $device_fp = '', $address_1 = '', $city = '', $postcode = '', $ref = '')
 {
     global $wpdb;
     $now = current_time('mysql');
@@ -741,12 +743,17 @@ function cg_render_popup_block_buttons($ip, $email, $phone, $device_fp = '', $ad
         ];
     }
 
+    if ($ref === '') {
+        $email = '';
+        $phone = '';
+    }
+
     if (!empty($email) && is_email($email)) {
         $is_blocked = $wpdb->get_var($wpdb->prepare(
             "SELECT id FROM {$wpdb->prefix}cg_blocked_emails WHERE email_address = %s AND (expires_at IS NULL OR expires_at > %s) LIMIT 1",
             $email, $now
         ));
-        $items[] = ['type' => 'email', 'value' => $email, 'label' => __('Email', 'checkoutguard'), 'icon' => 'dashicons-email', 'blocked' => (bool) $is_blocked];
+        $items[] = ['type' => 'email', 'value' => $email, 'label' => __('Email', 'checkoutguard'), 'icon' => 'dashicons-email', 'blocked' => (bool) $is_blocked, 'ref' => $ref];
     }
 
     if (!empty($phone)) {
@@ -755,7 +762,7 @@ function cg_render_popup_block_buttons($ip, $email, $phone, $device_fp = '', $ad
             "SELECT id FROM {$wpdb->prefix}cg_blocked_numbers WHERE phone_number = %s AND (expires_at IS NULL OR expires_at > %s) LIMIT 1",
             $normalized_phone, $now
         ));
-        $items[] = ['type' => 'phone', 'value' => $normalized_phone, 'label' => __('Phone', 'checkoutguard'), 'icon' => 'dashicons-phone', 'blocked' => (bool) $is_blocked];
+        $items[] = ['type' => 'phone', 'value' => $normalized_phone, 'label' => __('Phone', 'checkoutguard'), 'icon' => 'dashicons-phone', 'blocked' => (bool) $is_blocked, 'ref' => $ref];
     }
 
     if (!empty($device_fp)) {
@@ -818,11 +825,11 @@ function cg_render_popup_block_buttons($ip, $email, $phone, $device_fp = '', $ad
                     <?php if (!empty($item['protected'])): ?>
                         <span class="cg-badge" style="background:#e0f2fe;color:#0369a1;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600;"><?php _e('Protected Gateway', 'checkoutguard'); ?></span>
                     <?php elseif ($item['blocked']): ?>
-                        <button type="button" class="button button-small cg-popup-unblock-btn" data-block-type="<?php echo esc_attr($item['type']); ?>" data-value="<?php echo esc_attr($item['value']); ?>" data-nonce="<?php echo esc_attr($unblock_nonce); ?>"<?php if (!empty($item['device_info'])): ?> data-device-info="<?php echo esc_attr($item['device_info']); ?>"<?php endif; ?>>
+                        <button type="button" class="button button-small cg-popup-unblock-btn" data-block-type="<?php echo esc_attr($item['type']); ?>"<?php echo cg_block_button_target_attr($item); ?> data-nonce="<?php echo esc_attr($unblock_nonce); ?>"<?php if (!empty($item['device_info'])): ?> data-device-info="<?php echo esc_attr($item['device_info']); ?>"<?php endif; ?>>
                             <span class="dashicons dashicons-unlock"></span> <?php _e('Unblock', 'checkoutguard'); ?>
                         </button>
                     <?php else: ?>
-                        <button type="button" class="button button-small cg-popup-block-btn" data-block-type="<?php echo esc_attr($item['type']); ?>" data-value="<?php echo esc_attr($item['value']); ?>" data-nonce="<?php echo esc_attr($block_nonce); ?>"<?php if (!empty($item['device_info'])): ?> data-device-info="<?php echo esc_attr($item['device_info']); ?>"<?php endif; ?>>
+                        <button type="button" class="button button-small cg-popup-block-btn" data-block-type="<?php echo esc_attr($item['type']); ?>"<?php echo cg_block_button_target_attr($item); ?> data-nonce="<?php echo esc_attr($block_nonce); ?>"<?php if (!empty($item['device_info'])): ?> data-device-info="<?php echo esc_attr($item['device_info']); ?>"<?php endif; ?>>
                             <span class="dashicons dashicons-shield-alt"></span> <?php _e('Block', 'checkoutguard'); ?>
                         </button>
                     <?php endif; ?>
