@@ -6,7 +6,7 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * Site key (contract v1): each site trades the shared product key for its own
+ * Site key (contract-13): each site trades the shared product key for its own
  * czsite_ key. Flow: request-site-key -> HQ posts a nonce to our REST route ->
  * claim-key with that nonce -> the returned key is pending until the first
  * successful call with it, which commits it.
@@ -27,7 +27,7 @@ define('CG_SITEKEY_NONCE_WINDOW', 5 * MINUTE_IN_SECONDS);
 define('CG_SITEKEY_NONCE_TTL', 5 * MINUTE_IN_SECONDS);
 define('CG_SITEKEY_MAX_NONCES', 3);
 // At most this many claim-key calls per round, newest nonce first, so a
-// shared IP does not run into the claim-key 429 limit (Zahid, contract v3).
+// shared IP does not run into the claim-key 429 limit (contract-13 §1b).
 define('CG_SITEKEY_MAX_CLAIM_TRIES', 3);
 define('CG_SITEKEY_PENDING_TTL', HOUR_IN_SECONDS);
 
@@ -190,7 +190,7 @@ function cg_sitekey_mismatch()
  */
 function cg_sitekey_on_response($http_code, $code, $sent_key)
 {
-    // Contract v10 §5: act on the code, never on the status alone or the text.
+    // Contract-13 §5: act on the code, never on the status alone or the text.
     $code = (string) $code;
     $legacy_code = ($http_code === 409 && $code === 'claim_required')
         || ($http_code === 403 && in_array($code, ['legacy_expired', 'site_key_required'], true));
@@ -220,7 +220,14 @@ function cg_sitekey_on_response($http_code, $code, $sent_key)
     }
 
     if ($mismatch) {
-        // Show the reconnect notice; do not schedule a claim round.
+        // Only an answer about the key we use now may raise the notice: a late
+        // answer for an older own key or for the shared key says nothing about
+        // the current key. Show the reconnect notice; do not
+        // schedule a claim round.
+        if (!cg_sitekey_is_site_key($sent_key)
+            || !hash_equals(cg_sitekey_current_key(), (string) $sent_key)) {
+            return;
+        }
         $state = cg_sitekey_state();
         if (empty($state['mismatch_at'])) {
             $state['mismatch_at'] = cg_sitekey_now();
