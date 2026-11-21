@@ -759,6 +759,7 @@ function cg_remember_last_known_plan($config)
     update_option(CG_LAST_KNOWN_PLAN_OPTION, [
         'plan_slug' => cg_plan_slug($config),
         'status' => is_string($config['status'] ?? null) ? strtolower(trim($config['status'])) : null,
+        'grandfathered_until' => $config['grandfathered_until'] ?? null,
         'synced_at' => function_exists('cg_reveal_now') ? cg_reveal_now() : time(),
     ], false);
 }
@@ -771,11 +772,11 @@ function cg_remember_last_known_plan($config)
  * The age therefore comes from the last verified sync (cg_last_known_plan,
  * or cg_last_synced for a site upgraded from 1.4.x before its first sync).
  *
- * @return array{plan_slug: ?string, status: ?string, source: string}
+ * @return array{plan_slug: ?string, status: ?string, grandfathered_until: mixed, source: string}
  */
 function cg_effective_plan()
 {
-    $none = ['plan_slug' => null, 'status' => null, 'source' => 'none'];
+    $none = ['plan_slug' => null, 'status' => null, 'grandfathered_until' => null, 'source' => 'none'];
     $now = function_exists('cg_reveal_now') ? cg_reveal_now() : time();
     $last = get_option(CG_LAST_KNOWN_PLAN_OPTION, null);
     $last = is_array($last) ? $last : null;
@@ -798,6 +799,7 @@ function cg_effective_plan()
         return [
             'plan_slug' => cg_plan_slug($cache),
             'status' => is_string($cache['status'] ?? null) ? strtolower(trim($cache['status'])) : null,
+            'grandfathered_until' => $cache['grandfathered_until'] ?? null,
             'source' => 'cache',
         ];
     }
@@ -805,6 +807,7 @@ function cg_effective_plan()
         return [
             'plan_slug' => is_string($last['plan_slug'] ?? null) ? $last['plan_slug'] : null,
             'status' => is_string($last['status'] ?? null) ? $last['status'] : null,
+            'grandfathered_until' => $last['grandfathered_until'] ?? null,
             'source' => 'last_known',
         ];
     }
@@ -829,21 +832,25 @@ function cg_is_paid_plan()
 /**
  * Checks if the current site may use the Pro features.
  * Pro and Custom always; Basic and Standard only while grandfathered.
- * Fail-closed: false if the cache is missing or the plan is unknown.
+ * Pro implies paid: it reads the same cg_effective_plan() as
+ * cg_is_paid_plan(), with the same 72-hour age rule, and is false whenever
+ * the site is not paid (unknown plan, free, or status other than active).
  *
  * @return bool
  */
 function cg_is_pro_plan()
 {
-    $cache = get_transient('cg_api_cache');
-    $plan = cg_plan_slug($cache);
-    if ($plan === null) {
+    if (!cg_is_paid_plan()) {
         return false;
     }
-    if (in_array($plan, CG_PRO_PLAN_SLUGS, true)) {
+    $plan = cg_effective_plan();
+    if (in_array($plan['plan_slug'], CG_PRO_PLAN_SLUGS, true)) {
         return true;
     }
-    return cg_is_grandfathered($cache);
+    return cg_is_grandfathered([
+        'plan_slug' => $plan['plan_slug'],
+        'grandfathered_until' => $plan['grandfathered_until'],
+    ]);
 }
 
 /**
