@@ -905,7 +905,8 @@ function cg_resolve_block_ref($ref, $type)
         $value = (string) ($type === 'email' ? $row->email_address : $row->phone_number);
     } else {
         $order = function_exists('wc_get_order') ? wc_get_order($id) : false;
-        if (!$order || !current_user_can('manage_woocommerce')) {
+        // A refund id returns WC_Order_Refund, which has no billing fields.
+        if (!($order instanceof WC_Order) || !current_user_can('manage_woocommerce')) {
             return $denied;
         }
         $value = (string) ($type === 'email' ? $order->get_billing_email() : $order->get_billing_phone());

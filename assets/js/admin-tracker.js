@@ -1917,18 +1917,14 @@ jQuery(function ($) {
 
                 if (response.success) {
                     const unblockNonce = cg_admin_params.delete_blocker_item_nonce;
-                    // Built with .attr() so value and device info are escaped.
+                    // Built with .attr() so ref/value/device info are escaped.
                     const $newUnblockButton = $('<button type="button" class="button cg-unblock-from-order"></button>')
                         .attr('data-block-type', blockType)
+                        .attr(ref ? 'data-ref' : 'data-value', ref ? ref : value)
                         .attr('data-nonce', unblockNonce)
                         .html('<span class="dashicons dashicons-unlock"></span> Unblock');
                     if (deviceInfo) {
                         $newUnblockButton.attr('data-device-info', deviceInfo);
-                    }
-                    if (ref) {
-                        $newUnblockButton.attr('data-ref', ref);
-                    } else {
-                        $newUnblockButton.attr('data-value', value);
                     }
                     $button.replaceWith($newUnblockButton);
                 } else {
@@ -1971,13 +1967,9 @@ jQuery(function ($) {
                     const newNonce = cg_admin_params.fraud_blocker_nonce;
                     const $newBlockButton = $('<button type="button" class="button cg-block-from-order"></button>')
                         .attr('data-block-type', blockType)
+                        .attr(ref ? 'data-ref' : 'data-value', ref ? ref : value)
                         .attr('data-nonce', newNonce)
                         .html('<span class="dashicons dashicons-shield-alt"></span> Block');
-                    if (ref) {
-                        $newBlockButton.attr('data-ref', ref);
-                    } else {
-                        $newBlockButton.attr('data-value', value);
-                    }
                     $button.replaceWith($newBlockButton);
                 } else {
                     cgToast.error(response.data.message || 'Could not unblock item.');

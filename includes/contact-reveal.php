@@ -19,9 +19,9 @@ if (!defined('ABSPATH')) {
  * masked. HQ's counter gives the order, so two saves at the same moment
  * cannot both take the last slot.
  * Everything else (no cache, no limit key, no period end, unparseable time,
- * failed increment, no usage in HQ's answer) stays masked. contact_reveals is never decremented: HQ
- * answers 400 to that, and the quota must not come back when a record or an
- * order is deleted.
+ * failed increment, no usage in HQ's answer) stays masked.
+ * contact_reveals is never decremented: HQ answers 400 to that, and the
+ * quota must not come back when a record or an order is deleted.
  * A record saved after the cached period ended, before this request has the
  * new period (sync held by another request, or failed), stays masked and is
  * not counted, so a burst at the period roll cannot use up the new quota.
