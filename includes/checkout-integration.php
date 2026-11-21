@@ -396,6 +396,15 @@ class CG_Response_Adapter
             return;
         }
         $msg = wp_strip_all_tags($result->block_message);
+        // Classic checkout validates in woocommerce_checkout_process (notice)
+        // and again in woocommerce_after_checkout_validation ($errors); the
+        // engine returns the cached result, so report each block only once.
+        static $reported = [];
+        $key = $result->block_code . '|' . $msg;
+        if (isset($reported[$key])) {
+            return;
+        }
+        $reported[$key] = true;
         if ($errors instanceof \WP_Error) {
             $errors->add($result->block_code, $msg);
         } else {
@@ -1381,6 +1390,19 @@ function cg_universal_ajax_order_interceptor()
 add_action('init', 'cg_universal_ajax_order_interceptor', 0);
 
 /**
+ * True while serving the Store API checkout route (/wc/store/v1/checkout or
+ * a later version), where cg_store_api_checkout_guard() does the validation.
+ */
+function cg_is_store_api_checkout_request()
+{
+    if (!defined('REST_REQUEST') || !REST_REQUEST || empty($GLOBALS['wp']) || !is_object($GLOBALS['wp'])) {
+        return false;
+    }
+    $route = isset($GLOBALS['wp']->query_vars['rest_route']) ? (string) $GLOBALS['wp']->query_vars['rest_route'] : '';
+    return (bool) preg_match('#^/wc/store(/v\d+)?/checkout/?$#', untrailingslashit($route) . '/');
+}
+
+/**
  * 2. Safe Core Order Lifecycle Guard (woocommerce_before_order_object_save)
  * Ultimate fail-safe for any direct wc_create_order() calls. Non-destructive: cancels order
  * and logs audit note instead of throwing raw database exceptions.
@@ -1395,6 +1417,14 @@ function cg_universal_order_save_guard($order, $data_store)
     // Safety check 2: Only intercept active target statuses
     $status = $order->get_status();
     if (!in_array($status, ['processing', 'pending', 'on-hold', 'completed'], true)) {
+        return;
+    }
+
+    // Safety check 2b: a Store API checkout is validated once by
+    // cg_store_api_checkout_guard(); validating the draft here as well ran
+    // every check (and the courier ratio check, with its blocked_orders row)
+    // twice per block checkout.
+    if (cg_is_store_api_checkout_request()) {
         return;
     }
 

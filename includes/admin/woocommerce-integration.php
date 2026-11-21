@@ -227,76 +227,12 @@ function cg_render_fraud_blocker_meta_box_content($post_or_order_object)
 }
 
 /**
- * ADD THIS ENTIRE NEW FUNCTION
- *
- * Checks customer's success ratio during checkout and blocks if below the threshold.
+ * Kept as a no-op alias for code that calls it directly. The courier ratio
+ * check runs once per checkout in CG_Validation_Engine (CHECK 3) for the
+ * classic, Store API and CartFlows flows. This hook used to repeat it on
+ * classic checkout (a second courier lookup and its own block decision).
  */
-function cg_block_order_by_success_ratio()
-{
-    // Skip external API calls if checkout has already failed previous checks (e.g. duplicate or fraud blocklist)
-    if (function_exists('wc_notice_count') && wc_notice_count('error') > 0) {
-        return;
-    }
-
-    $options = get_option('cg_plugin_options', []);
-    $is_enabled = isset($options['enable_courier_service']) && $options['enable_courier_service'];
-    $threshold = isset($options['ratio_blocker_threshold']) ? (int) $options['ratio_blocker_threshold'] : 20;
-    $grace_period = isset($options['ratio_blocker_grace_period']) ? (int) $options['ratio_blocker_grace_period'] : 5;
-
-    if (!$is_enabled || empty($_POST['billing_phone'])) {
-        return;
-    }
-
-    $phone_number = cg_normalize_phone_number(sanitize_text_field(wp_unslash($_POST['billing_phone'])));
-    $ratio_data = cg_perform_all_api_calls($phone_number, 0);
-
-    if (is_wp_error($ratio_data)) {
-        return;
-    }
-
-    $total_orders = (int) ($ratio_data['summary']['total_deliveries'] ?? 0);
-    $success_rate = (int) ($ratio_data['summary']['success_rate'] ?? 100);
-
-    if ($total_orders >= $grace_period && $success_rate <= $threshold) {
-        global $wpdb;
-        $table_name = $wpdb->prefix . 'cg_blocked_orders';
-        $cart = WC()->cart;
-        $cart_details_array = [];
-        if ($cart && !$cart->is_empty()) {
-            foreach ($cart->get_cart() as $cart_item) {
-                $_product = $cart_item['data'];
-                if ($_product) {
-                    $cart_details_array[] = ['name' => $_product->get_name(), 'quantity' => (int) $cart_item['quantity']];
-                }
-            }
-        }
-
-
-        $wpdb->insert($table_name, [
-            'blocked_at' => current_time('mysql'),
-            'first_name' => sanitize_text_field($_POST['billing_first_name'] ?? ''), // ADD THIS LINE
-            'last_name' => sanitize_text_field($_POST['billing_last_name'] ?? ''),   // ADD THIS LINE
-            'phone_number' => $phone_number,
-            'email_address' => sanitize_email($_POST['billing_email'] ?? ''),
-            'cart_details' => wp_json_encode($cart_details_array),
-            'cart_value' => (float) $cart->get_total('edit'),
-            'success_ratio' => $success_rate,
-            'threshold_at_block' => $threshold,
-            'ip_address' => cg_get_client_ip()
-        ]);
-
-        $default_message = 'Your courier success ratio is {ratio}%, which is too low. Please contact us to complete your order.';
-        $custom_message = $options['ratio_blocker_message'] ?? $default_message;
-        $final_message = str_replace('{ratio}', $success_rate, $custom_message);
-
-        wc_add_notice($final_message, 'error');
-
-        if (function_exists('WC') && WC()->session) {
-            WC()->session->set('cg_blocked_order_notice', $final_message);
-        }
-    }
-}
-add_action('woocommerce_checkout_process', 'cg_block_order_by_success_ratio', 30);
+function cg_block_order_by_success_ratio() {}
 
 /**
  * Saves the device fingerprint and user agent as order meta when an order is created.
