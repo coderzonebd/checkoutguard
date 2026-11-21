@@ -687,12 +687,16 @@ function cg_plan_slug($cache)
 
 /**
  * Parses the `grandfathered_until` value of the signed status payload.
- * Two forms are accepted:
- *   - a date `YYYY-MM-DD` (the HQ format, Tanvir 21 Nov). The site keeps Pro
- *     through the whole of that UTC day, so the value returned is 00:00:00
- *     UTC of the next day. Lifetime plans send `2099-12-31`.
- *   - an RFC 3339 date-time with an offset, which is used as it is.
- * Anything else (no zone, impossible date, padding, non-string) is invalid.
+ * Accepted forms:
+ *   - an RFC 3339 date-time in UTC or with an offset, with or without a
+ *     fraction of a second (the HQ format, e.g. `2026-12-15T10:23:45.123456Z`;
+ *     lifetime plans send `2099-12-31T00:00:00Z`). It is read with
+ *     DateTimeImmutable in UTC. A fraction rounds the result up to the next
+ *     whole second, so `now >= until` never ends the window early.
+ *   - a date `YYYY-MM-DD`, valid through that whole UTC day (the value
+ *     returned is 00:00:00 UTC of the next day).
+ * Anything else (no zone, impossible date or time, padding, non-string) is
+ * invalid and gives null.
  *
  * @param mixed $value
  * @return int|null Unix timestamp (UTC) of the first second without Pro, or null.
@@ -713,18 +717,66 @@ function cg_parse_grandfathered_until($value)
         // A 32-bit PHP cannot hold dates after 2038 (e.g. lifetime 2099-12-31).
         return is_int($ts) ? $ts : PHP_INT_MAX;
     }
-    if (!function_exists('cg_parse_rfc3339_utc')) {
+    $re = '/^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?([Zz]|[+-](\d{2}):(\d{2}))$/D';
+    if (!preg_match($re, $value, $m)) {
         return null;
     }
-    $ts = cg_parse_rfc3339_utc($value);
-    return ($ts === null || $ts === false) ? null : (int) $ts;
+    if (!checkdate((int) $m[2], (int) $m[3], (int) $m[1])
+        || (int) $m[4] > 23 || (int) $m[5] > 59 || (int) $m[6] > 59) {
+        return null;
+    }
+    $zone = '+00:00';
+    if (strtoupper($m[8]) !== 'Z') {
+        if ((int) $m[9] > 23 || (int) $m[10] > 59) {
+            return null;
+        }
+        $zone = $m[8];
+    }
+    $fraction = isset($m[7]) ? $m[7] : '';
+    // DateTimeImmutable keeps microseconds; digits after the sixth only
+    // matter for the round-up below.
+    $micro = substr(str_pad($fraction, 6, '0'), 0, 6);
+    $text = sprintf('%s-%s-%sT%s:%s:%s.%s%s', $m[1], $m[2], $m[3], $m[4], $m[5], $m[6], $micro, $zone);
+    $dt = DateTimeImmutable::createFromFormat('!Y-m-d\TH:i:s.uP', $text, new DateTimeZone('UTC'));
+    $errors = DateTimeImmutable::getLastErrors();
+    if ($dt === false || (is_array($errors) && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))) {
+        return null;
+    }
+    $ts = $dt->setTimezone(new DateTimeZone('UTC'))->getTimestamp();
+    if (!is_int($ts)) {
+        return PHP_INT_MAX;
+    }
+    if (ltrim($fraction, '0') !== '') {
+        $ts = ($ts === PHP_INT_MAX) ? $ts : $ts + 1;
+    }
+    return $ts;
+}
+
+/**
+ * The `grandfathered_until` value to use for a fresh one. null (or a missing
+ * key) means no grandfather and is used as it is. A value that cannot be
+ * parsed does not end the window: the last verified value is kept (when it
+ * parses), otherwise there is no grandfather. The plan itself never changes
+ * here, so a paid plan stays paid.
+ *
+ * @param mixed $value    The new value.
+ * @param mixed $previous The last verified value.
+ * @return mixed
+ */
+function cg_grandfathered_until_or_previous($value, $previous)
+{
+    if ($value === null || cg_parse_grandfathered_until($value) !== null) {
+        return $value;
+    }
+    return ($previous !== null && cg_parse_grandfathered_until($previous) !== null) ? $previous : null;
 }
 
 /**
  * True when a Basic/Standard site is still inside its grandfather window.
- * The field must be present, non-null, a valid date (`YYYY-MM-DD`, valid
- * through that UTC day) or RFC 3339 time with a zone, and not yet passed.
- * A missing key (older HQ) or null means no grandfather.
+ * The field must be present, non-null, a valid RFC 3339 time with a zone
+ * (or a date `YYYY-MM-DD`, valid through that UTC day), and not yet passed:
+ * the window ends when now >= until. A missing key (older HQ) or null means
+ * no grandfather.
  *
  * @param mixed $cache The cg_api_cache value.
  * @return bool
@@ -756,10 +808,21 @@ function cg_remember_last_known_plan($config)
     if (!is_array($config)) {
         return;
     }
+    $grandfathered_until = $config['grandfathered_until'] ?? null;
+    if ($grandfathered_until !== null && cg_parse_grandfathered_until($grandfathered_until) === null) {
+        $previous = get_option(CG_LAST_KNOWN_PLAN_OPTION, null);
+        $previous = is_array($previous) ? ($previous['grandfathered_until'] ?? null) : null;
+        $grandfathered_until = cg_grandfathered_until_or_previous($grandfathered_until, $previous);
+        error_log(sprintf(
+            '[CheckoutGuard] grandfathered_until from HQ could not be parsed (%s); %s',
+            substr((string) wp_json_encode($config['grandfathered_until']), 0, 64),
+            $grandfathered_until === null ? 'no earlier verified value' : 'keeping the last verified value'
+        ));
+    }
     update_option(CG_LAST_KNOWN_PLAN_OPTION, [
         'plan_slug' => cg_plan_slug($config),
         'status' => is_string($config['status'] ?? null) ? strtolower(trim($config['status'])) : null,
-        'grandfathered_until' => $config['grandfathered_until'] ?? null,
+        'grandfathered_until' => $grandfathered_until,
         'synced_at' => function_exists('cg_reveal_now') ? cg_reveal_now() : time(),
     ], false);
 }
@@ -799,7 +862,10 @@ function cg_effective_plan()
         return [
             'plan_slug' => cg_plan_slug($cache),
             'status' => is_string($cache['status'] ?? null) ? strtolower(trim($cache['status'])) : null,
-            'grandfathered_until' => $cache['grandfathered_until'] ?? null,
+            'grandfathered_until' => cg_grandfathered_until_or_previous(
+                $cache['grandfathered_until'] ?? null,
+                $last !== null ? ($last['grandfathered_until'] ?? null) : null
+            ),
             'source' => 'cache',
         ];
     }
