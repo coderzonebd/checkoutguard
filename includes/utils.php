@@ -798,12 +798,14 @@ function cg_is_grandfathered($cache)
 define('CG_LAST_KNOWN_PLAN_OPTION', 'cg_last_known_plan');
 define('CG_LAST_KNOWN_PLAN_MAX_AGE', 72 * HOUR_IN_SECONDS);
 define('CG_LEGACY_DEADLINE_MAX_AHEAD', 60 * DAY_IN_SECONDS);
+define('CG_LEGACY_HARD_END', 1806451200); // SiteKey contract §7 (R+60)
 
 /**
  * legacy_key_deadline from a verified /sites/status payload (SiteKey contract §7):
  * RFC3339 UTC with a "Z" suffix, e.g. 2027-02-19T00:00:00Z. Anything else,
  * including date-only values and offsets, gives null. A date further than
- * CG_LEGACY_DEADLINE_MAX_AHEAD after $synced_at is clamped to that bound.
+ * CG_LEGACY_DEADLINE_MAX_AHEAD after $synced_at, or later than
+ * CG_LEGACY_HARD_END, is clamped to the earlier bound.
  *
  * @param mixed $value     Raw field value.
  * @param int   $synced_at Time of the verified sync.
@@ -818,7 +820,7 @@ function cg_parse_legacy_key_deadline($value, $synced_at)
     if (!is_int($ts) || $ts === PHP_INT_MAX) {
         return null;
     }
-    return min($ts, (int) $synced_at + CG_LEGACY_DEADLINE_MAX_AHEAD);
+    return min($ts, (int) $synced_at + CG_LEGACY_DEADLINE_MAX_AHEAD, CG_LEGACY_HARD_END);
 }
 
 /**
