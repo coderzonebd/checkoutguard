@@ -54,7 +54,8 @@ jobs:
           for v in "$header" "$const" "$stable"; do
             [ "$v" = "$WANT" ] || { echo "::error::Version mismatch"; exit 1; }
           done
-          grep -qE "^= ${WANT//./\\.} =" readme.txt || { echo "::error::No changelog entry for $WANT in readme.txt"; exit 1; }
+          awk -v want="= $WANT =" '/^== /{insec=($0 ~ /^== Changelog ==/)} insec && $0==want {found=1} END{exit !found}' readme.txt \
+            || { echo "::error::No changelog entry for $WANT inside '== Changelog ==' in readme.txt"; exit 1; }
 
       - name: PHP lint
         run: |
