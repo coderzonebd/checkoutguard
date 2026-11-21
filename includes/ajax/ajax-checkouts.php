@@ -455,10 +455,12 @@ function cg_get_incomplete_checkout_details_ajax_handler()
                 </div>
         <?php endif; ?>
         <?php
+        // A masked record must not carry the full email or phone anywhere in
+        // the HTML (the block buttons used to put them in data-value).
         cg_render_popup_block_buttons(
             $entry->ip_address ?? '',
-            $entry->email ?? '',
-            $entry->phone ?? '',
+            $cg_show_contact ? ($entry->email ?? '') : '',
+            $cg_show_contact ? ($entry->phone ?? '') : '',
             $entry->device_fingerprint ?? '',
             $entry->address_1 ?? '',
             $entry->city ?? '',
