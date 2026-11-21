@@ -1,0 +1,65 @@
+/*
+
+ * Live Ratio Feedback Styles - v3 (Robust Fix)
+ */
+.cg-ratio-feedback {
+    /* Layout & Positioning */
+    clear: both;
+    /* This is the key property to fix float issues. */
+    display: block;
+    /* Ensure it behaves as a block-level element. */
+    width: 100%;
+    margin-top: 10px;
+    /* Space above the feedback box. */
+    margin-bottom: 10px;
+    /* Space below the feedback box. */
+    box-sizing: border-box;
+
+    /* Appearance */
+    background-color: #fff7ed;
+    /* A light, informative orange background */
+    border: 1px solid #fed7aa;
+    border-left-width: 4px;
+    border-left-color: #f97316;
+    /* Orange for emphasis */
+    padding: 10px 15px;
+    border-radius: 4px;
+    font-size: 0.9em;
+    line-height: 1.5;
+}
+
+.cg-ratio-feedback strong {
+    color: #9a3412;
+    font-weight: 600;
+}
+
+.cg-ratio-feedback i {
+    color: #555d66;
+    /* Standard WP text color */
+}
+
+
+/*
+ * Custom Block Notice Styles (v3 - Scoped to plugin)
+ * Only targets CheckoutGuard block notices, not all WooCommerce errors.
+ */
+.cg-block-notice .woocommerce-error {
+    background: linear-gradient(135deg, #e53935, #b71c1c);
+    color: #ffffff;
+    text-align: center;
+    font-size: 1.2em;
+    font-weight: 600;
+    border-radius: 8px;
+    border: none;
+    padding: 20px 25px;
+    margin-bottom: 2em;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.25);
+}
+
+/* Ensure the list item inside the notice is styled correctly */
+.cg-block-notice .woocommerce-error li {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    text-align: center;
+}
