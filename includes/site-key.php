@@ -25,7 +25,10 @@ define('CG_SITEKEY_BUDGET_WINDOW', HOUR_IN_SECONDS);
 define('CG_SITEKEY_BUDGET_MAX', 2);
 define('CG_SITEKEY_NONCE_WINDOW', 5 * MINUTE_IN_SECONDS);
 define('CG_SITEKEY_NONCE_TTL', 5 * MINUTE_IN_SECONDS);
-define('CG_SITEKEY_MAX_NONCES', 5);
+define('CG_SITEKEY_MAX_NONCES', 3);
+// At most this many claim-key calls per round, newest nonce first, so a
+// shared IP does not run into the claim-key 429 limit (Zahid, contract v3).
+define('CG_SITEKEY_MAX_CLAIM_TRIES', 3);
 define('CG_SITEKEY_PENDING_TTL', HOUR_IN_SECONDS);
 
 function cg_sitekey_now()
@@ -347,7 +350,7 @@ function cg_sitekey_request($reason = 'auto')
 
 /**
  * REST: HQ posts the nonce here. Accepted only while a request of ours is
- * open and only in the documented shape. The last 5 are kept (newest wins),
+ * open and only in the documented shape. The last 3 are kept (newest wins),
  * so junk posted first cannot push out HQ's real nonce; the claim tries the
  * newest first. The answer is the same 200 in every case, so the route tells
  * an outsider nothing.
@@ -389,6 +392,8 @@ add_action('rest_api_init', 'cg_sitekey_register_routes');
 /**
  * Step 3: trade a received nonce for a pending site key, newest nonce first,
  * then confirm it at once with a signed status sync.
+ * At most CG_SITEKEY_MAX_CLAIM_TRIES calls per round. A round where every
+ * try gets 401 does not grow the backoff.
  *
  * @return string One of: none, locked, claimed, committed, invalid, failed.
  */
@@ -411,10 +416,15 @@ function cg_sitekey_claim()
         }
 
         $retry_after = 0;
+        $tries = 0;
         foreach (array_reverse($nonces) as $entry) {
             if (!is_array($entry) || empty($entry['n']) || ($now - (int) ($entry['at'] ?? 0)) >= CG_SITEKEY_NONCE_TTL) {
                 continue;
             }
+            if ($tries >= CG_SITEKEY_MAX_CLAIM_TRIES) {
+                break; // The older nonces are dropped with the rest of the round.
+            }
+            $tries++;
             $GLOBALS['cg_sitekey_in_flow'] = true;
             try {
                 $response = cg_call_hq_api('/sites/claim-key', ['nonce' => (string) $entry['n']], 'POST');
