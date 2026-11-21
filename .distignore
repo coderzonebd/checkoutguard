@@ -1,0 +1,8 @@
+# Repo-only files that must never reach the WordPress.org SVN repository.
+# Everything else ships exactly as in tags/1.4.1 (file list checked: identical).
+/.git
+/.github
+/.distignore
+/.gitattributes
+/.gitignore
+/.wordpress-org
