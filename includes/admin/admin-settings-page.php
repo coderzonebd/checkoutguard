@@ -595,6 +595,15 @@ function cg_render_account_usage_tab()
  */
 function cg_render_api_activity_panel()
 {
+    $drop = get_option('cg_sitekey_last_drop', []);
+    if (is_array($drop) && !empty($drop['reason']) && !empty($drop['at'])) {
+        echo '<p class="description">' . esc_html(sprintf(
+            /* translators: 1: short reason code, 2: time ago */
+            __('Last site key delivery dropped: %1$s (%2$s ago)', 'checkoutguard'),
+            sanitize_key($drop['reason']),
+            human_time_diff((int) $drop['at'])
+        )) . '</p>';
+    }
     $log = get_option('cg_api_log', []);
     if (!is_array($log) || empty($log)) {
         return;

@@ -6,7 +6,7 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * Site key (contract-13): each site trades the shared product key for its own
+ * Site key (SiteKey contract): each site trades the shared product key for its own
  * czsite_ key. Flow: request-site-key -> HQ posts a nonce to our REST route ->
  * claim-key with that nonce -> the returned key is pending until the first
  * successful call with it, which commits it.
@@ -27,9 +27,16 @@ define('CG_SITEKEY_NONCE_WINDOW', 5 * MINUTE_IN_SECONDS);
 define('CG_SITEKEY_NONCE_TTL', 5 * MINUTE_IN_SECONDS);
 define('CG_SITEKEY_MAX_NONCES', 3);
 // At most this many claim-key calls per round, newest nonce first, so a
-// shared IP does not run into the claim-key 429 limit (contract-13 §1b).
+// shared IP does not run into the claim-key 429 limit (contract §1b).
 define('CG_SITEKEY_MAX_CLAIM_TRIES', 3);
 define('CG_SITEKEY_PENDING_TTL', HOUR_IN_SECONDS);
+define('CG_SITEKEY_DROP_OPTION', 'cg_sitekey_last_drop');
+define('CG_SITEKEY_NONCE_PURPOSE', 'sitekey-nonce');
+// Signed delivery limits (contract §1c): lifetime, and how far the site
+// clock may be behind (iat in the future) or ahead (after exp).
+define('CG_SITEKEY_DELIVERY_MAX_LIFETIME', 300);
+define('CG_SITEKEY_DELIVERY_SKEW_BEHIND', 300);
+define('CG_SITEKEY_DELIVERY_SKEW_AHEAD', 60);
 
 function cg_sitekey_now()
 {
@@ -357,12 +364,14 @@ function cg_sitekey_request($reason = 'auto')
         $state['requests'][] = $now;
         $state['window_until'] = $now + CG_SITEKEY_NONCE_WINDOW;
         $state['nonces'] = [];
+        // A fresh id per round; HQ echoes it inside the signed delivery.
+        $state['request_id'] = cg_sitekey_new_request_id();
         $state['last_reason'] = sanitize_key($reason);
         cg_sitekey_save_state($state);
 
         $GLOBALS['cg_sitekey_in_flow'] = true;
         try {
-            $response = cg_call_hq_api('/sites/request-site-key', [], 'POST');
+            $response = cg_call_hq_api('/sites/request-site-key', ['request_id' => $state['request_id']], 'POST');
         } finally {
             $GLOBALS['cg_sitekey_in_flow'] = false;
         }
@@ -374,6 +383,7 @@ function cg_sitekey_request($reason = 'auto')
         $retry_after = is_array($data) ? (int) ($data['retry_after'] ?? 0) : 0;
         $state = cg_sitekey_state();
         $state['window_until'] = 0;
+        $state['request_id'] = '';
         $state['fails'] = $fails + 1;
         cg_sitekey_save_state($state);
         cg_sitekey_set_gate($now + max(cg_sitekey_backoff_seconds($fails), $retry_after));
@@ -384,29 +394,162 @@ function cg_sitekey_request($reason = 'auto')
 }
 
 /**
- * REST: HQ posts the nonce here. Accepted only while a request of ours is
- * open and only in the documented shape. The last 3 are kept (newest wins),
- * so junk posted first cannot push out HQ's real nonce; the claim tries the
- * newest first. The answer is the same 200 in every case, so the route tells
- * an outsider nothing.
+ * A random round id: 32 base64url characters, 192 bits.
+ */
+function cg_sitekey_new_request_id()
+{
+    return rtrim(strtr(base64_encode(random_bytes(24)), '+/', '-_'), '=');
+}
+
+/**
+ * The host this site sends as X-Site-Domain, normalized the way HQ
+ * normalizes stored domains: lowercase, no trailing dot, IDN as punycode.
+ */
+function cg_sitekey_site_host()
+{
+    $host = (string) cg_get_root_domain(get_site_url());
+    return cg_sitekey_normalize_host($host);
+}
+
+function cg_sitekey_normalize_host($host)
+{
+    $host = rtrim(strtolower(trim((string) $host)), '.');
+    if ($host !== '' && preg_match('/[^\x20-\x7e]/', $host) && function_exists('idn_to_ascii')) {
+        $ascii = defined('INTL_IDNA_VARIANT_UTS46')
+            ? idn_to_ascii($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46)
+            : idn_to_ascii($host);
+        $host = is_string($ascii) ? strtolower($ascii) : '';
+    }
+    return $host;
+}
+
+/**
+ * Checks a signed nonce delivery (contract §1c), in the contract's order:
+ * signature over the exact payload string, purpose, site, request_id,
+ * lifetime and clock skew, nonce format. Pure: no state, no I/O.
+ *
+ * @param mixed  $payload    The payload JSON string as posted.
+ * @param mixed  $signature  Base64 Ed25519 signature as posted.
+ * @param string $site_host  Normalized host of this site.
+ * @param string $request_id The current round's request_id ('' when none).
+ * @param int    $now        Current time.
+ * @param string $public_key Base64 Ed25519 public key.
+ * @return array ['ok' => true, 'nonce' => string, 'exp' => int] or ['ok' => false, 'reason' => string].
+ */
+function cg_sitekey_verify_delivery($payload, $signature, $site_host, $request_id, $now, $public_key = CG_HQ_PUBLIC_KEY)
+{
+    $drop = function ($reason) {
+        return ['ok' => false, 'reason' => $reason];
+    };
+    if (!is_string($payload) || !is_string($signature) || $payload === '' || strlen($payload) > 2048) {
+        return $drop('malformed');
+    }
+    if (!function_exists('sodium_crypto_sign_verify_detached')) {
+        return $drop('no_sodium');
+    }
+    $sig = base64_decode($signature, true);
+    $key = base64_decode((string) $public_key, true);
+    if (!is_string($sig) || strlen($sig) !== SODIUM_CRYPTO_SIGN_BYTES) {
+        return $drop('malformed');
+    }
+    if (!is_string($key) || strlen($key) !== SODIUM_CRYPTO_SIGN_PUBLICKEYBYTES) {
+        return $drop('bad_signature');
+    }
+    try {
+        $valid = sodium_crypto_sign_verify_detached($sig, $payload, $key);
+    } catch (Throwable $e) {
+        $valid = false;
+    }
+    if (!$valid) {
+        return $drop('bad_signature');
+    }
+    $data = json_decode($payload, true);
+    if (!is_array($data)) {
+        return $drop('malformed');
+    }
+    if (($data['purpose'] ?? null) !== CG_SITEKEY_NONCE_PURPOSE) {
+        return $drop('wrong_purpose');
+    }
+    $site_url = isset($data['site_url']) && is_string($data['site_url']) ? cg_sitekey_normalize_host($data['site_url']) : '';
+    if ($site_url === '' || $site_host === '' || !hash_equals((string) $site_host, $site_url)) {
+        return $drop('wrong_site');
+    }
+    $echo = isset($data['request_id']) && is_string($data['request_id']) ? $data['request_id'] : '';
+    if ((string) $request_id === '' || $echo === '' || !hash_equals((string) $request_id, $echo)) {
+        return $drop('wrong_request_id');
+    }
+    if (!isset($data['iat'], $data['exp']) || !is_int($data['iat']) || !is_int($data['exp'])) {
+        return $drop('malformed');
+    }
+    $iat = $data['iat'];
+    $exp = $data['exp'];
+    $life = $exp - $iat;
+    if ($life <= 0 || $life > CG_SITEKEY_DELIVERY_MAX_LIFETIME) {
+        return $drop('bad_lifetime');
+    }
+    if ($iat > $now + CG_SITEKEY_DELIVERY_SKEW_BEHIND) {
+        return $drop('not_yet_valid');
+    }
+    if ($now > $exp + CG_SITEKEY_DELIVERY_SKEW_AHEAD) {
+        return $drop('expired');
+    }
+    $nonce = $data['nonce'] ?? null;
+    if (!is_string($nonce) || !preg_match('/^[A-Za-z0-9_-]{43}$/D', $nonce)) {
+        return $drop('malformed');
+    }
+    return ['ok' => true, 'nonce' => $nonce, 'exp' => $exp];
+}
+
+/**
+ * Keeps the last drop reason for the admin diagnostics. Holds no nonce, key
+ * or payload and is never sent anywhere. The same reason is written at most
+ * once a minute, so junk posts cannot turn into a stream of option writes.
+ */
+function cg_sitekey_note_drop($reason, $now)
+{
+    $raw = cg_sitekey_read_raw(CG_SITEKEY_DROP_OPTION);
+    $last = $raw === null ? null : maybe_unserialize($raw);
+    if (is_array($last) && ($last['reason'] ?? '') === $reason && $now - (int) ($last['at'] ?? 0) < MINUTE_IN_SECONDS) {
+        return;
+    }
+    update_option(CG_SITEKEY_DROP_OPTION, ['reason' => sanitize_key($reason), 'at' => (int) $now], false);
+}
+
+/**
+ * REST: HQ posts the signed nonce here. Accepted only while a request of
+ * ours is open and only when every check of cg_sitekey_verify_delivery()
+ * passes. The last 3 are kept and the claim tries the newest first. The
+ * answer is the same 200 in every case, so the route tells an outsider
+ * nothing.
  */
 function cg_sitekey_receive_nonce(WP_REST_Request $request)
 {
-    $nonce = $request->get_param('nonce');
     $now = cg_sitekey_now();
-    if (is_string($nonce) && preg_match('/^[A-Za-z0-9_-]{43}$/', $nonce)) {
-        $state = cg_sitekey_state();
-        $open = !empty($state['window_until']) && $now <= (int) $state['window_until'];
-        $nonces = isset($state['nonces']) && is_array($state['nonces']) ? $state['nonces'] : [];
-        $seen = in_array($nonce, array_column($nonces, 'n'), true);
-        if ($open && !$seen) {
-            $nonces[] = ['n' => $nonce, 'at' => $now];
-            $state['nonces'] = array_slice($nonces, -CG_SITEKEY_MAX_NONCES);
-            cg_sitekey_save_state($state);
-            cg_sitekey_schedule('cg_sitekey_claim_event');
-            if (function_exists('spawn_cron')) {
-                spawn_cron(); // Claim within the nonce's 5 minutes, even on a quiet site.
-            }
+    $state = cg_sitekey_state();
+    $open = !empty($state['window_until']) && $now <= (int) $state['window_until'];
+    if (!$open) {
+        cg_sitekey_note_drop('no_open_request', $now);
+        return new WP_REST_Response(['ok' => true], 200);
+    }
+    $check = cg_sitekey_verify_delivery(
+        $request->get_param('payload'),
+        $request->get_param('signature'),
+        cg_sitekey_site_host(),
+        (string) ($state['request_id'] ?? ''),
+        $now
+    );
+    if (empty($check['ok'])) {
+        cg_sitekey_note_drop($check['reason'], $now);
+        return new WP_REST_Response(['ok' => true], 200);
+    }
+    $nonces = isset($state['nonces']) && is_array($state['nonces']) ? $state['nonces'] : [];
+    if (!in_array($check['nonce'], array_column($nonces, 'n'), true)) {
+        $nonces[] = ['n' => $check['nonce'], 'at' => $now, 'exp' => (int) $check['exp']];
+        $state['nonces'] = array_slice($nonces, -CG_SITEKEY_MAX_NONCES);
+        cg_sitekey_save_state($state);
+        cg_sitekey_schedule('cg_sitekey_claim_event');
+        if (function_exists('spawn_cron')) {
+            spawn_cron(); // Claim within the nonce's 5 minutes, even on a quiet site.
         }
     }
     return new WP_REST_Response(['ok' => true], 200);
@@ -417,8 +560,9 @@ function cg_sitekey_register_routes()
     register_rest_route('checkoutguard/v1', '/key-nonce', [
         'methods' => 'POST',
         'callback' => 'cg_sitekey_receive_nonce',
-        // Called by HQ, server to server; protected by the open-window check
-        // and by HQ checking the nonce on claim.
+        // Called by HQ, server to server; protected by the open-window check,
+        // the Ed25519 signature and request_id echo, and HQ checking the
+        // nonce on claim.
         'permission_callback' => '__return_true',
     ]);
 }
@@ -445,6 +589,7 @@ function cg_sitekey_claim()
         $nonces = isset($state['nonces']) && is_array($state['nonces']) ? $state['nonces'] : [];
         $state['nonces'] = [];
         $state['window_until'] = 0;
+        $state['request_id'] = ''; // The round ends here; a new one uses a new id.
         cg_sitekey_save_state($state);
         if (!empty($state['pending_until']) || (!cg_sitekey_needed() && empty($state['mismatch_at']))) {
             return 'none';
@@ -453,7 +598,8 @@ function cg_sitekey_claim()
         $retry_after = 0;
         $tries = 0;
         foreach (array_reverse($nonces) as $entry) {
-            if (!is_array($entry) || empty($entry['n']) || ($now - (int) ($entry['at'] ?? 0)) >= CG_SITEKEY_NONCE_TTL) {
+            if (!is_array($entry) || empty($entry['n']) || ($now - (int) ($entry['at'] ?? 0)) >= CG_SITEKEY_NONCE_TTL
+                || (isset($entry['exp']) && $now > (int) $entry['exp'] + CG_SITEKEY_DELIVERY_SKEW_AHEAD)) {
                 continue;
             }
             if ($tries >= CG_SITEKEY_MAX_CLAIM_TRIES) {

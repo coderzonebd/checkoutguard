@@ -74,6 +74,7 @@ if (!empty($options['delete_on_uninstall'])) {
     delete_option('cg_sitekey_state');
     delete_option('cg_sitekey_next_allowed_at');
     delete_option('cg_sitekey_lock');
+    delete_option('cg_sitekey_last_drop');
 
     // Clear scheduled cron hooks.
     wp_clear_scheduled_hook('cg_daily_sync_hook');
