@@ -1308,7 +1308,9 @@ jQuery(function ($) {
 
         // Mark active sidebar item
         $('#cg-recent-checks-list .cg-recent-item').removeClass('active');
-        $('#cg-recent-checks-list .cg-recent-item[data-phone="' + phoneNumber + '"]').addClass('active');
+        $('#cg-recent-checks-list .cg-recent-item').filter(function () {
+            return $(this).attr('data-phone') === phoneNumber;
+        }).addClass('active');
 
         courierCheckRequest = $.post(cg_admin_params.ajax_url, {
             action: 'cg_check_courier_success',
@@ -1363,18 +1365,20 @@ jQuery(function ($) {
         if (!$list.length) return;
 
         $list.find('#cg-recent-empty-msg').remove();
-        $list.find('.cg-recent-item[data-phone="' + entry.phone + '"]').remove();
+        const phone = String(entry.phone);
+        $list.find('.cg-recent-item').filter(function () {
+            return $(this).attr('data-phone') === phone;
+        }).remove();
 
-        const newItem = $(
-            '<li class="cg-recent-item active" data-phone="' + entry.phone + '">' +
-                '<div class="cg-recent-item-info">' +
-                    '<span class="cg-recent-phone">' + $('<span>').text(entry.phone).html() + '</span>' +
-                    '<span class="cg-recent-time">Just now</span>' +
-                '</div>' +
-                '<span class="cg-recent-rate" style="color: ' + entry.risk_color + ';">' +
-                    entry.success_rate + '%' +
-                '</span>' +
-            '</li>'
+        // Built with .attr()/.text()/.css() so the phone, rate and colour are escaped.
+        const newItem = $('<li class="cg-recent-item active"></li>').attr('data-phone', phone).append(
+            $('<div class="cg-recent-item-info"></div>').append(
+                $('<span class="cg-recent-phone"></span>').text(phone),
+                $('<span class="cg-recent-time">Just now</span>')
+            ),
+            $('<span class="cg-recent-rate"></span>')
+                .css('color', entry.risk_color)
+                .text(entry.success_rate + '%')
         );
 
         $list.find('.cg-recent-item').removeClass('active');
@@ -1907,9 +1911,16 @@ jQuery(function ($) {
 
                 if (response.success) {
                     const unblockNonce = cg_admin_params.delete_blocker_item_nonce;
-                    var deviceInfoAttr = deviceInfo ? ` data-device-info="${deviceInfo}"` : '';
-                    const newUnblockButton = `<button type="button" class="button cg-unblock-from-order" data-block-type="${blockType}" data-value="${value}" data-nonce="${unblockNonce}"${deviceInfoAttr}><span class="dashicons dashicons-unlock"></span> Unblock</button>`;
-                    $button.replaceWith(newUnblockButton);
+                    // Built with .attr() so value and device info are escaped.
+                    const $newUnblockButton = $('<button type="button" class="button cg-unblock-from-order"></button>')
+                        .attr('data-block-type', blockType)
+                        .attr('data-value', value)
+                        .attr('data-nonce', unblockNonce)
+                        .html('<span class="dashicons dashicons-unlock"></span> Unblock');
+                    if (deviceInfo) {
+                        $newUnblockButton.attr('data-device-info', deviceInfo);
+                    }
+                    $button.replaceWith($newUnblockButton);
                 } else {
                     cgToast.error(response.data.message || 'Could not block item.');
                     $button.prop('disabled', false).html(`<span class="dashicons dashicons-shield-alt"></span> Block`);
@@ -1942,8 +1953,12 @@ jQuery(function ($) {
 
                 if (response.success) {
                     const newNonce = cg_admin_params.fraud_blocker_nonce;
-                    const newBlockButton = `<button type="button" class="button cg-block-from-order" data-block-type="${blockType}" data-value="${value}" data-nonce="${newNonce}"><span class="dashicons dashicons-shield-alt"></span> Block</button>`;
-                    $button.replaceWith(newBlockButton);
+                    const $newBlockButton = $('<button type="button" class="button cg-block-from-order"></button>')
+                        .attr('data-block-type', blockType)
+                        .attr('data-value', value)
+                        .attr('data-nonce', newNonce)
+                        .html('<span class="dashicons dashicons-shield-alt"></span> Block');
+                    $button.replaceWith($newBlockButton);
                 } else {
                     cgToast.error(response.data.message || 'Could not unblock item.');
                     $button.prop('disabled', false).html('<span class="dashicons dashicons-unlock"></span> Unblock');
@@ -2332,27 +2347,39 @@ jQuery(function ($) {
                 nonce: cg_admin_params.order_statuses_nonce
             }).done(function (response) {
                 if (response.success && response.data && response.data.statuses) {
-                    var html = '';
+                    // Built with .attr()/.text()/.css() so status fields are escaped.
+                    var cards = [];
                     response.data.statuses.forEach(function (s) {
-                        var iconHtml = s.icon ? '<span class="dashicons ' + s.icon + '"></span> ' : '';
-                        var badgeClass = s.is_default ? 'cg-status-badge-default' : 'cg-status-badge-custom';
-                        var badgeText = s.is_default ? 'Default' : 'Custom';
-                        html += '<div class="cg-status-card" style="border-top: 4px solid ' + s.color + ';">';
-                        html += '  <div class="cg-status-card-header">';
-                        html += '    <span class="cg-status-card-label">' + iconHtml + $('<span>').text(s.label).html() + '</span>';
-                        html += '    <span class="' + badgeClass + '">' + badgeText + '</span>';
-                        html += '  </div>';
-                        html += '  <div class="cg-status-card-count">' + s.count + '</div>';
-                        html += '  <a href="' + cgOrdersUrl(s.slug) + '" class="cg-status-card-link">View Orders &rarr;</a>';
-                        html += '</div>';
+                        var $label = $('<span class="cg-status-card-label"></span>');
+                        if (s.icon) {
+                            $label.append($('<span class="dashicons"></span>').addClass(String(s.icon)), ' ');
+                        }
+                        $label.append(document.createTextNode(s.label));
+                        var $card = $('<div class="cg-status-card"></div>')
+                            .css('border-top', '4px solid ' + s.color)
+                            .append(
+                                $('<div class="cg-status-card-header"></div>').append(
+                                    $label,
+                                    $('<span></span>')
+                                        .addClass(s.is_default ? 'cg-status-badge-default' : 'cg-status-badge-custom')
+                                        .text(s.is_default ? 'Default' : 'Custom')
+                                ),
+                                $('<div class="cg-status-card-count"></div>').text(s.count),
+                                $('<a class="cg-status-card-link"></a>')
+                                    .attr('href', cgOrdersUrl(s.slug))
+                                    .html('View Orders &rarr;')
+                            );
+                        cards.push($card);
                     });
-                    $container.html(html);
+                    $container.empty().append(cards);
 
                     // Update order counts in the custom statuses table.
                     response.data.statuses.forEach(function (s) {
-                        var $cell = $('.cg-status-order-count[data-slug="' + s.slug + '"]');
+                        var $cell = $('.cg-status-order-count').filter(function () {
+                            return $(this).attr('data-slug') === String(s.slug);
+                        });
                         if ($cell.length) {
-                            $cell.html('<strong>' + s.count + '</strong>');
+                            $cell.empty().append($('<strong></strong>').text(s.count));
                         }
                     });
                 } else {
