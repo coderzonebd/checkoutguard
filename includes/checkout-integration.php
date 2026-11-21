@@ -323,16 +323,38 @@ class CG_Validation_Result
     public $risk_score = 0;
     public $matched_order_id = null;
     public $details = [];
+    /** Ratio hold (paid plans): the checkout goes through, the order is put on hold. */
+    public $is_held = false;
 
     public function is_blocked()
     {
         return $this->is_blocked;
     }
 
+    public function is_held()
+    {
+        return $this->is_held;
+    }
+
     public static function allow($details = [])
     {
         $res = new self();
         $res->is_blocked = false;
+        $res->details = $details;
+        return $res;
+    }
+
+    /**
+     * Not blocked: the checkout continues and the order is put on hold later
+     * (see cg_mark_ratio_hold()).
+     */
+    public static function hold($code, $rule = '', $details = [])
+    {
+        $res = new self();
+        $res->is_blocked = false;
+        $res->is_held = true;
+        $res->block_code = $code;
+        $res->rule_triggered = $rule;
         $res->details = $details;
         return $res;
     }
@@ -1226,6 +1248,19 @@ class CG_Validation_Engine
                 $success_rate = (int) ($ratio_data['summary']['success_rate'] ?? 100);
 
                 if ($total_orders >= $grace_period && $success_rate <= $threshold) {
+                    // Paid plans with ratio_action "hold" (the default for paid):
+                    // let the checkout through, the order goes on-hold later.
+                    // Logged as allowed, so a hold never feeds the fraud score.
+                    if (cg_ratio_action() === 'hold') {
+                        cg_log_checkout_attempt($context->ip, $context->email, $context->phone, $context->device_fp, $context->address_hash, 'allowed', "Source: {$context->order_source}; ratio hold {$success_rate}% <= {$threshold}%");
+                        $result = CG_Validation_Result::hold('held_ratio', 'courier_success_ratio', [
+                            'success_rate' => $success_rate,
+                            'threshold'    => $threshold,
+                            'source'       => $context->order_source,
+                        ]);
+                        return self::finalize($result, $context, $cache_key);
+                    }
+
                     global $wpdb;
                     $table_name = $wpdb->prefix . 'cg_blocked_orders';
 
@@ -1455,6 +1490,11 @@ function cg_universal_order_save_guard($order, $data_store)
         CG_Response_Adapter::lifecycle($result, $order);
     } else {
         $order->update_meta_data('_cg_validated', '1');
+        if (cg_mark_ratio_hold($order, $result) && in_array($status, ['processing', 'completed'], true)) {
+            // Created directly as paid/processing (no checkout payment step).
+            // The note and the blocked_orders row come from the status hook after the save.
+            $order->set_status('on-hold');
+        }
     }
 }
 add_action('woocommerce_before_order_object_save', 'cg_universal_order_save_guard', 10, 2);
@@ -1478,6 +1518,7 @@ function cg_store_api_checkout_guard($order, $request)
         CG_Response_Adapter::store_api($result);
     } else {
         $order->update_meta_data('_cg_validated', '1');
+        cg_mark_ratio_hold($order, $result);
     }
 }
 add_action('woocommerce_store_api_checkout_update_order_from_request', 'cg_store_api_checkout_guard', 10, 2);
@@ -1501,6 +1542,7 @@ function cg_order_creation_guard($order, $data)
         throw new \Exception(wp_strip_all_tags($result->block_message));
     } else {
         $order->update_meta_data('_cg_validated', '1');
+        cg_mark_ratio_hold($order, $result);
     }
 }
 add_action('woocommerce_checkout_create_order', 'cg_order_creation_guard', 10, 2);

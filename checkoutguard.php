@@ -131,6 +131,7 @@ function cg_init_plugin()
     require_once CG_INC_DIR . 'enqueue.php';
     require_once CG_INC_DIR . 'ajax-handlers.php';
     require_once CG_INC_DIR . 'checkout-integration.php';
+    require_once CG_INC_DIR . 'ratio-hold.php';
     require_once CG_INC_DIR . 'invoice.php';
     require_once CG_ADMIN_DIR . 'admin-menus.php';
     require_once CG_ADMIN_DIR . 'print-order-page.php';

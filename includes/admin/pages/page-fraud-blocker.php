@@ -878,6 +878,15 @@ function cg_get_blocked_orders_table_rows_html($results)
                 <td>
                     <span class="cg-blocked-ratio"><?php echo esc_html($row->success_ratio); ?>%</span>
                     <small>(Threshold: <?php echo esc_html($row->threshold_at_block); ?>%)</small>
+                    <?php if (isset($row->action) && $row->action === 'hold'): ?>
+                        <br><span class="cg-badge cg-badge-held"><?php esc_html_e('Held', 'checkoutguard'); ?></span>
+                        <?php if (!empty($row->order_id)): ?>
+                            <?php $cg_held_order = wc_get_order((int) $row->order_id); ?>
+                            <?php if ($cg_held_order): ?>
+                                <a href="<?php echo esc_url($cg_held_order->get_edit_order_url()); ?>">#<?php echo esc_html($cg_held_order->get_order_number()); ?></a>
+                            <?php endif; ?>
+                        <?php endif; ?>
+                    <?php endif; ?>
                 </td>
                 <td><?php echo esc_html(date_i18n(get_option('date_format') . ' ' . get_option('time_format'), strtotime($row->blocked_at))); ?>
                 </td>

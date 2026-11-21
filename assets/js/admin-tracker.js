@@ -2087,14 +2087,20 @@ jQuery(function ($) {
         $btn.prop('disabled', true);
         $spinner.addClass('is-active');
 
+        var ratioFields = {
+            ratio_blocker_threshold: $('#cg_ratio_blocker_threshold').val(),
+            ratio_blocker_grace_period: $('#cg_ratio_blocker_grace_period').val(),
+            ratio_blocker_message: $('#cg_ratio_blocker_message').val()
+        };
+        // Shown to paid plans only.
+        if ($('#cg_ratio_action').length) {
+            ratioFields.ratio_action = $('#cg_ratio_action').val();
+        }
+
         $.post(cg_admin_params.ajax_url, {
             action: 'cg_save_page_settings',
             nonce: cg_admin_params.save_page_settings_nonce,
-            fields: {
-                ratio_blocker_threshold: $('#cg_ratio_blocker_threshold').val(),
-                ratio_blocker_grace_period: $('#cg_ratio_blocker_grace_period').val(),
-                ratio_blocker_message: $('#cg_ratio_blocker_message').val()
-            }
+            fields: ratioFields
         }).done(function (response) {
             if (response.success) {
                 cgToast.success(response.data.message || 'Settings saved successfully.');

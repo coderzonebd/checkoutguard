@@ -108,11 +108,24 @@ function cg_render_courier_analytics_page()
         $ratio_threshold = $cg_options['ratio_blocker_threshold'] ?? 20;
         $ratio_grace = $cg_options['ratio_blocker_grace_period'] ?? 5;
         $ratio_message = $cg_options['ratio_blocker_message'] ?? 'Your courier success ratio is {ratio}%, which is too low. Please contact us to complete your order.';
+        $ratio_action = (isset($cg_options['ratio_action']) && $cg_options['ratio_action'] === 'block') ? 'block' : 'hold';
         ?>
         <div class="cg-tab-pane cg-courier-pane" data-tab-content="courier-settings" style="display:none;" id="tabpanel-courier-settings" role="tabpanel">
         <div class="cg-inline-settings-panel cg-inline-settings-panel-tab">
             <h2><?php _e('Success Ratio Blocker Settings', 'checkoutguard'); ?></h2>
             <table class="form-table" role="presentation">
+                <?php if (function_exists('cg_is_paid_plan') && cg_is_paid_plan()): ?>
+                <tr>
+                    <th scope="row"><label for="cg_ratio_action"><?php _e('When the ratio is too low', 'checkoutguard'); ?></label></th>
+                    <td>
+                        <select id="cg_ratio_action">
+                            <option value="hold" <?php selected($ratio_action, 'hold'); ?>><?php _e('Hold the order for review (recommended)', 'checkoutguard'); ?></option>
+                            <option value="block" <?php selected($ratio_action, 'block'); ?>><?php _e('Block the checkout', 'checkoutguard'); ?></option>
+                        </select>
+                        <p class="description"><?php _e('Hold: the order is placed and set to On hold with a note, even when it is already paid. You release it yourself. Nothing is refunded or cancelled.', 'checkoutguard'); ?></p>
+                    </td>
+                </tr>
+                <?php endif; ?>
                 <tr>
                     <th scope="row"><label for="cg_ratio_blocker_threshold"><?php _e('Block Threshold (%)', 'checkoutguard'); ?></label></th>
                     <td>

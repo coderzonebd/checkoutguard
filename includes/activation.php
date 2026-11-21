@@ -71,6 +71,8 @@ function cg_create_blocked_orders_table()
         success_ratio INT NOT NULL,
         threshold_at_block INT NOT NULL,
         ip_address VARCHAR(100) DEFAULT '' NOT NULL,
+        action VARCHAR(10) DEFAULT 'block' NOT NULL,
+        order_id BIGINT UNSIGNED NULL DEFAULT NULL,
         PRIMARY KEY  (id)
     ) $charset_collate;";
 
@@ -388,13 +390,38 @@ function cg_ensure_contact_reveal_column()
 }
 
 /**
- * All 1.5.0 columns. Both checks always run; true only when both exist.
+ * 1.5.0 ratio hold: cg_blocked_orders.action ('block' | 'hold') and the
+ * held order's id. Existing rows are blocks.
+ */
+function cg_ensure_blocked_orders_hold_columns()
+{
+    global $wpdb;
+    $table = $wpdb->prefix . 'cg_blocked_orders';
+    $ok = true;
+    $defs = [
+        'action'   => "VARCHAR(10) NOT NULL DEFAULT 'block'",
+        'order_id' => 'BIGINT UNSIGNED NULL DEFAULT NULL',
+    ];
+    foreach ($defs as $name => $def) {
+        $col = $wpdb->get_results($wpdb->prepare("SHOW COLUMNS FROM {$table} LIKE %s", $name));
+        if (empty($col)) {
+            $wpdb->query("ALTER TABLE {$table} ADD COLUMN {$name} {$def}");
+            $col = $wpdb->get_results($wpdb->prepare("SHOW COLUMNS FROM {$table} LIKE %s", $name));
+        }
+        $ok = $ok && !empty($col);
+    }
+    return $ok;
+}
+
+/**
+ * All 1.5.0 columns. Every check always runs; true only when all exist.
  */
 function cg_ensure_150_schema()
 {
     $usage_counted = cg_ensure_usage_counted_columns();
     $reveal = cg_ensure_contact_reveal_column();
-    return $usage_counted && $reveal;
+    $hold = cg_ensure_blocked_orders_hold_columns();
+    return $usage_counted && $reveal && $hold;
 }
 
 /**
