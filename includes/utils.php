@@ -797,6 +797,59 @@ function cg_is_grandfathered($cache)
 
 define('CG_LAST_KNOWN_PLAN_OPTION', 'cg_last_known_plan');
 define('CG_LAST_KNOWN_PLAN_MAX_AGE', 72 * HOUR_IN_SECONDS);
+define('CG_LEGACY_DEADLINE_MAX_AHEAD', 60 * DAY_IN_SECONDS);
+
+/**
+ * legacy_key_deadline from a verified /sites/status payload (SiteKey contract §7):
+ * RFC3339 UTC with a "Z" suffix, e.g. 2027-02-19T00:00:00Z. Anything else,
+ * including date-only values and offsets, gives null. A date further than
+ * CG_LEGACY_DEADLINE_MAX_AHEAD after $synced_at is clamped to that bound.
+ *
+ * @param mixed $value     Raw field value.
+ * @param int   $synced_at Time of the verified sync.
+ * @return int|null Unix timestamp, or null when absent or invalid.
+ */
+function cg_parse_legacy_key_deadline($value, $synced_at)
+{
+    if (!is_string($value) || !preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/D', $value)) {
+        return null;
+    }
+    $ts = cg_parse_grandfathered_until($value);
+    if (!is_int($ts) || $ts === PHP_INT_MAX) {
+        return null;
+    }
+    return min($ts, (int) $synced_at + CG_LEGACY_DEADLINE_MAX_AHEAD);
+}
+
+/**
+ * Why the plan sync is failing, from the SiteKey state written by
+ * cg_sitekey_on_response(). Only a refusal recorded at or after the last
+ * verified sync counts; an older one was followed by a good sync.
+ *
+ * @param int $synced_at Time of the last verified sync.
+ * @return string 'expired' (403 legacy_expired), 'key' (claim_required,
+ *                site_key_required, site_key_mismatch) or '' (none: network,
+ *                5xx or anything else).
+ */
+function cg_plan_key_failure($synced_at)
+{
+    if (!function_exists('cg_sitekey_state')) {
+        return '';
+    }
+    $state = cg_sitekey_state();
+    $at = $state['legacy_blocked_at'] ?? null;
+    if (!is_int($at) || $at < $synced_at) {
+        return '';
+    }
+    $code = (string) ($state['legacy_code'] ?? '');
+    if ($code === 'legacy_expired') {
+        return 'expired';
+    }
+    if (in_array($code, ['claim_required', 'site_key_required', 'site_key_mismatch'], true)) {
+        return 'key';
+    }
+    return '';
+}
 
 /**
  * Remembers the plan from a verified /sites/status sync, so the paid features
@@ -821,12 +874,37 @@ function cg_remember_last_known_plan($config)
             $grandfathered_until === null ? 'no earlier verified value' : 'keeping the last verified value'
         ));
     }
+    $synced_at = function_exists('cg_reveal_now') ? cg_reveal_now() : time();
     update_option(CG_LAST_KNOWN_PLAN_OPTION, [
         'plan_slug' => cg_plan_slug($config),
         'status' => is_string($config['status'] ?? null) ? strtolower(trim($config['status'])) : null,
         'grandfathered_until' => $grandfathered_until,
-        'synced_at' => function_exists('cg_reveal_now') ? cg_reveal_now() : time(),
+        'synced_at' => $synced_at,
+        // SiteKey contract §7: only the signed status may set the site's deadline.
+        'legacy_key_deadline' => cg_parse_legacy_key_deadline($config['legacy_key_deadline'] ?? null, $synced_at),
     ], false);
+}
+
+/**
+ * Until when the last verified plan is kept while HQ refuses this site's key
+ * (claim_required, site_key_required, site_key_mismatch): the
+ * legacy_key_deadline from the last signed status (SiteKey contract §7).
+ * Null when there is no key refusal or no valid deadline; the plan then
+ * follows the 72-hour rule.
+ *
+ * @return int|null
+ */
+function cg_plan_key_grace_until()
+{
+    $last = get_option(CG_LAST_KNOWN_PLAN_OPTION, null);
+    if (!is_array($last) || !isset($last['synced_at']) || !is_int($last['synced_at'])) {
+        return null;
+    }
+    if (cg_plan_key_failure($last['synced_at']) !== 'key') {
+        return null;
+    }
+    $deadline = $last['legacy_key_deadline'] ?? null;
+    return is_int($deadline) ? $deadline : null;
 }
 
 /**
@@ -855,8 +933,24 @@ function cg_effective_plan()
             $synced_at = (int) $legacy;
         }
     }
-    if ($synced_at === null || $synced_at > $now || ($now - $synced_at) > CG_LAST_KNOWN_PLAN_MAX_AGE) {
+    if ($synced_at === null || $synced_at > $now) {
         return $none;
+    }
+    $failure = cg_plan_key_failure($synced_at);
+    if ($failure === 'expired') {
+        return $none;
+    }
+    if (($now - $synced_at) > CG_LAST_KNOWN_PLAN_MAX_AGE) {
+        $grace = cg_plan_key_grace_until();
+        if ($failure !== 'key' || $last === null || $grace === null || $now >= $grace) {
+            return $none;
+        }
+        return [
+            'plan_slug' => is_string($last['plan_slug'] ?? null) ? $last['plan_slug'] : null,
+            'status' => is_string($last['status'] ?? null) ? $last['status'] : null,
+            'grandfathered_until' => $last['grandfathered_until'] ?? null,
+            'source' => 'key_grace',
+        ];
     }
 
     $cache = get_transient('cg_api_cache');

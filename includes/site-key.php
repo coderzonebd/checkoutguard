@@ -717,6 +717,10 @@ function cg_render_sitekey_notice()
     echo ($mismatch
         ? esc_html__('The key stored here belongs to another domain (the site address changed or the key was copied). Orders still go through, but without the fraud check. Reconnect to get a key for this domain.', 'checkoutguard')
         : esc_html__('Headquarters needs this site to use its own key. Orders still go through, but without the fraud check.', 'checkoutguard')) . ' ';
+    $plan_note = cg_sitekey_plan_note();
+    if ($plan_note !== '') {
+        echo esc_html($plan_note) . ' ';
+    }
     if ($gate > cg_sitekey_now()) {
         echo esc_html(sprintf(
             /* translators: %s: time of the next automatic attempt */
@@ -729,6 +733,43 @@ function cg_render_sitekey_notice()
     echo '</p></div>';
 }
 add_action('admin_notices', 'cg_render_sitekey_notice');
+
+/**
+ * One sentence for the SiteKey notice on how long the paid plan is kept while
+ * HQ refuses the key (SiteKey contract §7). Empty when the plan rule does not
+ * depend on the refusal.
+ *
+ * @return string
+ */
+function cg_sitekey_plan_note()
+{
+    if (!function_exists('cg_plan_key_grace_until')) {
+        return '';
+    }
+    $last = get_option(CG_LAST_KNOWN_PLAN_OPTION, null);
+    if (!is_array($last) || !isset($last['synced_at']) || !is_int($last['synced_at'])) {
+        return '';
+    }
+    $failure = cg_plan_key_failure($last['synced_at']);
+    if ($failure === 'expired') {
+        return __('Paid features are off until this site is reconnected.', 'checkoutguard');
+    }
+    if ($failure !== 'key') {
+        return '';
+    }
+    $grace = cg_plan_key_grace_until();
+    if ($grace === null) {
+        return __('Paid features stay on for up to 72 hours after the last successful sync.', 'checkoutguard');
+    }
+    if ($grace <= cg_sitekey_now()) {
+        return __('Paid features are off until this site is reconnected.', 'checkoutguard');
+    }
+    return sprintf(
+        /* translators: %s: date until which paid features stay on */
+        __('Paid features stay on until %s.', 'checkoutguard'),
+        wp_date(get_option('date_format'), $grace)
+    );
+}
 
 function cg_handle_sitekey_reconnect()
 {
