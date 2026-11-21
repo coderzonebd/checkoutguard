@@ -125,4 +125,16 @@ reset_all(); sync($paid($iso($N + 90 * $D))); refuse('site_key_required'); $dl =
 ok('N7 clamped deadline: one date, the stored one', $dl === $N + 60 * $D && strpos(cg_sitekey_plan_note(), gmdate('Y-m-d', $dl)) !== false && strpos(cg_sitekey_plan_note(), gmdate('Y-m-d', $N + 90 * $D)) === false);
 reset_all(); sync($paid($iso($N + 10 * $D))); refuse('site_key_required'); drop_cache(); age(11 * $D); ok('N8 past deadline: note off', !cg_is_paid_plan() && strpos(cg_sitekey_plan_note(), 'are off') !== false);
 reset_all(); sync($paid($iso($N + $H))); refuse('site_key_required'); age(2 * $H); ok('N9 deadline passed inside 72h: still paid, 72h sentence', cg_is_paid_plan() && strpos(cg_sitekey_plan_note(), 'last successful connection') !== false);
+// D2 clone DB / site_key_mismatch: paid at most 60 days after the last good sync, never at
+// or after CG_LEGACY_HARD_END (strict "<"), with the admin notice the whole time.
+reset_all(); sync($paid($iso($N + 90 * $D))); refuse('site_key_mismatch'); drop_cache();
+$GLOBALS['__now'] = $N + 60 * $D - 1; $a = cg_is_paid_plan() && src() === 'key_grace' && strpos(cg_sitekey_plan_note(), gmdate('Y-m-d', $N + 60 * $D)) !== false;
+$GLOBALS['__now'] = $N + 60 * $D; ok('D2a mismatch: paid with dated notice until +60d, free at +60d', $a && !cg_is_paid_plan() && strpos(cg_sitekey_plan_note(), 'are off') !== false);
+if ($HE > 0) { $GLOBALS['__N'] = $HE - 30 * $D; }
+reset_all(); sync($paid($iso($HE + 10 * $D))); refuse('site_key_mismatch'); drop_cache();
+$st = get_option('cg_last_known_plan')['legacy_key_deadline'] ?? null;
+$GLOBALS['__now'] = $HE - 1; $a = cg_is_paid_plan() && strpos(cg_sitekey_plan_note(), gmdate('Y-m-d', $HE)) !== false;
+$GLOBALS['__now'] = $HE; $b = !cg_is_paid_plan() && strpos(cg_sitekey_plan_note(), 'are off') !== false;
+ok('D2b mismatch: stored deadline is the hard end, paid 1 s before, free and notice off at it', $HE > 0 && $st === $HE && $a && $b);
+$GLOBALS['__N'] = $N;
 echo "RESULT $pass/" . ($pass + $fail) . "\n";
