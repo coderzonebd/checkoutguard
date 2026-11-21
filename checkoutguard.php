@@ -3,7 +3,7 @@
 Plugin Name: CheckoutGuard
 Plugin URI: https://wordpress.org/plugins/checkoutguard/
 Description: Tracks incomplete WooCommerce checkouts, provides recovery tools, a dashboard, and fraud blocking.
-Version: 1.4.2
+Version: 1.4.3
 Requires Plugins: woocommerce
 WC requires at least: 7.0
 WC tested up to: 11.1.0
@@ -20,7 +20,7 @@ if (!defined('WPINC')) {
 }
 
 
-define('CG_VERSION', '1.4.2');
+define('CG_VERSION', '1.4.3');
 define('CG_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('CG_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('CG_PLUGIN_FILE', __FILE__);

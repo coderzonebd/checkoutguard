@@ -4,7 +4,7 @@ Tags: woocommerce, abandoned cart, checkout, invoice, fraud blocker
 Requires at least: 5.8
 Tested up to: 7.1
 Requires PHP: 8.0
-Stable tag: 1.4.2
+Stable tag: 1.4.3
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -308,6 +308,9 @@ After installation, go to **CheckoutGuard > Settings** and click **Sync Now**. I
 
 == Changelog ==
 
+= 1.4.3 =
+* Security fix: escape admin order data
+
 = 1.4.2 =
 * Fixed: a repeating key-rotation loop that could make the plugin call our server again and again after a new API key was issued. The plugin now retries once with the new key.
 * Improved: when a sync fails, the plugin now keeps its status instead of resetting it.
@@ -481,6 +484,9 @@ After installation, go to **CheckoutGuard > Settings** and click **Sync Now**. I
 * Admin settings for data retention and module toggles
 
 == Upgrade Notice ==
+
+= 1.4.3 =
+Security fix: escape admin order data.
 
 = 1.4.2 =
 Fixes a connection loop after API key changes. Recommended for all sites.
