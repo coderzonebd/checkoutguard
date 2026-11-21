@@ -3,7 +3,7 @@
 Plugin Name: CheckoutGuard
 Plugin URI: https://wordpress.org/plugins/checkoutguard/
 Description: Tracks incomplete WooCommerce checkouts, provides recovery tools, a dashboard, and fraud blocking.
-Version: 1.4.1
+Version: 1.4.2
 Requires Plugins: woocommerce
 WC requires at least: 7.0
 WC tested up to: 11.1.0
@@ -20,7 +20,7 @@ if (!defined('WPINC')) {
 }
 
 
-define('CG_VERSION', '1.4.1');
+define('CG_VERSION', '1.4.2');
 define('CG_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('CG_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('CG_PLUGIN_FILE', __FILE__);
@@ -165,8 +165,8 @@ function cg_init_plugin()
 
     add_action('wp_ajax_cg_save_page_settings', 'cg_handle_save_page_settings');
 
+    // No nopriv handler: only shop staff may look up courier history.
     add_action('wp_ajax_cg_live_ratio_check', 'cg_live_ratio_check_handler');
-    add_action('wp_ajax_nopriv_cg_live_ratio_check', 'cg_live_ratio_check_handler');
 
     add_action('woocommerce_thankyou', 'cg_delete_incomplete_checkout_on_order_completion', 10, 1);
     add_action('woocommerce_checkout_order_processed', 'cg_delete_incomplete_checkout_on_order_completion', 10, 1);

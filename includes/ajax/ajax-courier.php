@@ -465,10 +465,33 @@ function cg_get_courier_success_html($results, $phone_number)
 
 
 /**
+ * Whether the checkout-page live ratio lookup is allowed for this request:
+ * only for shop staff (manage_woocommerce), and only while the courier
+ * service is enabled. Customers - guests or logged in - must not be able to
+ * look up another phone number's delivery history.
+ *
+ * @return bool
+ */
+function cg_is_live_ratio_check_enabled()
+{
+    if (!current_user_can('manage_woocommerce')) {
+        return false;
+    }
+    $options = get_option('cg_plugin_options', []);
+    return !empty($options['enable_courier_service']);
+}
+
+/**
  * Handles the live AJAX request from the checkout page to get the success ratio.
  */
 function cg_live_ratio_check_handler()
 {
+    // Shop staff only, and never when Courier Analytics is turned off.
+    if (!cg_is_live_ratio_check_enabled()) {
+        wp_send_json_error(['message' => __('Not available.', 'checkoutguard')], 403);
+        return;
+    }
+
     check_ajax_referer('cg_live_ratio_check_nonce', 'nonce');
 
     // Rate limit: max 20 requests per IP per 10 minutes to prevent phone enumeration.

@@ -400,6 +400,10 @@ jQuery(function ($) {
     }
 
     $(document).on('input blur', phoneInputSelectors, function () {
+        // Disabled for customers and when the courier service is off (server decides).
+        if (!cg_checkout_params.live_ratio_enabled) {
+            return;
+        }
         var $input = $(this);
         var rawVal = $input.val();
         if (!rawVal || typeof rawVal !== 'string') {

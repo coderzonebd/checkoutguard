@@ -1256,7 +1256,9 @@ class CG_Validation_Engine
                     ]);
 
                     $default_ratio_msg = 'Your courier success ratio is {ratio}%, which is too low. Please contact us to complete your order.';
-                    $custom_ratio_msg = $options['ratio_blocker_message'] ?? $default_ratio_msg;
+                    // An empty saved message (the settings form stores '' when the
+                    // field is not on the submitted tab) must fall back to the default.
+                    $custom_ratio_msg = !empty($options['ratio_blocker_message']) ? $options['ratio_blocker_message'] : $default_ratio_msg;
                     $final_ratio_msg = str_replace('{ratio}', $success_rate, $custom_ratio_msg);
 
                     $result = CG_Validation_Result::block('blocked_ratio', $final_ratio_msg, 'courier_success_ratio', [
