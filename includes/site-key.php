@@ -25,7 +25,7 @@ define('CG_SITEKEY_BUDGET_WINDOW', HOUR_IN_SECONDS);
 define('CG_SITEKEY_BUDGET_MAX', 2);
 define('CG_SITEKEY_NONCE_WINDOW', 5 * MINUTE_IN_SECONDS);
 define('CG_SITEKEY_NONCE_TTL', 5 * MINUTE_IN_SECONDS);
-define('CG_SITEKEY_MAX_NONCES', 3);
+define('CG_SITEKEY_MAX_NONCES', 5);
 define('CG_SITEKEY_PENDING_TTL', HOUR_IN_SECONDS);
 
 function cg_sitekey_now()
@@ -347,7 +347,7 @@ function cg_sitekey_request($reason = 'auto')
 
 /**
  * REST: HQ posts the nonce here. Accepted only while a request of ours is
- * open and only in the documented shape. The last 3 are kept (newest wins),
+ * open and only in the documented shape. The last 5 are kept (newest wins),
  * so junk posted first cannot push out HQ's real nonce; the claim tries the
  * newest first. The answer is the same 200 in every case, so the route tells
  * an outsider nothing.
