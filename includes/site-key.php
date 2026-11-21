@@ -732,7 +732,9 @@ function cg_render_sitekey_notice()
             /* translators: %s: time of the next automatic attempt */
             __('Next automatic attempt: %s.', 'checkoutguard'),
             wp_date(get_option('date_format') . ' ' . get_option('time_format'), $gate)
-        ));
+        )) . ' ';
+        // No button while gated, so no "Click Reconnect now"; only the support line.
+        echo esc_html__('If it keeps failing, contact CheckoutGuard support.', 'checkoutguard');
     } else {
         echo '<a class="button button-secondary" href="' . esc_url($url) . '">' . esc_html__('Reconnect now', 'checkoutguard') . '</a> ';
         echo esc_html__('Click "Reconnect now". If it keeps failing, contact CheckoutGuard support.', 'checkoutguard');
@@ -767,20 +769,20 @@ function cg_sitekey_plan_note()
     if ($failure !== 'key' && $failure !== 'expired') {
         return '';
     }
-    // The sentence follows the plan rule itself, so it never says "on" once
-    // the 72-hour rule or the deadline has switched paid features off.
+    // The sentence follows the plan rule itself, so it never says "active"
+    // once the 72-hour rule or the deadline has paused the paid plan.
     if (!cg_is_paid_plan()) {
-        return __('Paid features are off until this site is reconnected.', 'checkoutguard');
+        return __('Your paid plan is paused on this site until it is reconnected.', 'checkoutguard');
     }
     $grace = cg_plan_key_grace_until();
     if ($grace !== null && $grace > cg_sitekey_now()) {
         return sprintf(
-            /* translators: %s: date until which paid features stay on */
-            __('Paid features stay on until %s.', 'checkoutguard'),
+            /* translators: %s: date until which the paid plan stays active */
+            __('Your paid plan stays active until %s.', 'checkoutguard'),
             wp_date(get_option('date_format'), $grace)
         );
     }
-    return __('Paid features stay on for up to 72 hours after the last successful connection.', 'checkoutguard');
+    return __('Your paid plan stays active for up to 72 hours after the last successful connection.', 'checkoutguard');
 }
 
 function cg_handle_sitekey_reconnect()

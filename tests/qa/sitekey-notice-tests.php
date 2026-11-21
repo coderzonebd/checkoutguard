@@ -110,13 +110,16 @@ $GLOBALS['__admin'] = false; ok('S8 not shown to a non-admin', notice() === '');
 $GLOBALS['__admin'] = true; $GLOBALS['__screen'] = 'edit-post'; ok('S8b not shown on another screen', notice() === '');
 $_GET['page'] = 'cg-settings'; ok('S8c shown on a CheckoutGuard page', substr_count(notice(), 'class="notice') === 1); unset($_GET['page']);
 
-// While the next automatic attempt is gated there is no button, so no A1;
-// still one notice with the T2 title and no key.
+// While the next automatic attempt is gated there is no button, so no A1 and
+// no "Reconnect" at all, but the support line stays; still one notice with the
+// T2 title and no key.
 reset_all(SHARED); cg_sitekey_on_response(403, 'legacy_expired', SHARED); $GLOBALS['__screen'] = 'dashboard';
 cg_sitekey_set_gate($GLOBALS['__now'] + 3600); $html = notice(); $t = text($html);
 ok('S9 gated: T2, next attempt time, no button and no A1, no key', strpos($t, $T2_TITLE . ' ' . $T2_BODY) === 0
     && strpos($t, 'Next automatic attempt:') !== false && strpos($html, 'button') === false
     && strpos($t, $A1) === false && preg_match('/key/i', $t) === 0 && substr_count($html, 'class="notice') === 1);
+ok('S9c gated: no "Reconnect" anywhere, the support line is shown', strpos($t, 'Reconnect') === false
+    && preg_match('/Next automatic attempt: [^.]+\. If it keeps failing, contact CheckoutGuard support\.$/', $t) === 1);
 
 // The gate is the first second an attempt is allowed: at gate == now the
 // button and A1 are back.
@@ -131,8 +134,19 @@ reset_all(OWN); $GLOBALS['__now'] = $N;
 $cfg = ['status' => 'active', 'plan' => 'pro', 'plan_slug' => 'pro', 'legacy_key_deadline' => gmdate('Y-m-d\TH:i:s\Z', $N + 90 * $D)];
 cg_remember_last_known_plan($cfg); set_transient('cg_api_cache', $cfg);
 $GLOBALS['__now'] = $N + 1; cg_sitekey_on_response(403, 'site_key_mismatch', OWN); $t = text(notice());
-ok('S10 deadline +90d is shown as +60d', strpos($t, 'Paid features stay on until ' . gmdate('Y-m-d', $N + 60 * $D) . '.') !== false
+ok('S10 deadline +90d is shown as +60d', strpos($t, $T2_TITLE . ' ' . $T2_BODY . ' Your paid plan stays active until ' . gmdate('Y-m-d', $N + 60 * $D) . '. ') === 0
     && strpos($t, gmdate('Y-m-d', $N + 90 * $D)) === false && preg_match('/key/i', $t) === 0);
+
+// The other two plan sentences inside the notice, full string, no key.
+$GLOBALS['__now'] = $N + 60 * $D; $t = text(notice());
+ok('S11 after the +60d bound: paused sentence in the notice, no key', strpos($t, $T2_TITLE . ' ' . $T2_BODY . ' Your paid plan is paused on this site until it is reconnected. ') === 0
+    && preg_match('/key/i', $t) === 0);
+reset_all(SHARED); $GLOBALS['__now'] = $N;
+$cfg = ['status' => 'active', 'plan' => 'pro', 'plan_slug' => 'pro'];
+cg_remember_last_known_plan($cfg); set_transient('cg_api_cache', $cfg);
+$GLOBALS['__now'] = $N + 1; cg_sitekey_on_response(403, 'site_key_required', SHARED); $t = text(notice());
+ok('S12 no deadline: 72-hour sentence in the notice, no key', strpos($t, $T2_TITLE . ' ' . $T2_BODY . ' Your paid plan stays active for up to 72 hours after the last successful connection. ') === 0
+    && preg_match('/key/i', $t) === 0);
 
 echo "== $pass pass, $fail fail\n";
 exit($fail === 0 ? 0 : 1);
