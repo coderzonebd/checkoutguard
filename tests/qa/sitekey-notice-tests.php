@@ -121,6 +121,11 @@ ok('S9 gated: T2, next attempt time, no button and no A1, no key', strpos($t, $T
 ok('S9c gated: no "Reconnect" anywhere, the support line is shown', strpos($t, 'Reconnect') === false
     && preg_match('/Next automatic attempt: [^.]+\. If it keeps failing, contact CheckoutGuard support\.$/', $t) === 1);
 
+// One second before the gate opens it is still gated: no button, no A1.
+cg_sitekey_set_gate($GLOBALS['__now'] + 1); $html = notice(); $t = text($html);
+ok('S9d gate == now+1: still gated, no button and no A1', strpos($html, 'button') === false
+    && strpos($t, $A1) === false && strpos($t, 'Next automatic attempt:') !== false);
+
 // The gate is the first second an attempt is allowed: at gate == now the
 // button and A1 are back.
 cg_sitekey_set_gate($GLOBALS['__now']); $html = notice(); $t = text($html);
