@@ -40,6 +40,11 @@ if (!empty($options['delete_on_uninstall'])) {
     delete_option('cg_custom_order_statuses');
     delete_option('cg_invoice_settings');
     delete_option('cg_api_log');
+    delete_option('cg_sitekey_next_allowed_at');
+    delete_option('cg_sitekey_backoff_step');
+    delete_option('cg_sitekey_recent_calls');
+    delete_option('cg_sitekey_retry_lock');
+    delete_transient('cg_key_requested');
 
     // Invoice numbering sequences and free-tier usage counters are stored
     // under dynamically-named options (cg_invoice_seq_all, cg_invoice_seq_2026,
