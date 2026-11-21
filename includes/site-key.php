@@ -502,14 +502,16 @@ function cg_sitekey_verify_delivery($payload, $signature, $site_host, $request_i
 
 /**
  * Keeps the last drop reason for the admin diagnostics. Holds no nonce, key
- * or payload and is never sent anywhere. The same reason is written at most
- * once a minute, so junk posts cannot turn into a stream of option writes.
+ * or payload and is never sent anywhere. At most one write a minute, whatever
+ * the reason, so junk posts (even with changing reasons) cannot turn into a
+ * stream of option writes. Within that minute the first reason is kept.
  */
 function cg_sitekey_note_drop($reason, $now)
 {
     $raw = cg_sitekey_read_raw(CG_SITEKEY_DROP_OPTION);
     $last = $raw === null ? null : maybe_unserialize($raw);
-    if (is_array($last) && ($last['reason'] ?? '') === $reason && $now - (int) ($last['at'] ?? 0) < MINUTE_IN_SECONDS) {
+    $at = is_array($last) ? (int) ($last['at'] ?? 0) : 0;
+    if ($at > 0 && $now >= $at && $now - $at < MINUTE_IN_SECONDS) {
         return;
     }
     update_option(CG_SITEKEY_DROP_OPTION, ['reason' => sanitize_key($reason), 'at' => (int) $now], false);
