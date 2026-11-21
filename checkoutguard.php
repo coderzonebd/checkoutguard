@@ -6,7 +6,7 @@ Description: Tracks incomplete WooCommerce checkouts, provides recovery tools, a
 Version: 1.4.2
 Requires Plugins: woocommerce
 WC requires at least: 7.0
-WC tested up to: 11.1.0
+WC tested up to: 11.3.1
 Author: Coder Zone BD
 Author URI: https://coderzonebd.com/
 Text Domain: checkoutguard
