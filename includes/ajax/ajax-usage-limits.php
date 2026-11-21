@@ -70,6 +70,12 @@ function cg_increment_usage_count($action_type)
  */
 function cg_decrement_usage_count($action_type)
 {
+    // contact_reveals only ever goes up (HQ answers 400 to a decrement):
+    // deleting a record or an order must not give a reveal back.
+    if ($action_type === 'contact_reveals') {
+        return;
+    }
+
     // Immediately update the local transient for a faster UI response.
     $config = get_transient('cg_api_cache');
     if ($config && isset($config['usage'][$action_type]) && $config['usage'][$action_type] > 0) {
@@ -102,6 +108,7 @@ function cg_get_usage_warnings()
         'fraud_addresses' => __('Blocked Addresses', 'checkoutguard'),
         'fraud_devices'   => __('Blocked Devices', 'checkoutguard'),
         'courier_checks'  => __('Courier API Checks', 'checkoutguard'),
+        'contact_reveals' => __('Full Contact Details', 'checkoutguard'),
     ];
     $warnings = [];
     foreach ($config['limits'] as $type => $limit) {
@@ -170,6 +177,7 @@ function cg_get_limit_reached_message($action_type)
         'fraud_addresses' => __('Blocked Addresses', 'checkoutguard'),
         'fraud_devices'   => __('Blocked Devices', 'checkoutguard'),
         'courier_checks'  => __('Courier API Checks', 'checkoutguard'),
+        'contact_reveals' => __('Full Contact Details', 'checkoutguard'),
     ];
     $label = $labels[$action_type] ?? $action_type;
     return sprintf(

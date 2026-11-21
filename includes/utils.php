@@ -137,6 +137,11 @@ function cg_call_hq_api($endpoint, $body = [], $method = 'POST', $require_api_ke
     } else {
         $timeout = 15;
     }
+    // A caller on a customer-facing path (the period sync before a new
+    // incomplete checkout is saved) may ask for a shorter timeout.
+    if (isset($GLOBALS['cg_hq_timeout_override']) && (int) $GLOBALS['cg_hq_timeout_override'] > 0) {
+        $timeout = min($timeout, (int) $GLOBALS['cg_hq_timeout_override']);
+    }
 
     $args = [
         'method' => $method,

@@ -518,6 +518,13 @@ function cg_render_account_usage_tab()
                     $cache['usage']['checkouts'] ?? 0,
                     $cache['limits']['checkouts'] ?? 0
                 ); ?>
+                <?php if (isset($cache['limits']['contact_reveals'])) {
+                    cg_render_usage_row(
+                        __('Full Contact Details (this period)', 'checkoutguard'),
+                        $cache['usage']['contact_reveals'] ?? 0,
+                        $cache['limits']['contact_reveals']
+                    );
+                } ?>
             </div>
 
             <!-- Fraud Protection -->

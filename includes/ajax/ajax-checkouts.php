@@ -189,13 +189,25 @@ function cg_handle_save_checkout_data()
             $data_to_save['cart_value'] = 0.00;
         }
 
+        // Free contact reveals (1.5.0): decide before the insert, save the
+        // record no matter what, then count it. The record is revealed only
+        // after HQ confirmed the count; any failure leaves it masked.
+        $reveal_decision = function_exists('cg_contact_reveal_decide')
+            ? cg_contact_reveal_decide()
+            : ['count' => false, 'until' => null];
+
         $result = $wpdb->insert(
             $table_name,
             $data_to_save,
             cg_get_db_formats($data_to_save)
         );
         if ($result !== false) {
+            $new_record_id = (int) $wpdb->insert_id;
             cg_increment_usage_count('checkouts');
+            if (function_exists('cg_contact_reveal_commit')) {
+                cg_contact_reveal_commit($new_record_id, $reveal_decision);
+            }
+            $wpdb->insert_id = $new_record_id;
             wp_send_json_success(['message' => 'Checkout data saved.', 'record_id' => $wpdb->insert_id]);
         } else {
             wp_send_json_error(['message' => 'Failed to save new checkout data.']);
@@ -247,8 +259,9 @@ function cg_get_incomplete_checkout_details_ajax_handler()
             <span class="cg-detail-status status-<?php echo esc_attr($entry->status); ?>"><?php echo esc_html($status_label); ?></span>
         </div>
 
+        <?php $cg_show_contact = cg_can_show_contact($entry); ?>
         <div class="cg-detail-grid">
-            <?php if (!cg_is_pro_plan()): ?>
+            <?php if (!$cg_show_contact): ?>
             <div class="cg-pro-locked-hover">
                 <div class="cg-pro-hover-overlay">
                     <span class="dashicons dashicons-lock" style="font-size:28px;width:28px;height:28px;line-height:28px;"></span>
@@ -262,7 +275,7 @@ function cg_get_incomplete_checkout_details_ajax_handler()
                     <tr>
                         <td><?php _e('Email', 'checkoutguard'); ?></td>
                         <td>
-                            <?php if (!cg_is_pro_plan() && !empty($entry->email)): ?>
+                            <?php if (!$cg_show_contact && !empty($entry->email)): ?>
                                 <span class="cg-pro-masked" data-cg-tooltip="<?php esc_attr_e('Upgrade to Pro to see full email', 'checkoutguard'); ?>">
                                     <?php echo esc_html(cg_mask_email($entry->email)); ?>
                                 </span>
@@ -274,7 +287,7 @@ function cg_get_incomplete_checkout_details_ajax_handler()
                     <tr>
                         <td><?php _e('Phone', 'checkoutguard'); ?></td>
                         <td>
-                            <?php if (!cg_is_pro_plan() && !empty($entry->phone)): ?>
+                            <?php if (!$cg_show_contact && !empty($entry->phone)): ?>
                                 <span class="cg-pro-masked" data-cg-tooltip="<?php esc_attr_e('Upgrade to Pro to see full number', 'checkoutguard'); ?>">
                                     <?php echo esc_html(cg_mask_phone($entry->phone)); ?>
                                 </span>
@@ -306,7 +319,7 @@ function cg_get_incomplete_checkout_details_ajax_handler()
                     <?php endif; ?>
                 </table>
             </div>
-            <?php if (!cg_is_pro_plan()): ?>
+            <?php if (!$cg_show_contact): ?>
             </div><!-- .cg-pro-locked-hover -->
             <?php endif; ?>
 
@@ -340,7 +353,7 @@ function cg_get_incomplete_checkout_details_ajax_handler()
             ?>
                 <div class="cg-detail-notice cg-detail-notice-warning"><?php _e('No phone number available for this customer.', 'checkoutguard'); ?></div>
             <?php elseif (!preg_match('/^01[3-9]\d{8}$/', $phone)): ?>
-                <div class="cg-detail-notice cg-detail-notice-warning"><?php echo sprintf(__('Phone number %s is not a valid Bangladeshi format.', 'checkoutguard'), '<strong>' . esc_html(!cg_is_pro_plan() ? cg_mask_phone($phone) : $phone) . '</strong>'); ?></div>
+                <div class="cg-detail-notice cg-detail-notice-warning"><?php echo sprintf(__('Phone number %s is not a valid Bangladeshi format.', 'checkoutguard'), '<strong>' . esc_html(!$cg_show_contact ? cg_mask_phone($phone) : $phone) . '</strong>'); ?></div>
             <?php else:
                 $ratio_data = cg_perform_all_api_calls($phone, 0, $force_refresh);
                 $summary = $ratio_data['summary'] ?? null;

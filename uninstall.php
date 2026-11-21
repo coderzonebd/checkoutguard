@@ -63,6 +63,9 @@ if (!empty($options['delete_on_uninstall'])) {
         }
     }
 
+    delete_option('cg_period_synced_for');
+    delete_option('cg_period_sync_lock');
+    delete_transient('cg_period_sync_backoff');
     delete_transient('cg_api_cache');
     delete_transient('cg_last_synced');
 

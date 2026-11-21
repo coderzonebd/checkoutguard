@@ -14,9 +14,9 @@ function cg_plugin_activate()
     cg_create_database_tables();
     cg_create_blocked_orders_table();
     cg_upgrade_fraud_tables();
-    // Only record the schema version once every blocklist table really has
-    // usage_counted; otherwise cg_maybe_run_migrations() retries on a later load.
-    if (cg_ensure_usage_counted_columns()) {
+    // Only record the schema version once every 1.5.0 column really exists
+    // (blocklist usage_counted, checkouts contact_revealed_until); otherwise cg_maybe_run_migrations() retries on a later load.
+    if (cg_ensure_150_schema()) {
         update_option('cg_db_version', CG_VERSION);
     }
     // Set initial status and trigger first sync
@@ -356,6 +356,37 @@ function cg_ensure_usage_counted_columns()
 }
 
 /**
+ * Makes sure cg_incomplete_checkouts has contact_revealed_until (1.5.0):
+ * the UTC end of the usage period in which a Free record was given the full
+ * email and phone. NULL (all older rows included) means masked on Free.
+ * Checked again after ALTER, like usage_counted.
+ */
+function cg_ensure_contact_reveal_column()
+{
+    global $wpdb;
+    $table = $wpdb->prefix . 'cg_incomplete_checkouts';
+    $col = $wpdb->get_results("SHOW COLUMNS FROM {$table} LIKE 'contact_revealed_until'");
+    if (empty($col)) {
+        $wpdb->query("ALTER TABLE {$table} ADD COLUMN contact_revealed_until DATETIME NULL DEFAULT NULL");
+        $col = $wpdb->get_results("SHOW COLUMNS FROM {$table} LIKE 'contact_revealed_until'");
+    }
+    if (function_exists('cg_checkouts_has_reveal_column')) {
+        cg_checkouts_has_reveal_column(true);
+    }
+    return !empty($col);
+}
+
+/**
+ * All 1.5.0 columns. Both checks always run; true only when both exist.
+ */
+function cg_ensure_150_schema()
+{
+    $usage_counted = cg_ensure_usage_counted_columns();
+    $reveal = cg_ensure_contact_reveal_column();
+    return $usage_counted && $reveal;
+}
+
+/**
  * Handles tasks upon plugin deactivation.
  */
 function cg_plugin_deactivate()
@@ -407,10 +438,10 @@ function cg_maybe_run_migrations()
             update_option('cg_plugin_options', $options);
         }
 
-        // Bump the version only when the 1.5.0 column is really there. On
+        // Bump the version only when the 1.5.0 columns are really there. On
         // failure the next page load (after a short pause, so a host that
         // refuses ALTER is not hit with dbDelta on every request) tries again.
-        if (cg_ensure_usage_counted_columns()) {
+        if (cg_ensure_150_schema()) {
             update_option('cg_db_version', CG_VERSION);
             delete_transient('cg_migration_retry_pause');
         } else {
