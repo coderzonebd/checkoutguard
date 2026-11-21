@@ -58,7 +58,7 @@ function cg_parse_rfc3339_utc($value)
     if (!is_string($value) || $value === '') {
         return null;
     }
-    $re = '/^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(?:([Zz])|([+-])(\d{2}):(\d{2}))$/';
+    $re = '/^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(?:([Zz])|([+-])(\d{2}):(\d{2}))$/D';
     if (!preg_match($re, $value, $m)) {
         return null;
     }

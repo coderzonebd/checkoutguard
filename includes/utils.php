@@ -323,10 +323,12 @@ function cg_log_api_hit($endpoint, $method, $success, $status_code = null, $mess
  * array on success, or a WP_Error on failure — same convention as
  * cg_call_hq_api() itself, so callers handle both the same way.
  *
- * This is what makes the plan/settings/limits data tamper-evident: a
- * spoofed server response, a MITM'd reply, or a directly-edited local cache
- * all fail this check, because none of them can produce a signature that
- * verifies against our public key without the server's private key.
+ * This makes the plan/settings/limits data in a status reply tamper-evident:
+ * a spoofed server response or a MITM'd reply fails this check, because it
+ * cannot carry a signature that verifies against our public key without the
+ * server's private key. Only the reply is checked here: the verified payload
+ * is then stored in the cg_api_cache transient and read back without a
+ * second check, so anyone who can write to the database can still change it.
  *
  * @param array|WP_Error $response The raw decoded response from cg_call_hq_api().
  * @return array|WP_Error The verified payload, or a WP_Error explaining why it wasn't trusted.
@@ -684,9 +686,45 @@ function cg_plan_slug($cache)
 }
 
 /**
+ * Parses the `grandfathered_until` value of the signed status payload.
+ * Two forms are accepted:
+ *   - a date `YYYY-MM-DD` (the HQ format, Tanvir 21 Nov). The site keeps Pro
+ *     through the whole of that UTC day, so the value returned is 00:00:00
+ *     UTC of the next day. Lifetime plans send `2099-12-31`.
+ *   - an RFC 3339 date-time with an offset, which is used as it is.
+ * Anything else (no zone, impossible date, padding, non-string) is invalid.
+ *
+ * @param mixed $value
+ * @return int|null Unix timestamp (UTC) of the first second without Pro, or null.
+ */
+function cg_parse_grandfathered_until($value)
+{
+    if (!is_string($value) || $value === '') {
+        return null;
+    }
+    if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/D', $value, $m)) {
+        $year = (int) $m[1];
+        $month = (int) $m[2];
+        $day = (int) $m[3];
+        if (!checkdate($month, $day, $year)) {
+            return null;
+        }
+        $ts = gmmktime(0, 0, 0, $month, $day + 1, $year);
+        // A 32-bit PHP cannot hold dates after 2038 (e.g. lifetime 2099-12-31).
+        return is_int($ts) ? $ts : PHP_INT_MAX;
+    }
+    if (!function_exists('cg_parse_rfc3339_utc')) {
+        return null;
+    }
+    $ts = cg_parse_rfc3339_utc($value);
+    return ($ts === null || $ts === false) ? null : (int) $ts;
+}
+
+/**
  * True when a Basic/Standard site is still inside its grandfather window.
- * The field must be present, non-null, a valid RFC3339 time with a zone, and
- * in the future. A missing key (older HQ) or null means no grandfather.
+ * The field must be present, non-null, a valid date (`YYYY-MM-DD`, valid
+ * through that UTC day) or RFC 3339 time with a zone, and not yet passed.
+ * A missing key (older HQ) or null means no grandfather.
  *
  * @param mixed $cache The cg_api_cache value.
  * @return bool
@@ -696,16 +734,12 @@ function cg_is_grandfathered($cache)
     if (!in_array(cg_plan_slug($cache), CG_GRANDFATHERED_PLAN_SLUGS, true)) {
         return false;
     }
-    $until_raw = $cache['grandfathered_until'] ?? null;
-    if (!is_string($until_raw) || !function_exists('cg_parse_rfc3339_utc')) {
-        return false;
-    }
-    $until = cg_parse_rfc3339_utc($until_raw);
-    if ($until === null || $until === false) {
+    $until = cg_parse_grandfathered_until($cache['grandfathered_until'] ?? null);
+    if ($until === null) {
         return false;
     }
     $now = function_exists('cg_reveal_now') ? cg_reveal_now() : time();
-    return $now < (int) $until;
+    return $now < $until;
 }
 
 define('CG_LAST_KNOWN_PLAN_OPTION', 'cg_last_known_plan');
