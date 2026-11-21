@@ -126,22 +126,34 @@ function cg_sitekey_insert_lock($token)
 {
     global $wpdb;
     $autoload = function_exists('wp_determine_option_autoload_value') ? 'off' : 'no';
-    $inserted = $wpdb->query($wpdb->prepare(
+    $wpdb->query($wpdb->prepare(
         "INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, %s)",
         CG_SITEKEY_LOCK_OPTION,
         (string) $token,
         $autoload
     ));
+    $won = ((int) $wpdb->rows_affected === 1);
+    cg_sitekey_forget_lock_cache();
+    return $won;
+}
+
+/**
+ * Drops every cached copy of the lock row after a raw query, so a later
+ * get_option() in this request reads the database: the option itself, the
+ * "does not exist" list and the autoloaded options.
+ */
+function cg_sitekey_forget_lock_cache()
+{
     wp_cache_delete(CG_SITEKEY_LOCK_OPTION, 'options');
     wp_cache_delete('notoptions', 'options');
-    return $inserted === 1;
+    wp_cache_delete('alloptions', 'options');
 }
 
 /**
  * Takes the lock. The option value is the time the lock was taken. A lock
- * older than CG_SITEKEY_LOCK_STALE_AFTER (the holder died) is deleted, but
- * only if it still holds the same value, and the insert is tried again, so
- * two processes that both saw the stale lock cannot both win.
+ * older than CG_SITEKEY_LOCK_STALE_AFTER (the holder died) is taken over with
+ * a guarded UPDATE that only matches the stale value, so two processes that
+ * both saw the stale lock cannot both win.
  *
  * @return string|false The lock value (to release it), or false if busy.
  */
@@ -162,17 +174,17 @@ function cg_sitekey_acquire_lock($now)
     if ((int) $held > $now - CG_SITEKEY_LOCK_STALE_AFTER) {
         return false;
     }
-    $deleted = $wpdb->query($wpdb->prepare(
-        "DELETE FROM {$wpdb->options} WHERE option_name = %s AND option_value = %s",
+    // Take over the stale row in one statement: only the process whose
+    // UPDATE still finds the old value changes the row, so exactly one wins.
+    $wpdb->query($wpdb->prepare(
+        "UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s AND option_value = %s",
+        (string) $token,
         CG_SITEKEY_LOCK_OPTION,
         (string) $held
     ));
-    wp_cache_delete(CG_SITEKEY_LOCK_OPTION, 'options');
-    wp_cache_delete('notoptions', 'options');
-    if (!$deleted) {
-        return false;
-    }
-    return cg_sitekey_insert_lock($token) ? $token : false;
+    $won = ((int) $wpdb->rows_affected === 1);
+    cg_sitekey_forget_lock_cache();
+    return $won ? $token : false;
 }
 
 /**
@@ -186,8 +198,7 @@ function cg_sitekey_release_lock($token)
         CG_SITEKEY_LOCK_OPTION,
         (string) $token
     ));
-    wp_cache_delete(CG_SITEKEY_LOCK_OPTION, 'options');
-    wp_cache_delete('notoptions', 'options');
+    cg_sitekey_forget_lock_cache();
 }
 
 /**
