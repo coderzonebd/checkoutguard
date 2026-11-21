@@ -1,0 +1,29 @@
+# prod guard: prod is the release branch and only ever receives dev.
+# A pull request into prod from any other branch or from a fork fails here.
+name: prod guard
+
+on:
+  pull_request:
+    branches: [prod]
+    types: [opened, reopened, edited, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    name: PR source is dev
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check where this PR comes from
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPO: ${{ github.repository }}
+        run: |
+          if [ "$HEAD_REPO" != "$BASE_REPO" ] || [ "$HEAD_REF" != "dev" ]; then
+            echo "::error title=Wrong source branch::Pull requests into prod must come from ${BASE_REPO}:dev, not ${HEAD_REPO}:${HEAD_REF}."
+            exit 1
+          fi
+          echo "Release PR from ${HEAD_REPO}:dev: OK"
