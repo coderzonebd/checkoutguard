@@ -14,8 +14,8 @@
  * through cg_sitekey_request_site_key(), which respects one gate
  * (option cg_sitekey_next_allowed_at, UTC timestamp) and a budget of at most
  * CG_SITEKEY_MAX_CALLS_PER_HOUR calls in any sliding 60-minute window. The
- * decision to call is taken under an atomic lock (add_option on a unique
- * option_name), so two PHP processes never call together.
+ * decision to call is taken under an atomic lock (INSERT IGNORE on the
+ * unique option_name), so two PHP processes never call together.
  *
  * All times are UTC Unix timestamps (time()), never current_time().
  *
@@ -115,9 +115,32 @@ function cg_sitekey_backoff_seconds($step)
 }
 
 /**
+ * Inserts the lock row atomically. add_option() is not usable here: it
+ * checks for the option in PHP first and then runs INSERT … ON DUPLICATE KEY
+ * UPDATE (an upsert), so two processes can both "win". INSERT IGNORE on the
+ * unique option_name inserts for exactly one of them.
+ *
+ * @return bool True only if this call created the row.
+ */
+function cg_sitekey_insert_lock($token)
+{
+    global $wpdb;
+    $autoload = function_exists('wp_determine_option_autoload_value') ? 'off' : 'no';
+    $inserted = $wpdb->query($wpdb->prepare(
+        "INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, %s)",
+        CG_SITEKEY_LOCK_OPTION,
+        (string) $token,
+        $autoload
+    ));
+    wp_cache_delete(CG_SITEKEY_LOCK_OPTION, 'options');
+    wp_cache_delete('notoptions', 'options');
+    return $inserted === 1;
+}
+
+/**
  * Takes the lock. The option value is the time the lock was taken. A lock
  * older than CG_SITEKEY_LOCK_STALE_AFTER (the holder died) is deleted, but
- * only if it still holds the same value, and add_option is tried again, so
+ * only if it still holds the same value, and the insert is tried again, so
  * two processes that both saw the stale lock cannot both win.
  *
  * @return string|false The lock value (to release it), or false if busy.
@@ -128,13 +151,13 @@ function cg_sitekey_acquire_lock($now)
     // "<time taken>-<random>": the time decides staleness, the random part
     // makes the guarded release/delete match only this holder's row.
     $token = (int) $now . '-' . wp_rand(100000, 999999);
-    if (add_option(CG_SITEKEY_LOCK_OPTION, $token, '', 'no')) {
+    if (cg_sitekey_insert_lock($token)) {
         return $token;
     }
     $held = cg_sitekey_read_option_raw(CG_SITEKEY_LOCK_OPTION);
     if ($held === null) {
-        // Released between our add_option and read; try once more.
-        return add_option(CG_SITEKEY_LOCK_OPTION, $token, '', 'no') ? $token : false;
+        // Released between our insert and read; try once more.
+        return cg_sitekey_insert_lock($token) ? $token : false;
     }
     if ((int) $held > $now - CG_SITEKEY_LOCK_STALE_AFTER) {
         return false;
@@ -149,7 +172,7 @@ function cg_sitekey_acquire_lock($now)
     if (!$deleted) {
         return false;
     }
-    return add_option(CG_SITEKEY_LOCK_OPTION, $token, '', 'no') ? $token : false;
+    return cg_sitekey_insert_lock($token) ? $token : false;
 }
 
 /**
