@@ -1,6 +1,6 @@
 <?php
 /**
- * SiteKey: calling POST /sites/request-site-key without ever looping (1.4.3).
+ * SiteKey: calling POST /sites/request-site-key without ever looping (1.4.2).
  *
  * HQ limits request-site-key per client IP and answers 429 with a
  * Retry-After header when the limit is hit. The plugin then:

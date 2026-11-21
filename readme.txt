@@ -4,7 +4,7 @@ Tags: woocommerce, abandoned cart, checkout, invoice, fraud blocker
 Requires at least: 5.8
 Tested up to: 7.1
 Requires PHP: 8.0
-Stable tag: 1.4.3
+Stable tag: 1.4.2
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -308,15 +308,15 @@ After installation, go to **CheckoutGuard > Settings** and click **Sync Now**. I
 
 == Changelog ==
 
-= 1.4.3 =
-* Security fix: escape admin order data
-
 = 1.4.2 =
+* Security: order data shown by the admin JavaScript on CheckoutGuard screens is now escaped (XSS fix).
 * Fixed: a repeating key-rotation loop that could make the plugin call our server again and again after a new API key was issued. The plugin now retries once with the new key.
+* Fixed: when our server answers "too many requests" (HTTP 429) to a new site key request, the plugin now waits (honouring Retry-After, at most 24 hours) and retries once, instead of asking again in a loop. At most two such requests are made per hour, and only one at a time.
 * Improved: when a sync fails, the plugin now keeps its status instead of resetting it.
 * Security: the live courier success-ratio lookup on the checkout page is now available to shop staff only (not to guests or logged-in customers).
 * Fixed: blocked customers saw an empty error message after the settings were saved; the default message is shown again.
 * Improved: settings sync. Changes that our server rejects or ignores are now rolled back with a clear admin notice, changes that cannot be confirmed show a warning and are matched at the next sync, and the settings request now times out after 5 seconds. A "Settings saved." message is shown after a successful save.
+* Maintenance: line endings normalised to LF in all text files.
 
 = 1.4.1 =
 * Feature: Universal 6-Layer Validation Engine (`CG_Validation_Engine`) — complete fraud, duplicate, and courier protection across Classic WooCommerce, Gutenberg Checkout Block (Twenty Twenty-Five theme / FSE), CartFlows funnels, and Custom Landing Page order systems (`co-landing-pages` etc.).
@@ -485,11 +485,8 @@ After installation, go to **CheckoutGuard > Settings** and click **Sync Now**. I
 
 == Upgrade Notice ==
 
-= 1.4.3 =
-Security fix: escape admin order data.
-
 = 1.4.2 =
-Fixes a connection loop after API key changes. Recommended for all sites.
+Security fix for the admin screens and a fix for a connection loop after API key changes. Recommended for all sites.
 
 = 1.4.1 =
 Universal multi-platform release: Introduces the Universal 6-Layer Validation Engine protecting Classic WooCommerce, Gutenberg Checkout Blocks (Twenty Twenty-Five theme / FSE), CartFlows, and Custom Landing Pages. Adds dynamic Incomplete Checkout Tracking, Universal Live Courier Ratio checks, and restored native order bulk actions. Highly recommended for all users.
