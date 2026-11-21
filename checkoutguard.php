@@ -42,6 +42,7 @@ define('CG_PRICING_URL', 'https://coderzonebd.com/products/checkoutguard');
 
 require_once CG_INC_DIR . 'utils.php';
 require_once CG_INC_DIR . 'analytics.php';
+require_once CG_INC_DIR . 'sitekey-request.php';
 
 /**
  * Declares compatibility with WooCommerce High-Performance Order Storage.

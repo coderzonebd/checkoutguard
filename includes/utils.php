@@ -190,7 +190,12 @@ function cg_call_hq_api($endpoint, $body = [], $method = 'POST', $require_api_ke
     if ($response_code >= 300) {
         $error_message = $response_body['message'] ?? $response_body['error'] ?? 'Unknown API Error';
         cg_log_api_hit($endpoint, $method, false, $response_code, $error_message);
-        return new WP_Error('api_error', $error_message, ['status' => $response_code]);
+        $error_data = ['status' => $response_code];
+        if ($response_code === 429) {
+            // Raw header; the caller decides how to use it (SiteKey T1).
+            $error_data['retry_after'] = wp_remote_retrieve_header($response, 'retry-after');
+        }
+        return new WP_Error('api_error', $error_message, $error_data);
     }
 
     // A 2xx response with an endpoint-shaped-but-empty api_key (HQ has no key
