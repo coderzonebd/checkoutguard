@@ -236,6 +236,11 @@ function cg_sitekey_on_response($http_code, $code, $sent_key)
             return;
         }
         $state = cg_sitekey_state();
+        // mismatch_at is written once and cleared only by a confirmed key
+        // (cg_sitekey_commit). A good status sync in between does not reset
+        // it, so a repeat mismatch keeps the old legacy_blocked_at, which is
+        // older than that sync: the plan then follows the 72-hour rule, not
+        // the key grace (fail-safe, SiteKey contract §7).
         if (empty($state['mismatch_at'])) {
             $state['mismatch_at'] = cg_sitekey_now();
             $state['legacy_blocked_at'] = $state['mismatch_at'];

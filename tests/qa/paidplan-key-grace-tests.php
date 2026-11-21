@@ -99,6 +99,19 @@ reset_all(); sync($paid($iso($HE + 10 * $D))); refuse('site_key_required'); drop
 $GLOBALS['__now'] = $HE - 1; $a = cg_is_paid_plan(); $GLOBALS['__now'] = $HE;
 ok('H3 key grace ends at hard end', $HE > 0 && $a && !cg_is_paid_plan());
 $GLOBALS['__N'] = $N;
+// M repeat site_key_mismatch after a good sync (real handler, dummy key)
+$K = CG_SITEKEY_PREFIX . 'qa-dummy-not-a-key';
+reset_all(); update_option('cg_plugin_options', ['api_key' => $K]); sync($paid($iso($N + 10 * $D)));
+cg_sitekey_on_response(403, 'site_key_mismatch', $K); $m1 = cg_sitekey_state()['legacy_blocked_at'] ?? null;
+age($D); sync($paid($iso($N + 10 * $D))); age(60); cg_sitekey_on_response(403, 'site_key_mismatch', $K);
+ok('M1 repeat mismatch keeps first legacy_blocked_at', $m1 === $N && (cg_sitekey_state()['legacy_blocked_at'] ?? null) === $m1);
+drop_cache(); age(4 * $D); ok('M2 repeat mismatch after good sync follows 72h rule', !cg_is_paid_plan());
+// G grandfathered_until on the key_grace path is validated
+reset_all(); sync($paid($iso($N + 10 * $D))); $l = get_option('cg_last_known_plan'); $l['grandfathered_until'] = 1234567890; update_option('cg_last_known_plan', $l);
+refuse('site_key_required'); drop_cache(); age(4 * $D); $e = cg_effective_plan();
+ok('G1 non-string grandfathered_until dropped on key_grace', $e['source'] === 'key_grace' && $e['grandfathered_until'] === null);
+$l['grandfathered_until'] = '2099-12-31'; update_option('cg_last_known_plan', $l); $e = cg_effective_plan();
+ok('G2 valid grandfathered_until kept on key_grace', $e['source'] === 'key_grace' && $e['grandfathered_until'] === '2099-12-31');
 // B10 notice sentence
 reset_all(); sync($paid($iso($N + 10 * $D))); refuse('site_key_required'); ok('N1 note with date', strpos(cg_sitekey_plan_note(), gmdate('Y-m-d', $N + 10 * $D)) !== false);
 reset_all(); sync($paid()); refuse('site_key_required'); ok('N2 note 72h', strpos(cg_sitekey_plan_note(), '72 hours') !== false);

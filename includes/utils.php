@@ -950,7 +950,7 @@ function cg_effective_plan()
         return [
             'plan_slug' => is_string($last['plan_slug'] ?? null) ? $last['plan_slug'] : null,
             'status' => is_string($last['status'] ?? null) ? $last['status'] : null,
-            'grandfathered_until' => $last['grandfathered_until'] ?? null,
+            'grandfathered_until' => cg_grandfathered_until_or_previous($last['grandfathered_until'] ?? null, null),
             'source' => 'key_grace',
         ];
     }
