@@ -718,10 +718,11 @@ function cg_render_sitekey_notice()
     }
     $gate = cg_sitekey_gate();
     $url = wp_nonce_url(admin_url('admin-post.php?action=cg_sitekey_reconnect'), 'cg_sitekey_reconnect');
+    // One notice with the same text for every refusal code (409 claim_required,
+    // 403 legacy_expired, site_key_required, site_key_mismatch): checks are off
+    // in all of them. The text never mentions a key.
     echo '<div class="notice notice-error"><p><strong>' . esc_html__('CheckoutGuard is not protecting checkouts right now.', 'checkoutguard') . '</strong> ';
-    echo ($mismatch
-        ? esc_html__('The key stored here belongs to another domain (the site address changed or the key was copied). Orders still go through, but without the fraud check. Reconnect to get a key for this domain.', 'checkoutguard')
-        : esc_html__('Headquarters needs this site to use its own key. Orders still go through, but without the fraud check.', 'checkoutguard')) . ' ';
+    echo esc_html__('A security update needs to finish on this site. Orders still go through, but without the fraud check.', 'checkoutguard') . ' ';
     $plan_note = cg_sitekey_plan_note();
     if ($plan_note !== '') {
         echo esc_html($plan_note) . ' ';
@@ -733,7 +734,8 @@ function cg_render_sitekey_notice()
             wp_date(get_option('date_format') . ' ' . get_option('time_format'), $gate)
         ));
     } else {
-        echo '<a class="button button-secondary" href="' . esc_url($url) . '">' . esc_html__('Reconnect now', 'checkoutguard') . '</a>';
+        echo '<a class="button button-secondary" href="' . esc_url($url) . '">' . esc_html__('Reconnect now', 'checkoutguard') . '</a> ';
+        echo esc_html__('Click "Reconnect now". If it keeps failing, contact CheckoutGuard support.', 'checkoutguard');
     }
     echo '</p></div>';
 }
