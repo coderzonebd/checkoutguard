@@ -626,22 +626,83 @@ function cg_cleanup_expired_blocks_handler()
 }
 
 /**
- * Checks if the current site is on a Pro (non-Free) plan.
- * Fail-closed: returns false if cache is missing or plan is unknown.
+ * Plan slugs that always unlock the Pro features. Matched exactly after
+ * strtolower(trim()); anything else (a typo, "pro-yearly", a slug HQ adds
+ * later) is not Pro until it is added here.
+ */
+define('CG_PRO_PLAN_SLUGS', ['pro', 'custom']);
+
+/**
+ * Plans that keep the Pro features while the signed /sites/status payload
+ * carries a future `grandfathered_until` (sites that were on these plans
+ * before the 1.5.0 plan change).
+ */
+define('CG_GRANDFATHERED_PLAN_SLUGS', ['basic', 'standard']);
+
+/**
+ * The cached plan slug, lowercased and trimmed, or null when unknown.
  *
- * @return bool True if the plan is not "Free".
+ * @param mixed $cache The cg_api_cache value (verified /sites/status payload).
+ * @return string|null
+ */
+function cg_plan_slug($cache)
+{
+    if (!is_array($cache)) {
+        return null;
+    }
+    // The backend's /sites/status response key is "plan_slug" (falls back to
+    // the older "plan" key in case a future response ever sends both).
+    $plan_value = $cache['plan_slug'] ?? $cache['plan'] ?? null;
+    if (!is_string($plan_value)) {
+        return null;
+    }
+    $plan = strtolower(trim($plan_value));
+    return $plan === '' ? null : $plan;
+}
+
+/**
+ * True when a Basic/Standard site is still inside its grandfather window.
+ * The field must be present, non-null, a valid RFC3339 time with a zone, and
+ * in the future. A missing key (older HQ) or null means no grandfather.
+ *
+ * @param mixed $cache The cg_api_cache value.
+ * @return bool
+ */
+function cg_is_grandfathered($cache)
+{
+    if (!in_array(cg_plan_slug($cache), CG_GRANDFATHERED_PLAN_SLUGS, true)) {
+        return false;
+    }
+    $until_raw = $cache['grandfathered_until'] ?? null;
+    if (!is_string($until_raw) || !function_exists('cg_parse_rfc3339_utc')) {
+        return false;
+    }
+    $until = cg_parse_rfc3339_utc($until_raw);
+    if ($until === null || $until === false) {
+        return false;
+    }
+    $now = function_exists('cg_reveal_now') ? cg_reveal_now() : time();
+    return $now < (int) $until;
+}
+
+/**
+ * Checks if the current site may use the Pro features.
+ * Pro and Custom always; Basic and Standard only while grandfathered.
+ * Fail-closed: false if the cache is missing or the plan is unknown.
+ *
+ * @return bool
  */
 function cg_is_pro_plan()
 {
     $cache = get_transient('cg_api_cache');
-    // The backend's /sites/status response key is "plan_slug" (falls back to
-    // the older "plan" key in case a future response ever sends both).
-    $plan_value = $cache['plan_slug'] ?? $cache['plan'] ?? null;
-    if (!$cache || $plan_value === null) {
+    $plan = cg_plan_slug($cache);
+    if ($plan === null) {
         return false;
     }
-    $plan = strtolower(trim($plan_value));
-    return $plan !== 'free' && strpos($plan, 'free') !== 0;
+    if (in_array($plan, CG_PRO_PLAN_SLUGS, true)) {
+        return true;
+    }
+    return cg_is_grandfathered($cache);
 }
 
 /**
