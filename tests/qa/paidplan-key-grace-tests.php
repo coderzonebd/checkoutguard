@@ -125,6 +125,10 @@ reset_all(); sync($paid($iso($N + 90 * $D))); refuse('site_key_required'); $dl =
 ok('N7 clamped deadline: one date, the stored one', $dl === $N + 60 * $D && strpos(cg_sitekey_plan_note(), gmdate('Y-m-d', $dl)) !== false && strpos(cg_sitekey_plan_note(), gmdate('Y-m-d', $N + 90 * $D)) === false);
 reset_all(); sync($paid($iso($N + 10 * $D))); refuse('site_key_required'); drop_cache(); age(11 * $D); ok('N8 past deadline: note off', !cg_is_paid_plan() && strpos(cg_sitekey_plan_note(), 'are off') !== false);
 reset_all(); sync($paid($iso($N + $H))); refuse('site_key_required'); age(2 * $H); ok('N9 deadline passed inside 72h: still paid, 72h sentence', cg_is_paid_plan() && strpos(cg_sitekey_plan_note(), 'last successful connection') !== false);
+$cx = ['status' => 'cancelled', 'plan' => 'pro', 'plan_slug' => 'pro'];
+reset_all(); sync($cx); refuse('site_key_required'); $a = cg_sitekey_plan_note();
+reset_all(); sync($cx); refuse('legacy_expired');
+ok('N10 paid slug but cancelled, key or legacy refusal: no note', $a === '' && cg_sitekey_plan_note() === '');
 // D2 clone DB / site_key_mismatch: paid at most 60 days after the last good sync, never at
 // or after CG_LEGACY_HARD_END (strict "<"), with the admin notice the whole time.
 reset_all(); sync($paid($iso($N + 90 * $D))); refuse('site_key_mismatch'); drop_cache();
