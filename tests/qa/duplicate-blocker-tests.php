@@ -19,7 +19,8 @@
  *      checks that attempts inside the window are still blocked.
  *      F4 runs last because it defines REST_REQUEST for the rest of the process.
  *      F4c: a blocked attempt leaves no pending order or draft; if WC made one
- *      it is cancelled or in the trash (asserted by order count and status).
+ *      it is cancelled or in the trash. The one live order left must be the
+ *      t+0 order by id, not just one order by count.
  *
  * Pending founder decision (skipped unless QA_DUP_PENDING=1 is set):
  * P-off  default OFF: with no options, a different customer who only shares the
@@ -266,7 +267,19 @@ function qa_dup_live_orders($email)
 
 function qa_dup_fmt_live($live)
 {
-    return count($live) . ' live (' . implode(',', array_values($live)) . ')';
+    $parts = [];
+    foreach ($live as $id => $status) {
+        $parts[] = $id . ':' . $status;
+    }
+    return count($live) . ' live (' . implode(',', $parts) . ')';
+}
+
+// The id of the only order with this billing email, or 0 if there is not
+// exactly one.
+function qa_dup_single_order_id($email)
+{
+    $ids = array_map('intval', qa_dup_orders_by_email($email));
+    return count($ids) === 1 ? $ids[0] : 0;
 }
 
 // Move orders back in time without saving them through WC (a save would run the
@@ -408,13 +421,16 @@ $pid = $product->get_id();
 
 // F4a: t+0 order, t+40 blocked, t+80 goes through.
 $r0 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
+$id0 = qa_dup_single_order_id($F4[2]);
 qa_dup_age_orders(qa_dup_orders_by_email($F4[2]), 40);
 $r40 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
 qa_dup_check('F4-ctl [a] t+40 inside the window is blocked', $r0[0] === 200 && $r40[0] === 400, 't+0 ' . implode('/', $r0) . ', t+40 ' . implode('/', $r40));
 // F4c: the blocked attempt leaves no pending order or draft behind; if WC
-// created one it is cancelled or in the trash. Only the t+0 order is live.
+// created one it is cancelled or in the trash. Only the t+0 order is live,
+// and it is the same order: a fix that cancels the real order and keeps the
+// attempt would still leave one live order.
 $live = qa_dup_live_orders($F4[2]);
-qa_dup_check('F4c [a] blocked t+40 attempt leaves no live order (only the t+0 order)', $r40[0] === 400 && count($live) === 1, qa_dup_fmt_live($live));
+qa_dup_check('F4c [a] blocked t+40 attempt leaves no live order (only the t+0 order)', $r40[0] === 400 && $id0 > 0 && array_keys($live) === [$id0], 't+0 id ' . $id0 . ', ' . qa_dup_fmt_live($live));
 qa_dup_age_orders(qa_dup_orders_by_email($F4[2]), 40);
 $r80 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
 qa_dup_check('F4a t+80: real order is outside the window, blocked t+40 attempt does not block', $r80[0] === 200, 't+80 ' . implode('/', $r80));
@@ -422,13 +438,14 @@ qa_dup_delete_orders(qa_dup_orders_by_email($F4[2]));
 
 // F4b: t+0 order, t+40 and t+50 blocked, t+100 goes through.
 $r0 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
+$id0 = qa_dup_single_order_id($F4[2]);
 qa_dup_age_orders(qa_dup_orders_by_email($F4[2]), 40);
 $r40 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
 qa_dup_age_orders(qa_dup_orders_by_email($F4[2]), 10);
 $r50 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
 qa_dup_check('F4-ctl [b] t+40 and t+50 inside the window are blocked', $r0[0] === 200 && $r40[0] === 400 && $r50[0] === 400, 't+0 ' . implode('/', $r0) . ', t+40 ' . implode('/', $r40) . ', t+50 ' . implode('/', $r50));
 $live = qa_dup_live_orders($F4[2]);
-qa_dup_check('F4c [b] two blocked attempts leave no live order (only the t+0 order)', $r40[0] === 400 && $r50[0] === 400 && count($live) === 1, qa_dup_fmt_live($live));
+qa_dup_check('F4c [b] two blocked attempts leave no live order (only the t+0 order)', $r40[0] === 400 && $r50[0] === 400 && $id0 > 0 && array_keys($live) === [$id0], 't+0 id ' . $id0 . ', ' . qa_dup_fmt_live($live));
 qa_dup_age_orders(qa_dup_orders_by_email($F4[2]), 50);
 $r100 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
 qa_dup_check('F4b t+100: two blocked attempts do not renew the window', $r100[0] === 200, 't+100 ' . implode('/', $r100));
