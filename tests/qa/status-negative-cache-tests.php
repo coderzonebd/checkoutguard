@@ -6,9 +6,12 @@
  * returns false otherwise (:64), so cg_can_perform_action() misses the cache
  * again on the next save (ajax-usage-limits.php:30-36) and calls status
  * again. With the key present and status answering 403, seven checkout saves
- * sent seven GET /sites/status. Rule: after a failed status call, at most one
- * status call per 60 s, longer when HQ sends Retry-After; a verified status
- * clears the wait.
+ * sent seven GET /sites/status. Rule: after a failed status call (403, 401,
+ * 5xx, timeout, HQ down, bad signature), at most one status call per 60 s,
+ * or Retry-After when HQ sends one, capped at 600 s; nothing verified is
+ * cached while it fails. A verified status clears the wait. The admin
+ * "Sync now" button calls status even during a wait; if that call fails it
+ * writes a new wait, if it succeeds it clears the wait.
  *
  * The wait must use the plugin clock (cg_register_now() / cg_sitekey_now(),
  * filter cg_sitekey_now), so this test can move time without sleeping.
@@ -16,7 +19,7 @@
  * Run on a local test site with WooCommerce only (never production):
  *   wp eval-file tests/qa/status-negative-cache-tests.php
  * HTTP is answered by a pre_http_request filter in this process; nothing
- * leaves the machine. Case N9 (recovery after a verified status) needs a
+ * leaves the machine. Cases N9 and N11b (verified status) need a
  * test key pair: it runs only when QA_MOCK_HQ_PK_FILE is defined, a
  * mock_sk.b64 sits next to it and that public key is CG_HQ_PUBLIC_KEY;
  * otherwise it is reported as SKIP. Options are restored at the end.
@@ -41,6 +44,9 @@ add_filter('pre_http_request', function ($pre, $args, $url) {
     if ($r['code'] === 'down') {
         return new WP_Error('http_request_failed', 'cURL error 7: Failed to connect');
     }
+    if ($r['code'] === 'timeout') {
+        return new WP_Error('http_request_failed', 'cURL error 28: Operation timed out');
+    }
     $h = isset($r['ra']) ? ['retry-after' => $r['ra']] : [];
     $body = isset($r['raw']) ? $r['raw'] : json_encode($r['body'] ?? []);
     return ['headers' => new WpOrg\Requests\Utility\CaseInsensitiveDictionary($h), 'body' => $body, 'response' => ['code' => $r['code'], 'message' => ''], 'cookies' => [], 'filename' => null];
@@ -57,6 +63,12 @@ set_error_handler(function ($no, $str, $file, $line) {
     return false;
 });
 
+// Rows this test writes all have a device_fingerprint starting with 'qafp';
+// they are removed before the run, in every reset and at the end.
+function qa_drop_rows() {
+    global $wpdb;
+    $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->prefix}cg_incomplete_checkouts WHERE device_fingerprint LIKE %s", 'qafp%'));
+}
 function qa_reset() {
     global $wpdb;
     foreach (['cg_sitekey_state', 'cg_sitekey_next_allowed_at', 'cg_sitekey_lock', 'cg_register_next_allowed_at', 'cg_status_next_allowed_at'] as $o) {
@@ -72,14 +84,19 @@ function qa_reset() {
     update_option('cg_license_status', 'active');
     $GLOBALS['QA_LOG'] = []; $GLOBALS['QA_ROUTES'] = []; $GLOBALS['QA_NOW'] = $GLOBALS['QA_T0'];
     wp_set_current_user(0);
+    // A save that passed the limit check stored a row under this process's
+    // WooCommerce session; drop it so the next case starts with no row.
+    qa_drop_rows();
 }
-// One guest checkout-field save, a new session each time so the limit check
-// runs (no existing row). Placeholder values only; never a real customer.
+// One guest checkout-field save, a new fingerprint each time (unique in this
+// run and across runs) so no existing row is found and the limit check runs.
+// Placeholder values only; never a real customer.
 function qa_checkout_save($i) {
     wp_set_current_user(0);
+    $GLOBALS['QA_SEQ'] = ($GLOBALS['QA_SEQ'] ?? 0) + 1;
     $_POST = $_REQUEST = [
         'nonce' => wp_create_nonce('cg_save_checkout_data_nonce'),
-        'device_fingerprint' => 'qafp' . $GLOBALS['QA_NOW'] . 'n' . $i,
+        'device_fingerprint' => 'qafp' . $GLOBALS['QA_RUN'] . 's' . $GLOBALS['QA_SEQ'] . 'n' . $i,
         'billing_first_name' => 'QA',
     ];
     $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
@@ -98,8 +115,25 @@ function qa_saves_at(array $offsets) {
     foreach ($offsets as $k => $t) { $GLOBALS['QA_NOW'] = $GLOBALS['QA_T0'] + $t; qa_checkout_save($t * 100 + $k); }
     return qa_status() - $before;
 }
+// The admin "Sync now" button: wp_ajax_cg_force_sync_ajax as an administrator.
+// Returns the status calls it made.
+function qa_force_sync() {
+    $before = qa_status();
+    $admins = get_users(['role' => 'administrator', 'number' => 1, 'fields' => 'ID']);
+    wp_set_current_user($admins ? (int) $admins[0] : 0);
+    $_POST = $_REQUEST = ['nonce' => wp_create_nonce('cg_force_sync_ajax')];
+    try {
+        cg_handle_force_sync_ajax();
+    } catch (QA_Ajax_Done $e) {
+    }
+    $_POST = $_REQUEST = [];
+    wp_set_current_user(0);
+    return qa_status() - $before;
+}
 $GLOBALS['R'] = [];
 function ok($id, $name, $pass, $detail) { $GLOBALS['R'][] = [$id, $name, $pass === null ? 'SKIP' : ($pass ? 'PASS' : 'FAIL'), $detail]; }
+$GLOBALS['QA_RUN'] = bin2hex(random_bytes(4));
+qa_drop_rows();
 $R403 = ['/sites/status' => ['code' => 403, 'body' => ['message' => 'qa forbidden']]];
 ob_start();
 
@@ -137,13 +171,13 @@ qa_reset(); $GLOBALS['QA_ROUTES'] = ['/sites/status' => ['code' => 403, 'body' =
 $n = qa_saves_at([0, 2, 4, 6, 8, 10, 12]);
 ok('N7', '403 site_key_required: 7 saves in 13 s -> 1 status call', $n === 1, "status=$n calls=" . json_encode(array_count_values($GLOBALS['QA_LOG'])));
 
-// N8: other failed syncs (HQ down, 500, 200 with a bad signature) -> one status call per 60 s each.
+// N8: other failed syncs (HQ down, timeout, 401, 500, 200 with a bad signature) -> one status call per 60 s each.
 $n8 = [];
-foreach (['down' => ['code' => 'down'], '500' => ['code' => 500, 'body' => ['message' => 'qa']], 'badsig' => ['code' => 200, 'body' => ['payload_string' => '{}', 'signature' => 'AAAA']]] as $k => $route) {
+foreach (['down' => ['code' => 'down'], 'timeout' => ['code' => 'timeout'], '401' => ['code' => 401, 'body' => ['message' => 'qa']], '500' => ['code' => 500, 'body' => ['message' => 'qa']], 'badsig' => ['code' => 200, 'body' => ['payload_string' => '{}', 'signature' => 'AAAA']]] as $k => $route) {
     qa_reset(); $GLOBALS['QA_ROUTES'] = ['/sites/status' => $route];
     $n8[$k] = qa_saves_at([0, 2, 4, 6, 8, 10, 12]);
 }
-ok('N8', 'HQ down / 500 / bad signature: 7 saves in 13 s -> 1 status call each', $n8 === ['down' => 1, '500' => 1, 'badsig' => 1], json_encode($n8));
+ok('N8', 'HQ down / timeout / 401 / 500 / bad signature: 7 saves in 13 s -> 1 status call each', $n8 === ['down' => 1, 'timeout' => 1, '401' => 1, '500' => 1, 'badsig' => 1], json_encode($n8));
 
 // N9: recovery: after the wait a verified status is stored, the wait is cleared
 // and later saves send no status call (cache hit).
@@ -175,9 +209,45 @@ if ($sk === null) {
     ok('N9', 'recovery: verified status after the wait -> cached, no more status calls', $a === 1 && $b === 1 && $c === 0 && is_array($cache) && isset($cache['limits']['checkouts']), "first=$a ok=$b later=$c cache=" . (is_array($cache) ? 'yes' : 'no'));
 }
 
+// N10: Retry-After longer than the cap (3600 s) -> the wait is capped at 600 s:
+// one status call for 0..599 s, one more at +601 s, and no verified status is
+// ever stored while HQ keeps failing.
+qa_reset(); $GLOBALS['QA_ROUTES'] = ['/sites/status' => ['code' => 403, 'ra' => '3600', 'body' => ['message' => 'qa forbidden']]];
+$a = qa_saves_at([0, 30, 120, 300, 450, 599]);
+$b = qa_saves_at([601, 605]);
+$cache = get_transient('cg_api_cache');
+ok('N10', '403 Retry-After 3600: wait capped at 600 s (1 call in 0..599 s, 1 at +601 s), nothing verified cached', $a === 1 && $b === 1 && $cache === false, "first=$a after=$b cache=" . ($cache === false ? 'none' : 'set'));
+
+// N11a: "Sync now" during a wait calls status anyway; when it fails it writes a
+// new wait from that moment (checkout saves then wait 60 s from the click).
+qa_reset(); $GLOBALS['QA_ROUTES'] = $R403;
+$a = qa_saves_at([0]);
+$GLOBALS['QA_NOW'] = $GLOBALS['QA_T0'] + 10;
+$f = qa_force_sync();
+$gate = (int) get_option('cg_status_next_allowed_at', 0);
+$c = qa_saves_at([65]);
+$d = qa_saves_at([71]);
+ok('N11a', 'Sync now in a wait: 1 status call; failure writes a new wait (+10 s -> +70 s)', $a === 1 && $f === 1 && $gate === $GLOBALS['QA_T0'] + 70 && $c === 0 && $d === 1, "first=$a sync=$f gate=" . ($gate ? '+' . ($gate - $GLOBALS['QA_T0']) : 'none') . " at65=$c at71=$d");
+
+// N11b: "Sync now" during a wait, HQ answers with a verified status -> the wait
+// is cleared and the status is cached. Needs the test key pair (as N9).
+if ($sk === null) {
+    ok('N11b', 'Sync now in a wait, verified status -> wait cleared, cached', null, 'no test key pair (QA_MOCK_HQ_PK_FILE)');
+} else {
+    qa_reset(); $GLOBALS['QA_ROUTES'] = $R403;
+    $a = qa_saves_at([0]);
+    $GLOBALS['QA_ROUTES'] = ['/sites/status' => $okres];
+    $GLOBALS['QA_NOW'] = $GLOBALS['QA_T0'] + 10;
+    $f = qa_force_sync();
+    $gate = get_option('cg_status_next_allowed_at', null);
+    $cache = get_transient('cg_api_cache');
+    ok('N11b', 'Sync now in a wait, verified status -> wait cleared, cached', $a === 1 && $f === 1 && $gate === null && is_array($cache) && isset($cache['limits']['checkouts']), "first=$a sync=$f gate=" . ($gate === null ? 'none' : 'set') . ' cache=' . (is_array($cache) ? 'yes' : 'no'));
+}
+
 $out = ob_get_clean();
 // restore
 qa_reset();
+qa_drop_rows();
 foreach ($GLOBALS['QA_ORIG'] as $name => $val) {
     if ($val === null) { delete_option($name); } elseif ($name === 'cg_plugin_options') { cg_update_options_from_hq($val); } else { update_option($name, $val); }
 }
