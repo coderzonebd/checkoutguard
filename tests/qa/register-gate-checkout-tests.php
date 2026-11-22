@@ -6,7 +6,8 @@
  * cg_sync_with_hq() -> cg_register_site_with_hq(), and the register gate
  * (cg_register_next_allowed_at) was written but never read, so one checkout
  * sent several POST /sites/register. Rule: at most one register per gate
- * (60 s, or Retry-After) on this path; the admin's Reconnect still works.
+ * (60 s, or Retry-After) on this path. The admin's Reconnect ignores the
+ * gate (like Sync now); a failed Reconnect writes a new gate, a good one clears it.
  * The same holds when HQ answers 2xx without a key and for "already taken".
  *
  * Run on a local test site with WooCommerce only (never production):
@@ -124,12 +125,34 @@ qa_reset();
 qa_checkout_save(1); $GLOBALS['QA_NOW'] += 61; qa_checkout_save(2); qa_checkout_save(3);
 ok('G6', 'after 61 s: one more register allowed, not two', qa_registers() <= 2, 'register=' . qa_registers());
 
-// G7: the admin's Reconnect still sends exactly one register once the gate has passed.
+// G7: the admin's Reconnect ignores the register gate (Tanvir, 22 Nov: same
+// rule as Sync now): with the gate still open from a failed auto register,
+// Reconnect sends exactly one register (the sync inside it adds none).
 qa_reset();
-qa_checkout_save(1); $GLOBALS['QA_NOW'] += 61; $GLOBALS['QA_LOG'] = [];
+qa_checkout_save(1); $GLOBALS['QA_NOW'] = 1800000000 + 10; $GLOBALS['QA_LOG'] = [];
+$gate_before = (int) get_option('cg_register_next_allowed_at', 0);
 wp_set_current_user($GLOBALS['QA_ADMIN']);
-$a = cg_register_reconnect_attempt(); $b = cg_register_reconnect_attempt();
-ok('G7', 'Reconnect after the gate: tried then gated, exactly one register', $a === 'tried' && $b === 'gated' && qa_registers() === 1, "a=$a b=$b register=" . qa_registers());
+$a = cg_register_reconnect_attempt();
+ok('G7', 'Reconnect while the gate is open: tried, exactly one register', $gate_before > $GLOBALS['QA_NOW'] && $a === 'tried' && qa_registers() === 1, "gate_left=" . ($gate_before - $GLOBALS['QA_NOW']) . " a=$a register=" . qa_registers());
+
+// G15: the failed Reconnect at +10 s writes a new gate (+70 s); the auto path
+// (checkout saves) still honours it: none in +11..+69 s, one at +70 s.
+$GLOBALS['QA_LOG'] = [];
+foreach ([11, 20, 40, 60, 69] as $t) { $GLOBALS['QA_NOW'] = 1800000000 + $t; qa_checkout_save($t); }
+$b = qa_registers();
+$GLOBALS['QA_NOW'] = 1800000000 + 70; $GLOBALS['QA_LOG'] = [];
+qa_checkout_save(70); qa_checkout_save(71);
+$c = qa_registers();
+ok('G15', 'after a failed Reconnect at +10 s: auto saves +11..+69 s -> 0 register, +70 s -> 1', $b === 0 && $c === 1, "in_gate=$b at70=$c");
+
+// G16: Reconnect that succeeds while the gate is open stores the key and clears the gate.
+qa_reset();
+qa_checkout_save(1); $GLOBALS['QA_NOW'] = 1800000000 + 10; $GLOBALS['QA_LOG'] = [];
+$GLOBALS['QA_ROUTES'] = ['/sites/register' => ['code' => 201, 'body' => ['api_key' => 'qa-shared-key-not-real']]];
+wp_set_current_user($GLOBALS['QA_ADMIN']);
+$a = cg_register_reconnect_attempt();
+$o = get_option('cg_plugin_options', []);
+ok('G16', 'Reconnect succeeds while the gate is open: key stored, gate cleared', $a === 'tried' && qa_registers() === 1 && ($o['api_key'] ?? '') === 'qa-shared-key-not-real' && get_option('cg_register_next_allowed_at', null) === null, "a=$a register=" . qa_registers() . ' gate=' . var_export(get_option('cg_register_next_allowed_at', null), true));
 
 // G8: register succeeds -> key stored, gate cleared, later saves send no register.
 qa_reset();

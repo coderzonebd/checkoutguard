@@ -3,7 +3,8 @@
  * Register failure notice (Sakib F3 on 1.5.0 ada4b91): when registration
  * fails (HQ down, 429, timeout) the site has no key and checks are off, so
  * admins see a plain notice on the dashboard and CheckoutGuard pages with a
- * gated "Reconnect now". A SiteKey refusal keeps only the SiteKey notice.
+ * "Reconnect now" (button hidden while gated; the action itself ignores the
+ * gate). A SiteKey refusal keeps only the SiteKey notice.
  *
  * Run on a local test site only (never production):
  *   wp eval-file tests/qa/register-failed-notice-tests.php
@@ -93,17 +94,17 @@ $GLOBALS['QA_NOW'] += 120;
 list($reg) = qa_notices();
 ok('N3', '429 Retry-After 3600: gated an hour, no button', $gate === 3600 && strpos($reg, $TITLE) !== false && strpos($reg, 'action=cg_register_reconnect') === false && strpos($reg, 'try again after') !== false, "gate=$gate");
 
-// N4: Reconnect attempt is gated, then sends one register and stores the key; notice gone
+// N4: Reconnect ignores the gate (Tanvir, 22 Nov): still inside the 1 h
+// gate from N3, Reconnect sends one register, stores the key, clears the
+// gate; notice gone
 $GLOBALS['QA_LOG'] = [];
-$g1 = cg_register_reconnect_attempt();
-$calls_gated = count($GLOBALS['QA_LOG']);
-$GLOBALS['QA_NOW'] += 3600;
+$gate_left = (int) get_option('cg_register_next_allowed_at', 0) - $GLOBALS['QA_NOW'];
 $GLOBALS['QA_ROUTES'] = ['/sites/register' => ['code' => 201, 'body' => ['api_key' => 'qa-shared-key-not-real']], '/sites/status' => ['code' => 'down']];
-$g2 = cg_register_reconnect_attempt();
+$g1 = cg_register_reconnect_attempt();
 $reg_calls = count(array_filter($GLOBALS['QA_LOG'], function ($p) { return $p === '/sites/register'; }));
 $o = get_option('cg_plugin_options', []);
 list($reg) = qa_notices();
-ok('N4', 'Reconnect: gated, then one register, key stored, notice gone', $g1 === 'gated' && $calls_gated === 0 && $g2 === 'tried' && $reg_calls === 1 && ($o['api_key'] ?? '') === 'qa-shared-key-not-real' && $reg === '' && get_option('cg_register_next_allowed_at', null) === null, "g1=$g1 g2=$g2 register_calls=$reg_calls");
+ok('N4', 'Reconnect inside the gate: one register, key stored, notice gone', $gate_left > 0 && $g1 === 'tried' && $reg_calls === 1 && ($o['api_key'] ?? '') === 'qa-shared-key-not-real' && $reg === '' && get_option('cg_register_next_allowed_at', null) === null, "gate_left=$gate_left g1=$g1 register_calls=$reg_calls");
 
 // N5: double click: the second attempt within the minute sends nothing
 qa_reset();
