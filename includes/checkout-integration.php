@@ -1243,11 +1243,17 @@ class CG_Validation_Engine
             $grace_period = isset($options['ratio_blocker_grace_period']) ? (int) $options['ratio_blocker_grace_period'] : 5;
 
             $ratio_data = cg_perform_all_api_calls($context->phone, 0);
-            if (!is_wp_error($ratio_data) && is_array($ratio_data) && isset($ratio_data['summary'])) {
+            // A failed courier check (no key, HQ down, 429, timeout) comes back
+            // as cache_source "error" with a zeroed summary. That 0% is not
+            // the customer's ratio, so it never blocks or holds an order,
+            // whatever the grace period (orders always go through). A
+            // customer with no deliveries at all has no ratio either.
+            $ratio_failed = is_array($ratio_data) && ($ratio_data['cache_source'] ?? '') === 'error';
+            if (!$ratio_failed && !is_wp_error($ratio_data) && is_array($ratio_data) && isset($ratio_data['summary'])) {
                 $total_orders = (int) ($ratio_data['summary']['total_deliveries'] ?? 0);
                 $success_rate = (int) ($ratio_data['summary']['success_rate'] ?? 100);
 
-                if ($total_orders >= $grace_period && $success_rate <= $threshold) {
+                if ($total_orders > 0 && $total_orders >= $grace_period && $success_rate <= $threshold) {
                     // Paid plans with ratio_action "hold" (the default for paid):
                     // let the checkout through, the order goes on-hold later.
                     // Logged as allowed, so a hold never feeds the fraud score.
