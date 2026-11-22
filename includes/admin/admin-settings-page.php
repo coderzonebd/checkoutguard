@@ -74,8 +74,11 @@ function cg_sync_with_hq($force = false)
     }
 
     // Kept in an option, not a transient, so the wait never depends on
-    // object-cache eviction or transient expiry.
-    if ($force !== true && (int) get_option('cg_status_next_allowed_at', 0) > cg_status_now()) {
+    // object-cache eviction or transient expiry. A wait more than 600 s
+    // ahead cannot have been written by this code (the clock moved back),
+    // so it is ignored instead of blocking status until the clock catches up.
+    $wait_left = (int) get_option('cg_status_next_allowed_at', 0) - cg_status_now();
+    if ($force !== true && $wait_left > 0 && $wait_left <= 10 * MINUTE_IN_SECONDS) {
         return false;
     }
 

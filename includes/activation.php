@@ -234,11 +234,17 @@ function cg_register_site_with_hq($force = false)
     // Success — store the API key returned by HQ
     if (!is_wp_error($response) && !empty($response['api_key'])) {
         $options = get_option('cg_plugin_options', []);
+        $old_key = (string) ($options['api_key'] ?? '');
         $options['api_key'] = sanitize_text_field($response['api_key']);
         cg_update_options_from_hq($options);
         delete_option(CG_REGISTER_GATE_OPTION);
         delete_option(CG_REGISTER_MANUAL_GATE_OPTION);
         delete_option(CG_REGISTER_ALREADY_REGISTERED_OPTION);
+        // A new key gets a fresh status check: the wait was earned by the
+        // old key. The same key coming back keeps the wait.
+        if ($options['api_key'] !== $old_key) {
+            delete_option('cg_status_next_allowed_at');
+        }
         return;
     }
 
