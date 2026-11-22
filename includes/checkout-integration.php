@@ -932,34 +932,6 @@ function cg_get_recent_matching_orders_for_duplicate_check($customer_data, $wind
 }
 
 /**
- * True when the earlier order shares this customer's email or phone, i.e. it
- * is their own order and its number may be shown to them.
- *
- * @param WC_Order $order Earlier order.
- * @param string   $email Current billing email.
- * @param string   $phone Current billing phone.
- * @return bool
- */
-function cg_duplicate_order_is_own($order, $email, $phone)
-{
-    if (!is_object($order)) {
-        return false;
-    }
-    $email = strtolower(trim((string) $email));
-    if ($email !== '' && method_exists($order, 'get_billing_email') && strtolower(trim((string) $order->get_billing_email())) === $email) {
-        return true;
-    }
-    $digits = preg_replace('/[^0-9]/', '', (string) $phone);
-    if (strlen($digits) >= 6 && method_exists($order, 'get_billing_phone')) {
-        $prev = preg_replace('/[^0-9]/', '', (string) $order->get_billing_phone());
-        if ($prev !== '' && substr($prev, -10) === substr($digits, -10)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-/**
  * Core Duplicate Order check returning structured result or null.
  */
 function cg_check_duplicate_order_core($customer_data, $order = null)
@@ -1083,15 +1055,23 @@ function cg_check_duplicate_order_core($customer_data, $order = null)
         $default_msg = __('You have already placed an order recently. Please wait a few moments before ordering again, or contact us if you need to modify your order.', 'checkoutguard');
         $raw_message = ($is_pro && !empty($options['duplicate_blocker_message'])) ? $options['duplicate_blocker_message'] : $default_msg;
 
-        // A custom message may use {order_id}; fill it only when the earlier
-        // order is this customer's own (same email or phone).
-        $shown_order_number = cg_duplicate_order_is_own($duplicate_order, $customer_email, $customer_phone) ? $order_number : '';
-
-        return str_replace(
-            ['{order_id}', '{time_window}', '{phone}'],
-            [$shown_order_number, $window_minutes, $customer_phone ?: ''],
+        // The order number is never shown, not even in a custom message and not
+        // even when email or phone match: typed contact details prove nothing.
+        // A legacy {order_id} placeholder (with or without a leading '#') is
+        // removed.
+        $message = str_replace(
+            ['{time_window}', '{phone}'],
+            [$window_minutes, $customer_phone ?: ''],
             $raw_message
         );
+        $message = preg_replace('/\(\s*#?\s*\{order_id\}\s*\)/', '', $message);
+        $message = preg_replace('/#?\s*\{order_id\}/', '', $message);
+        $message = preg_replace('/ {2,}/', ' ', preg_replace('/ +([.,;:!?])/', '$1', $message));
+
+        $message = trim((string) $message);
+
+        // A custom message that held only the placeholder must still block.
+        return $message !== '' ? $message : $default_msg;
     }
 
     return null;

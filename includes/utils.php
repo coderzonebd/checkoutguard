@@ -1623,6 +1623,9 @@ function cg_count_uncounted_auto_blocks($table)
  */
 function cg_duplicate_blocker_defaults()
 {
+    // D2, pending founder decision: whether an IP-only or device-only match
+    // should block a different customer (match_ip / match_device default and
+    // existing stores that saved 1). Unchanged until that decision.
     return [
         'duplicate_blocker_enabled'      => 1,
         'duplicate_blocker_window'       => 10,

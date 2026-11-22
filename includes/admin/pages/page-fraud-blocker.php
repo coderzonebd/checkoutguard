@@ -449,9 +449,9 @@ function cg_render_fraud_blocker_page()
                             <textarea id="cg_duplicate_blocker_message" rows="3" class="large-text" <?php echo !$is_pro ? 'disabled' : ''; ?> placeholder="<?php echo esc_attr($default_dup_msg); ?>"><?php echo esc_textarea($saved_dup_msg); ?></textarea>
                             <p class="description">
                                 <?php if (!$is_pro): ?>
-                                    <strong><?php _e('Custom message requires a Pro plan.', 'checkoutguard'); ?></strong> <?php _e('Free plan uses the default notice above. Available placeholders: {order_id}, {time_window}, {phone}', 'checkoutguard'); ?>
+                                    <strong><?php _e('Custom message requires a Pro plan.', 'checkoutguard'); ?></strong> <?php _e('Free plan uses the default notice above. Available placeholders: {time_window}, {phone}. The order number is never shown to the customer.', 'checkoutguard'); ?>
                                 <?php else: ?>
-                                    <?php _e('Leave blank to use default. Available placeholders: {order_id}, {time_window}, {phone}', 'checkoutguard'); ?>
+                                    <?php _e('Leave blank to use default. Available placeholders: {time_window}, {phone}. The order number is never shown to the customer.', 'checkoutguard'); ?>
                                 <?php endif; ?>
                             </p>
                         </div>
