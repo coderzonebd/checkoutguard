@@ -27,6 +27,9 @@ add_filter('pre_http_request', function ($pre, $args, $url) {
     if ($r['code'] === 'timeout') {
         return new WP_Error('http_request_failed', 'cURL error 28: Operation timed out after 30001 milliseconds');
     }
+    if ($r['code'] === 'refused') {
+        return new WP_Error('http_request_failed', 'cURL error 7: Failed to connect to hq.invalid port 443: Connection refused');
+    }
     return ['headers' => new WpOrg\Requests\Utility\CaseInsensitiveDictionary([]), 'body' => json_encode($r['body'] ?? []), 'response' => ['code' => $r['code'], 'message' => ''], 'cookies' => [], 'filename' => null];
 }, PHP_INT_MAX, 3);
 $GLOBALS['QA_WARN'] = [];
@@ -107,6 +110,51 @@ foreach ([['C10a', 'HQ 400', ['code' => 400, 'body' => ['error' => 'bad_request'
     $tc = get_transient('cg_courier_cache_' . md5($c[3])) !== false ? 'yes' : 'no';
     ok($c[0], $c[1] . ': one courier-check for 3 validations (no wait, not cached)', $n === 1 && $w !== 'on' && $tc === 'no', "calls=$n wait=$w cached=$tc");
 }
+// C10c: a transport error that is not a timeout (cURL 7, connection refused)
+// starts no wait either; three validations still send one courier-check.
+$GLOBALS['QA_HTTP'] = ['code' => 'refused'];
+qa_reset(['01751222333']);
+qa_validate('01751222333', 18); qa_validate('01751222333', 19); qa_validate('01751222333', 20);
+$n = count($GLOBALS['QA_CALLS']);
+$w = defined('CG_COURIER_TIMEOUT_WAIT_TRANSIENT') ? (get_transient(CG_COURIER_TIMEOUT_WAIT_TRANSIENT) !== false ? 'on' : 'off') : 'n/a';
+$tc = get_transient('cg_courier_cache_' . md5('01751222333')) !== false ? 'yes' : 'no';
+ok('C10c', 'cURL 7: one courier-check for 3 validations (no wait, not cached)', $n === 1 && $w !== 'on' && $tc === 'no', "calls=$n wait=$w cached=$tc");
+
+// C11: a failed check reused from the request memo writes no courier data to
+// the order (no _cg_success_ratio_data with an error in it). C11-ctl: a
+// successful check reused from the memo still writes it, with this order's id.
+// The orders are marked _cg_validated so the save guard does not check them.
+$qa_mk_order = function () {
+    $ord = new WC_Order();
+    $ord->update_meta_data('_cg_validated', '1');
+    $ord->save();
+    return $ord->get_id();
+};
+$GLOBALS['QA_HTTP'] = ['code' => 400, 'body' => ['error' => 'bad_request']];
+qa_reset(['01761222333']);
+$oid = $qa_mk_order();
+$GLOBALS['QA_CALLS'] = [];
+$e1 = cg_perform_all_api_calls('01761222333', 0);
+$e2 = cg_perform_all_api_calls('01761222333', $oid);
+$n = count($GLOBALS['QA_CALLS']);
+$meta = wc_get_order($oid)->get_meta('_cg_success_ratio_data', true);
+ok('C11', 'error memo hit with an order id writes no courier meta', $n === 1 && ($e2['cache_source'] ?? '') === 'error' && empty($meta), "calls=$n src=" . ($e2['cache_source'] ?? '') . ' meta=' . (empty($meta) ? 'none' : (is_array($meta) ? ($meta['cache_source'] ?? '?') : 'set')));
+wc_get_order($oid)->delete(true);
+
+$GLOBALS['QA_HTTP'] = ['code' => 200, 'body' => ['cache_source' => 'fresh', 'result' => ['summary' => ['success_rate' => 90, 'total_deliveries' => 10, 'successful_deliveries' => 9, 'cancelled_deliveries' => 1]]]];
+qa_reset(['01771222333']);
+$oid = $qa_mk_order();
+$GLOBALS['QA_CALLS'] = [];
+delete_transient('cg_courier_cache_' . md5('01771222333'));
+cg_perform_all_api_calls('01771222333', 0);
+// Drop the transient so the second call can only be served by the memo.
+delete_transient('cg_courier_cache_' . md5('01771222333'));
+$s2 = cg_perform_all_api_calls('01771222333', $oid);
+$n = count($GLOBALS['QA_CALLS']);
+$meta = wc_get_order($oid)->get_meta('_cg_success_ratio_data', true);
+$mok = is_array($meta) && (int) ($meta['order_id'] ?? 0) === $oid && (int) ($meta['summary']['total_deliveries'] ?? -1) === 10;
+ok('C11-ctl', 'success memo hit with an order id writes the courier meta (this order id)', $n === 1 && $mok, "calls=$n meta_order=" . (is_array($meta) ? (int) ($meta['order_id'] ?? 0) : 'none') . ' oid_match=' . ($mok ? 'yes' : 'no'));
+wc_get_order($oid)->delete(true);
 $GLOBALS['QA_HTTP'] = ['code' => 'timeout'];
 
 // C8: a forced refresh (admin "Refresh") bypasses the request memo.
@@ -115,7 +163,7 @@ cg_perform_all_api_calls('01511222333', 0); cg_perform_all_api_calls('0151122233
 $n = count($GLOBALS['QA_CALLS']);
 ok('C8', 'bypass_cache sends a new call', $n === 2, "calls=$n");
 
-foreach (['01731222333', '01741222333', '01721222333', '01711222333', '+880 1711-222333', '8801711222333', '01811222333', '+8801811222333', '01911222333', '01611222333', '01511222333'] as $p) { delete_transient('cg_courier_cache_' . md5($p)); }
+foreach (['01751222333', '01761222333', '01771222333', '01731222333', '01741222333', '01721222333', '01711222333', '+880 1711-222333', '8801711222333', '01811222333', '+8801811222333', '01911222333', '01611222333', '01511222333'] as $p) { delete_transient('cg_courier_cache_' . md5($p)); }
 delete_transient(CG_COURIER_AUTH_REJECT_TRANSIENT);
 if (defined('CG_COURIER_TIMEOUT_WAIT_TRANSIENT')) { delete_transient(CG_COURIER_TIMEOUT_WAIT_TRANSIENT); }
 cg_update_options_from_hq(is_array($GLOBALS['QA_OPTS_ORIG']) ? $GLOBALS['QA_OPTS_ORIG'] : []);
