@@ -21,6 +21,7 @@ function cg_plugin_activate()
         return $errno === E_USER_NOTICE && str_contains($errstr, '_load_textdomain_just_in_time');
     }, E_USER_NOTICE);
 
+    cg_sitekey_cleanup_142();
     cg_create_database_tables();
     cg_create_blocked_orders_table();
     cg_upgrade_fraud_tables();
@@ -443,6 +444,37 @@ function cg_plugin_deactivate()
     wp_clear_scheduled_hook('cg_sitekey_request_event');
     wp_clear_scheduled_hook('cg_sitekey_claim_event');
 }
+
+/**
+ * Removes what the 1.4.2 site key request module left behind. That module
+ * (includes/sitekey-request.php) was replaced by includes/site-key.php in
+ * 1.5.0. The gate option cg_sitekey_next_allowed_at is kept on purpose:
+ * site-key.php uses the same option, so a Retry-After wait that 1.4.2 stored
+ * is still honoured. Safe to run more than once.
+ */
+function cg_sitekey_cleanup_142()
+{
+    wp_clear_scheduled_hook('cg_sitekey_retry_event');
+    delete_option('cg_sitekey_retry_lock');
+    delete_option('cg_sitekey_backoff_step');
+    delete_option('cg_sitekey_recent_calls');
+    delete_transient('cg_key_requested');
+}
+
+/**
+ * Version upgrade routine. Runs once whenever the stored cg_plugin_version
+ * differs from CG_VERSION (a plugin update replaces the files without calling
+ * the activation hook), before the schema migrations on the same hook.
+ */
+function cg_maybe_run_version_upgrade()
+{
+    if (get_option('cg_plugin_version') === CG_VERSION) {
+        return;
+    }
+    cg_sitekey_cleanup_142();
+    update_option('cg_plugin_version', CG_VERSION);
+}
+add_action('init', 'cg_maybe_run_version_upgrade', 4);
 
 /**
  * Runs database migrations automatically when the stored cg_db_version is
