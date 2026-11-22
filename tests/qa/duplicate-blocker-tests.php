@@ -22,7 +22,14 @@
  *      it is cancelled or in the trash. The one live order left must be the
  *      t+0 order by id, not just one order by count.
  *      F4d: closing a blocked attempt sends no admin "Order cancelled" email;
- *      a normal cancel right after still sends one.
+ *      a normal cancel right after still sends one. Run it in both email modes:
+ *      sync (default) and deferred, where WooCommerce queues the email and sends
+ *      it from Action Scheduler later:
+ *        wp eval-file tests/qa/duplicate-blocker-tests.php
+ *        wp --require=tests/qa/support/defer-transactional-emails.php eval-file tests/qa/duplicate-blocker-tests.php
+ *      The deferral filter must be added before WooCommerce init, so it cannot be
+ *      set from this file. In deferred mode F4d sends the queue through Action
+ *      Scheduler itself (object cache flushed, order read back from the database).
  *
  * Pending founder decision (skipped unless QA_DUP_PENDING=1 is set):
  * P-off  default OFF: with no options, a different customer who only shares the
@@ -456,6 +463,25 @@ qa_dup_delete_orders(qa_dup_orders_by_email($F4[2]));
 // F4d: closing a blocked Store API attempt (pending -> cancelled) must not send
 // the admin "Order cancelled" email; a normal cancel right after still does,
 // which also shows mail capture works and the mute is only for that attempt.
+$qa_f4d_deferred = has_action('woocommerce_order_status_pending_to_cancelled', ['WC_Emails', 'queue_transactional_email']) !== false;
+$qa_f4d_mode = $qa_f4d_deferred ? 'deferred' : 'sync';
+$qa_f4d_flush = function () use ($qa_f4d_deferred) {
+    // Deferred mode: queue -> Action Scheduler -> send, as a later request would.
+    if (!$qa_f4d_deferred) {
+        return 0;
+    }
+    wc_get_container()->get(\Automattic\WooCommerce\Internal\Email\DeferredEmailQueue::class)->dispatch();
+    wp_cache_flush();
+    $ids = as_get_scheduled_actions(['hook' => 'woocommerce_send_queued_transactional_email', 'status' => ActionScheduler_Store::STATUS_PENDING, 'per_page' => -1], 'ids');
+    foreach ($ids as $id) {
+        ActionScheduler_QueueRunner::instance()->process_action($id, 'QA F4d');
+    }
+    return count($ids);
+};
+echo "F4d email mode: {$qa_f4d_mode}\n";
+if (defined('QA_F4D_DEFER_REQUESTED')) {
+    qa_dup_check('F4d [mode] deferred mode was requested and WooCommerce really defers emails', $qa_f4d_deferred, 'mode=' . $qa_f4d_mode);
+}
 $GLOBALS['qa_f4d_mail'] = [];
 $qa_f4d_cap = function ($r, $atts) {
     $GLOBALS['qa_f4d_mail'][] = (string) ($atts['subject'] ?? '');
@@ -465,23 +491,39 @@ $qa_f4d_cancelled = function () {
     return count(preg_grep('/has been cancelled/i', $GLOBALS['qa_f4d_mail']));
 };
 add_filter('pre_wp_mail', $qa_f4d_cap, 10, 2);
+$qa_f4d_flush(); // emails queued by the earlier tests are not part of F4d
 $r0 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
 qa_dup_age_orders(qa_dup_orders_by_email($F4[2]), 40);
+$qa_f4d_flush();
 $GLOBALS['qa_f4d_mail'] = [];
 $r40 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
+$q_a = $qa_f4d_flush();
 $m_a = $qa_f4d_cancelled();
 $n_cx = count(array_filter(array_map('wc_get_order', qa_dup_orders_by_email($F4[2])), function ($o) { return $o && $o->get_status() === 'cancelled'; }));
-qa_dup_check('F4d [a] blocked t+40 attempt sends no "Order cancelled" email', $r0[0] === 200 && $r40[0] === 400 && $m_a === 0, 't+40 ' . implode('/', $r40) . ", cancelled mails=$m_a, cancelled orders=$n_cx, subjects=" . wp_json_encode($GLOBALS['qa_f4d_mail']));
-$o = wc_create_order();
+qa_dup_check("F4d [a] ({$qa_f4d_mode}) blocked t+40 attempt sends no \"Order cancelled\" email", $r0[0] === 200 && $r40[0] === 400 && $m_a === 0, 't+40 ' . implode('/', $r40) . ", queued=$q_a, cancelled mails=$m_a, cancelled orders=$n_cx, subjects=" . wp_json_encode($GLOBALS['qa_f4d_mail']));
+// The control order stands for a normal order that already passed checkout.
+// Without _cg_validated the save guard checks it again in this process (REST_REQUEST
+// is defined by F4) and cancels it at creation, which queues a second email.
+$qa_f4d_flush();
+$GLOBALS['qa_f4d_mail'] = [];
+$o = new WC_Order();
 $o->set_billing_email('qa-f4d-ctl@example.test');
+$o->update_meta_data('_cg_validated', '1');
 $o->set_status('pending');
 $o->save();
+$m_b_create = $qa_f4d_cancelled();
+$qa_f4d_flush();
 $GLOBALS['qa_f4d_mail'] = [];
 $o->set_status('cancelled', 'QA F4d control');
 $o->save();
+$m_b_now = $qa_f4d_cancelled();
+$q_b = $qa_f4d_flush();
 $m_b = $qa_f4d_cancelled();
-qa_dup_check('F4d [b] a normal pending order cancelled after it still sends 1 "Order cancelled" email', $m_b === 1, "cancelled mails=$m_b, subjects=" . wp_json_encode($GLOBALS['qa_f4d_mail']));
+// Deferred mode must really go through the queue: nothing sent before the run.
+$b_path_ok = $m_b_create === 0 && $o->get_status() === 'cancelled' && ($qa_f4d_deferred ? ($m_b_now === 0 && $q_b >= 1) : true);
+qa_dup_check("F4d [b] ({$qa_f4d_mode}) a normal pending order cancelled after it still sends 1 \"Order cancelled\" email", $m_b === 1 && $b_path_ok, "at create=$m_b_create, before queue run=$m_b_now, queued=$q_b, cancelled mails=$m_b, subjects=" . wp_json_encode($GLOBALS['qa_f4d_mail']));
 $o->delete(true);
+$qa_f4d_flush();
 remove_filter('pre_wp_mail', $qa_f4d_cap, 10);
 qa_dup_delete_orders(qa_dup_orders_by_email($F4[2]));
 remove_filter('woocommerce_store_api_disable_nonce_check', '__return_true');
