@@ -146,7 +146,7 @@ qa_clear_waits();
 $GLOBALS['cg_hq_timeout_override_before'] = $GLOBALS['cg_hq_timeout_override'] ?? null;
 function qa_cached($phone) { return get_transient('cg_courier_cache_' . md5($phone)) !== false; }
 
-// (ka) HQ answers after 35 s: checkout done in <= ~9 s, 8 s timeout, allowed.
+// (ka) HQ answers after 35 s: checkout done in <= 6.5 s, 5 s timeout, allowed.
 $c1 = qa_checkout($slow);
 ok('C1', '(ka) HQ 35 s slow: checkout ends in <= ' . QA_MAX_CHECKOUT_SECONDS . ' s, timeout <= ' . QA_MAX_CHECKOUT_TIMEOUT . ' s, allowed', $c1[0] === 1 && $c1[1][0] > 0 && $c1[1][0] <= QA_MAX_CHECKOUT_TIMEOUT && $GLOBALS['QA_LAST_SECONDS'] <= QA_MAX_CHECKOUT_SECONDS && $c1[2], json_encode($c1) . ' seconds=' . $GLOBALS['QA_LAST_SECONDS']);
 
