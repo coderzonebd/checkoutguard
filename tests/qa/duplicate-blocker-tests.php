@@ -21,6 +21,8 @@
  *      F4c: a blocked attempt leaves no pending order or draft; if WC made one
  *      it is cancelled or in the trash. The one live order left must be the
  *      t+0 order by id, not just one order by count.
+ *      F4d: closing a blocked attempt sends no admin "Order cancelled" email;
+ *      a normal cancel right after still sends one.
  *
  * Pending founder decision (skipped unless QA_DUP_PENDING=1 is set):
  * P-off  default OFF: with no options, a different customer who only shares the
@@ -449,6 +451,38 @@ qa_dup_check('F4c [b] two blocked attempts leave no live order (only the t+0 ord
 qa_dup_age_orders(qa_dup_orders_by_email($F4[2]), 50);
 $r100 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
 qa_dup_check('F4b t+100: two blocked attempts do not renew the window', $r100[0] === 200, 't+100 ' . implode('/', $r100));
+qa_dup_delete_orders(qa_dup_orders_by_email($F4[2]));
+
+// F4d: closing a blocked Store API attempt (pending -> cancelled) must not send
+// the admin "Order cancelled" email; a normal cancel right after still does,
+// which also shows mail capture works and the mute is only for that attempt.
+$GLOBALS['qa_f4d_mail'] = [];
+$qa_f4d_cap = function ($r, $atts) {
+    $GLOBALS['qa_f4d_mail'][] = (string) ($atts['subject'] ?? '');
+    return true; // never really send
+};
+$qa_f4d_cancelled = function () {
+    return count(preg_grep('/has been cancelled/i', $GLOBALS['qa_f4d_mail']));
+};
+add_filter('pre_wp_mail', $qa_f4d_cap, 10, 2);
+$r0 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
+qa_dup_age_orders(qa_dup_orders_by_email($F4[2]), 40);
+$GLOBALS['qa_f4d_mail'] = [];
+$r40 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
+$m_a = $qa_f4d_cancelled();
+$n_cx = count(array_filter(array_map('wc_get_order', qa_dup_orders_by_email($F4[2])), function ($o) { return $o && $o->get_status() === 'cancelled'; }));
+qa_dup_check('F4d [a] blocked t+40 attempt sends no "Order cancelled" email', $r0[0] === 200 && $r40[0] === 400 && $m_a === 0, 't+40 ' . implode('/', $r40) . ", cancelled mails=$m_a, cancelled orders=$n_cx, subjects=" . wp_json_encode($GLOBALS['qa_f4d_mail']));
+$o = wc_create_order();
+$o->set_billing_email('qa-f4d-ctl@example.test');
+$o->set_status('pending');
+$o->save();
+$GLOBALS['qa_f4d_mail'] = [];
+$o->set_status('cancelled', 'QA F4d control');
+$o->save();
+$m_b = $qa_f4d_cancelled();
+qa_dup_check('F4d [b] a normal pending order cancelled after it still sends 1 "Order cancelled" email', $m_b === 1, "cancelled mails=$m_b, subjects=" . wp_json_encode($GLOBALS['qa_f4d_mail']));
+$o->delete(true);
+remove_filter('pre_wp_mail', $qa_f4d_cap, 10);
 qa_dup_delete_orders(qa_dup_orders_by_email($F4[2]));
 remove_filter('woocommerce_store_api_disable_nonce_check', '__return_true');
 
