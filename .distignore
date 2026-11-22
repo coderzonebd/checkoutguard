@@ -6,3 +6,4 @@
 /.gitattributes
 /.gitignore
 /.wordpress-org
+/tests

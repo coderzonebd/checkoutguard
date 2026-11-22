@@ -19,6 +19,7 @@
 *.zip   binary
 *.mo    binary
 
-# Not shipped in the plugin zip.
+# Left out of `git archive` exports only. The release zip and the WordPress.org
+# deploy use .distignore; keep both lists in sync.
 /tests export-ignore
 /.gitattributes export-ignore
