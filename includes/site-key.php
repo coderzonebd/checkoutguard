@@ -788,11 +788,22 @@ function cg_render_sitekey_notice()
         echo esc_html($plan_note) . ' ';
     }
     if ($gate > cg_sitekey_now()) {
-        echo esc_html(sprintf(
-            /* translators: %s: time of the next automatic attempt */
-            __('Next automatic attempt: %s.', 'checkoutguard'),
-            wp_date(get_option('date_format') . ' ' . get_option('time_format'), $gate)
-        )) . ' ';
+        $when = wp_date(get_option('date_format') . ' ' . get_option('time_format'), $gate);
+        if ($rejected || $mismatch) {
+            // Rejected and mismatch are never retried on their own (only the
+            // admin's Reconnect), so do not promise an automatic attempt.
+            echo esc_html(sprintf(
+                /* translators: %s: time from which Reconnect is allowed again */
+                __('You can try again after %s.', 'checkoutguard'),
+                $when
+            )) . ' ';
+        } else {
+            echo esc_html(sprintf(
+                /* translators: %s: time of the next automatic attempt */
+                __('Next automatic attempt: %s.', 'checkoutguard'),
+                $when
+            )) . ' ';
+        }
         // No button while gated, so no "Click Reconnect now"; only the support line.
         echo esc_html__('If it keeps failing, contact CheckoutGuard support.', 'checkoutguard');
     } else {

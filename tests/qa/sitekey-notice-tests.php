@@ -132,6 +132,19 @@ cg_sitekey_set_gate($GLOBALS['__now']); $html = notice(); $t = text($html);
 ok('S9b gate == now: button and A1 shown, no next attempt line', strpos($html, 'class="button') !== false
     && strpos($t, 'Reconnect now ' . $A1) !== false && strpos($t, 'Next automatic attempt:') === false);
 
+// Mismatch is never retried on its own (only Reconnect), so while gated the
+// notice says when Reconnect is allowed again, never "Next automatic attempt".
+reset_all(OWN); cg_sitekey_on_response(403, 'site_key_mismatch', OWN); $GLOBALS['__screen'] = 'dashboard';
+cg_sitekey_set_gate($GLOBALS['__now'] + 3600); $html = notice(); $t = text($html);
+ok('S9e mismatch gated: "You can try again after", no "Next automatic attempt", no button', $t !== ''
+    && preg_match('/You can try again after [^.]+\. If it keeps failing, contact CheckoutGuard support\.$/', $t) === 1
+    && strpos($t, 'Next automatic attempt') === false && strpos($html, 'button') === false);
+// A legacy code is retried automatically, so it keeps the automatic line.
+reset_all(SHARED); cg_sitekey_on_response(403, 'legacy_expired', SHARED);
+cg_sitekey_set_gate($GLOBALS['__now'] + 3600); $t = text(notice());
+ok('S9f legacy gated keeps "Next automatic attempt", no "try again after"', strpos($t, 'Next automatic attempt:') !== false
+    && strpos($t, 'You can try again after') === false);
+
 // Paid plan sentence inside the notice: a signed deadline 90 days out is shown
 // as the +60 day bound (date only, no key).
 $D = 86400; $N = $GLOBALS['__now'] = 2000000000;

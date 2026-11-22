@@ -97,6 +97,9 @@ ok('R5 maintenance: cg_sitekey_needed() false, auto request not_needed, nothing 
 cg_sitekey_set_gate(N + 3600);
 ok('R6 manual Reconnect is wanted while rejected (gated -> no call)', cg_sitekey_request('manual') === 'gated');
 ok('R6b gated: no button, support line kept', strpos(notice(), 'button') === false && strpos(text(notice()), 'contact CheckoutGuard support.') !== false);
+ok('R6c gated: "You can try again after", never "Next automatic attempt" (no automatic retry)',
+    preg_match('/You can try again after [^.]+\. If it keeps failing, contact CheckoutGuard support\.$/', text(notice())) === 1
+    && strpos(text(notice()), 'Next automatic attempt') === false);
 // R7 HQ accepts the key again (2xx for the current key): notice gone.
 reset_all(OWN); cg_sitekey_on_response(401, '', OWN); cg_sitekey_on_response(200, '', OWN);
 ok('R7 2xx for the current own key clears it -> no notice', !rej() && notice() === '' && !empty(st()['committed_at']));
