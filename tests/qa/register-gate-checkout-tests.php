@@ -61,7 +61,7 @@ $GLOBALS['QA_ADMIN'] = (int) ($admins[0] ?? 1);
 
 function qa_reset() {
     global $wpdb;
-    foreach (['cg_sitekey_state', 'cg_sitekey_next_allowed_at', 'cg_sitekey_lock', 'cg_register_next_allowed_at'] as $o) {
+    foreach (['cg_sitekey_state', 'cg_sitekey_next_allowed_at', 'cg_sitekey_lock', 'cg_register_next_allowed_at', 'cg_register_already_registered_at'] as $o) {
         $wpdb->delete($wpdb->options, ['option_name' => $o]);
         wp_cache_delete($o, 'options');
     }
