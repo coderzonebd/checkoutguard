@@ -150,6 +150,8 @@ function cg_register_site_with_hq($force = false)
     // problem, so nothing this site can retry will fix it on its own.
     if (!is_wp_error($response) && is_array($response) && empty($response['api_key'])) {
         update_option('cg_license_status', 'failed: Headquarters accepted registration but returned no API key. This is a server-side configuration issue — please contact support.');
+        // A different answer now: the old already-registered note no longer applies.
+        delete_option(CG_REGISTER_ALREADY_REGISTERED_OPTION);
         // A retry right away gets the same answer; wait like any failure.
         update_option(CG_REGISTER_GATE_OPTION, cg_register_now() + CG_REGISTER_MIN_GAP, false);
         return;
@@ -173,6 +175,9 @@ function cg_register_site_with_hq($force = false)
         );
         if (!$is_already_taken) {
             update_option('cg_license_status', 'failed: ' . $response->get_error_message());
+            // HQ down, 5xx or another refusal: drop the old already-registered
+            // note so the notice matches the latest answer.
+            delete_option(CG_REGISTER_ALREADY_REGISTERED_OPTION);
         } else {
             // The status stays as it was, so the plain failed notice does not
             // show; remember the answer for the already-registered notice.
