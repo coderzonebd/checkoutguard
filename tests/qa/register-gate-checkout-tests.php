@@ -223,6 +223,19 @@ qa_checkout_save(3); qa_checkout_save(4);
 $c = qa_registers();
 ok('G14', 'HQ down: gate edge, +59 s -> 0 register, +60 s -> exactly 1', $a === 1 && $b === 0 && $c === 1, "first=$a at59=$b at60=$c");
 
+// G17: "already taken" with Retry-After 300 holds the gate for the full
+// 300 s (not just the 60 s floor): saves at 0..299 s -> 1 register, a save
+// at +300 s -> exactly one more.
+qa_reset();
+$GLOBALS['QA_ROUTES'] = ['/sites/register' => ['code' => 409, 'ra' => '300', 'body' => ['error' => 'Domain already taken']]];
+for ($t = 0; $t < 300; $t += 30) { $GLOBALS['QA_NOW'] = 1800000000 + $t; qa_checkout_save($t); }
+$GLOBALS['QA_NOW'] = 1800000000 + 299; qa_checkout_save(299);
+$a = qa_registers();
+$GLOBALS['QA_NOW'] = 1800000000 + 300; $GLOBALS['QA_LOG'] = [];
+qa_checkout_save(300); qa_checkout_save(301);
+$b = qa_registers();
+ok('G17', 'already taken + Retry-After 300: saves for 300 s -> 1 register, +300 s -> exactly 1', $a === 1 && $b === 1, "first=$a at300=$b gate=" . (int) get_option('cg_register_next_allowed_at', 0));
+
 $out = ob_get_clean();
 // restore
 qa_reset();
