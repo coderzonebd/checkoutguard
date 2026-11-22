@@ -41,8 +41,16 @@ $max_id_before = (int) $wpdb->get_var("SELECT COALESCE(MAX(id), 0) FROM $table")
 $GLOBALS['R'] = [];
 function ok($id, $name, $pass, $detail) { $GLOBALS['R'][] = [$id, $name, $pass ? 'PASS' : 'FAIL', $detail]; }
 $GLOBALS['QA_N'] = 0;
+// The 1.5.1 60 s timeout/5xx wait (any cg_courier_* transient that is not the
+// per-phone cache or the 401/403 cache) is cleared between cases.
+function qa_clear_courier_waits() {
+    global $wpdb;
+    $rows = $wpdb->get_col("SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE '\\_transient\\_cg\\_courier\\_%' AND option_name NOT LIKE '\\_transient\\_cg\\_courier\\_cache\\_%' AND option_name <> '_transient_cg_courier_auth_reject'");
+    foreach ($rows as $row) { delete_transient(substr($row, strlen('_transient_'))); }
+}
 function qa_run($key, $grace, $http, $action = null) {
     $GLOBALS['QA_N']++;
+    qa_clear_courier_waits();
     $o = is_array($GLOBALS['QA_OPTS_ORIG']) ? $GLOBALS['QA_OPTS_ORIG'] : [];
     if ($key === null) { unset($o['api_key']); } else { $o['api_key'] = $key; }
     $o['enable_courier_service'] = 1; $o['enable_fraud_blocker'] = 0;
