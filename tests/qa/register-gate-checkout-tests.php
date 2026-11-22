@@ -237,6 +237,17 @@ qa_checkout_save(40); qa_checkout_save(41);
 $c = qa_registers();
 ok('G13', '409 already_registered: 6 saves in 13 s -> 1 register, +59 s -> 0, +60 s -> 1', $a === 1 && $b === 0 && $c === 1, "first=$a at59=$b at60=$c gate=" . (int) get_option('cg_register_next_allowed_at', 0));
 
+// G13s: 409 {"error":"already_registered"} is the same case as "already
+// taken" (Tanvir, 22 Nov): the shown status stays as it was, and the
+// register gate is still written (now + CG_REGISTER_MIN_GAP).
+qa_reset();
+$GLOBALS['QA_ROUTES'] = ['/sites/register' => ['code' => 409, 'body' => ['error' => 'already_registered']]];
+$st_before = get_option('cg_license_status', null);
+cg_register_site_with_hq();
+$st_after = get_option('cg_license_status', null);
+$gate = (int) get_option('cg_register_next_allowed_at', 0) - $GLOBALS['QA_NOW'];
+ok('G13s', '409 already_registered: status unchanged, gate = MIN_GAP', qa_registers() === 1 && $st_after === $st_before && $gate === CG_REGISTER_MIN_GAP, 'register=' . qa_registers() . ' status_before=' . var_export($st_before, true) . ' status_after=' . var_export(substr((string) $st_after, 0, 40), true) . " gate=$gate");
+
 // G14: gate edge. The gate ends exactly at first try + 60 s: a save at
 // +59 s sends no register, a save at +60 s sends one (gate > now, not >=).
 qa_reset();
