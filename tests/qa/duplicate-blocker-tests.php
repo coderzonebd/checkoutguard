@@ -17,6 +17,8 @@
  *      order: once the real order is outside the window, the next attempt goes
  *      through (F4a at t+80, F4b at t+100 after two blocked attempts). F4-ctl
  *      checks that attempts inside the window are still blocked.
+ *      F4c: a blocked attempt leaves no pending order or draft; if WC made one
+ *      it is cancelled or in the trash (asserted by order count and status).
  *
  * Pending founder decision (skipped unless QA_DUP_PENDING=1 is set):
  * P-off  default OFF: with no options, a different customer who only shares the
@@ -238,8 +240,27 @@ function qa_dup_store_checkout($pid, $name, $phone, $email)
 // Every order (any status) placed with this billing email.
 function qa_dup_orders_by_email($email)
 {
-    $statuses = array_merge(array_keys(wc_get_order_statuses()), ['checkout-draft', 'wc-checkout-draft']);
+    $statuses = array_merge(array_keys(wc_get_order_statuses()), ['checkout-draft', 'wc-checkout-draft', 'trash']);
     return wc_get_orders(['limit' => -1, 'return' => 'ids', 'billing_email' => $email, 'status' => $statuses]);
+}
+
+// Orders with this billing email that are still live: not cancelled, not
+// failed, not in the trash (a deleted order is gone and not counted).
+function qa_dup_live_orders($email)
+{
+    $out = [];
+    foreach (qa_dup_orders_by_email($email) as $id) {
+        $o = wc_get_order($id);
+        if ($o && !in_array($o->get_status(), ['cancelled', 'failed', 'trash'], true)) {
+            $out[$id] = $o->get_status();
+        }
+    }
+    return $out;
+}
+
+function qa_dup_fmt_live($live)
+{
+    return count($live) . ' live (' . implode(',', array_values($live)) . ')';
 }
 
 // Move orders back in time without saving them through WC (a save would run the
@@ -322,6 +343,10 @@ $r0 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
 qa_dup_age_orders(qa_dup_orders_by_email($F4[2]), 40);
 $r40 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
 qa_dup_check('F4-ctl [a] t+40 inside the window is blocked', $r0[0] === 200 && $r40[0] === 400, 't+0 ' . implode('/', $r0) . ', t+40 ' . implode('/', $r40));
+// F4c: the blocked attempt leaves no pending order or draft behind; if WC
+// created one it is cancelled or in the trash. Only the t+0 order is live.
+$live = qa_dup_live_orders($F4[2]);
+qa_dup_check('F4c [a] blocked t+40 attempt leaves no live order (only the t+0 order)', $r40[0] === 400 && count($live) === 1, qa_dup_fmt_live($live));
 qa_dup_age_orders(qa_dup_orders_by_email($F4[2]), 40);
 $r80 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
 qa_dup_check('F4a t+80: real order is outside the window, blocked t+40 attempt does not block', $r80[0] === 200, 't+80 ' . implode('/', $r80));
@@ -334,6 +359,8 @@ $r40 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
 qa_dup_age_orders(qa_dup_orders_by_email($F4[2]), 10);
 $r50 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
 qa_dup_check('F4-ctl [b] t+40 and t+50 inside the window are blocked', $r0[0] === 200 && $r40[0] === 400 && $r50[0] === 400, 't+0 ' . implode('/', $r0) . ', t+40 ' . implode('/', $r40) . ', t+50 ' . implode('/', $r50));
+$live = qa_dup_live_orders($F4[2]);
+qa_dup_check('F4c [b] two blocked attempts leave no live order (only the t+0 order)', $r40[0] === 400 && $r50[0] === 400 && count($live) === 1, qa_dup_fmt_live($live));
 qa_dup_age_orders(qa_dup_orders_by_email($F4[2]), 50);
 $r100 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
 qa_dup_check('F4b t+100: two blocked attempts do not renew the window', $r100[0] === 200, 't+100 ' . implode('/', $r100));
