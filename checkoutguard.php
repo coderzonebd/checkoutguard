@@ -28,6 +28,9 @@ define('CG_INC_DIR', CG_PLUGIN_DIR . 'includes/');
 define('CG_ADMIN_DIR', CG_INC_DIR . 'admin/');
 define('CG_HEADQUARTERS_URL', 'https://li.czbd.app');
 define('CG_PRODUCT_SLUG', 'checkoutguard');
+// Courier check: a 401/403 without a body code is kept this long (per key).
+define('CG_COURIER_AUTH_REJECT_TRANSIENT', 'cg_courier_auth_reject');
+define('CG_COURIER_AUTH_REJECT_TTL', 5 * 60);
 // Ed25519 public key used to verify the signature on GET /sites/status
 // responses (see cg_verify_signed_payload() in includes/utils.php) — public
 // keys are meant to ship embedded in the client, there's no API endpoint

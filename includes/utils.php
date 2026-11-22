@@ -228,6 +228,11 @@ function cg_call_hq_api($endpoint, $body = [], $method = 'POST', $require_api_ke
         cg_sitekey_on_response($response_code, $error_code_field, (string) ($headers['X-Api-Key'] ?? ''));
     }
 
+    // HQ accepted a call: a kept courier 401/403 no longer holds.
+    if ($response_code >= 200 && $response_code < 300 && get_transient(CG_COURIER_AUTH_REJECT_TRANSIENT) !== false) {
+        delete_transient(CG_COURIER_AUTH_REJECT_TRANSIENT);
+    }
+
     if ($response_code >= 300) {
         $error_message = $response_body['message'] ?? $response_body['error'] ?? 'Unknown API Error';
         cg_log_api_hit($endpoint, $method, false, $response_code, $error_message);

@@ -126,6 +126,75 @@ function cg_get_compact_ratio_html($ratio_data, $phone_number, $order_id)
 }
 
 /**
+ * The failed-check result: cache_source "error" with a zeroed summary. It is
+ * never cached and never blocks or holds an order.
+ */
+function cg_courier_error_results($error_message)
+{
+    $error_results = [
+        'cache_source' => 'error',
+        'summary' => array_merge(cg_get_default_courier_summary(), [
+            'risk_level' => $error_message,
+            'risk_color' => '#dc3545',
+        ]),
+    ];
+
+    foreach (array_keys(cg_get_supported_couriers()) as $courier_key) {
+        $error_results[$courier_key] = cg_get_default_courier_result($courier_key, true);
+    }
+
+    return $error_results;
+}
+
+/**
+ * HQ answered the courier check with 401/403 and no "code" in the body: it
+ * does not accept this key at all. Asking again on every checkout only adds
+ * the same wait and the same answer, so the answer is kept for 5 minutes for
+ * this key (the whole site, not per phone). 429, 5xx, timeouts and coded
+ * 401/403 (site-key answers) are not kept.
+ */
+function cg_courier_maybe_remember_auth_reject($error)
+{
+    $data = $error->get_error_data();
+    $status = is_array($data) ? (int) ($data['status'] ?? 0) : 0;
+    $code = is_array($data) ? (string) ($data['code'] ?? '') : '';
+    if (($status !== 401 && $status !== 403) || $code !== '') {
+        return;
+    }
+    set_transient(CG_COURIER_AUTH_REJECT_TRANSIENT, [
+        'key' => md5(cg_courier_current_api_key()),
+        'message' => mb_substr(sanitize_text_field($error->get_error_message()), 0, 200),
+    ], CG_COURIER_AUTH_REJECT_TTL);
+}
+
+/**
+ * The kept 401/403 message while it applies to the current key, else null.
+ * A different key (rotated, registered, claimed, typed in) ends it at once.
+ */
+function cg_courier_auth_reject_active()
+{
+    $kept = get_transient(CG_COURIER_AUTH_REJECT_TRANSIENT);
+    if (!is_array($kept) || !isset($kept['key'])) {
+        return null;
+    }
+    if (!hash_equals((string) $kept['key'], md5(cg_courier_current_api_key()))) {
+        delete_transient(CG_COURIER_AUTH_REJECT_TRANSIENT);
+        return null;
+    }
+    $message = isset($kept['message']) && is_string($kept['message']) ? $kept['message'] : '';
+    return $message !== '' ? $message : 'API Error';
+}
+
+/**
+ * The key cg_call_hq_api() sends.
+ */
+function cg_courier_current_api_key()
+{
+    $options = get_option('cg_plugin_options', []);
+    return !empty($options['api_key']) ? (string) $options['api_key'] : '';
+}
+
+/**
  * Calls the secure HQ proxy and returns the REAL, aggregated data.
  * Results are cached in a transient for 6 hours to reduce HQ server requests.
  */
@@ -136,6 +205,7 @@ function cg_perform_all_api_calls($phone_number, $order_id, $bypass_cache = fals
     // Delete local cache if a force refresh was requested
     if ($bypass_cache) {
         delete_transient($cache_key);
+        delete_transient(CG_COURIER_AUTH_REJECT_TRANSIENT);
     }
 
     // Check transient cache
@@ -151,9 +221,16 @@ function cg_perform_all_api_calls($phone_number, $order_id, $bypass_cache = fals
         return $cached_results;
     }
 
+    // HQ rejected this key a moment ago: skip the call and fail open.
+    $auth_reject = cg_courier_auth_reject_active();
+    if ($auth_reject !== null) {
+        return cg_courier_error_results($auth_reject);
+    }
+
     $response = cg_call_hq_api('/sites/courier-check', ['phone_number' => $phone_number]);
 
     if (is_wp_error($response)) {
+        cg_courier_maybe_remember_auth_reject($response);
         $error_message = $response->get_error_message();
         if (empty($error_message)) {
             $error_message = 'API Error';
@@ -161,19 +238,7 @@ function cg_perform_all_api_calls($phone_number, $order_id, $bypass_cache = fals
             $error_message = __('Courier providers are taking too long to respond. Please try again in a few moments.', 'checkoutguard');
         }
         // Do NOT cache error results
-        $error_results = [
-            'cache_source' => 'error',
-            'summary' => array_merge(cg_get_default_courier_summary(), [
-                'risk_level' => $error_message,
-                'risk_color' => '#dc3545',
-            ]),
-        ];
-
-        foreach (array_keys(cg_get_supported_couriers()) as $courier_key) {
-            $error_results[$courier_key] = cg_get_default_courier_result($courier_key, true);
-        }
-
-        return $error_results;
+        return cg_courier_error_results($error_message);
     }
 
     // The backend nests the actual courier data under a "result" key
