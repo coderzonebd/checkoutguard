@@ -931,6 +931,12 @@ function cg_get_recent_matching_orders_for_duplicate_check($customer_data, $wind
         }
     }
 
+    // A blocked Store API attempt can leave a draft/pending order behind; it is
+    // not a real earlier order and must not restart the duplicate window.
+    $matching_orders = array_values(array_filter($matching_orders, function ($o) {
+        return !($o instanceof WC_Order) || $o->get_meta('_cg_blocked', true) !== '1';
+    }));
+
     return $matching_orders;
 }
 
@@ -1538,6 +1544,10 @@ function cg_store_api_checkout_guard($order, $request)
 
     $result = CG_Validation_Engine::validate($context);
     if ($result->is_blocked()) {
+        // Mark the attempt so the duplicate lookup never counts it as an earlier
+        // order (WooCommerce may keep the draft after the exception below).
+        $order->update_meta_data('_cg_blocked', '1');
+        $order->update_meta_data('_cg_block_code', $result->block_code);
         CG_Response_Adapter::store_api($result);
     } else {
         $order->update_meta_data('_cg_validated', '1');
