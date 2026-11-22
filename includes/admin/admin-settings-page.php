@@ -10,8 +10,12 @@ if (!defined('ABSPATH')) {
  */
 function cg_fetch_hq_configuration()
 {
+    // Reset per call so a stale Retry-After never leaks into the next wait.
+    $GLOBALS['cg_status_retry_after'] = 0;
     $response = cg_call_hq_api('/sites/status', [], 'GET');
     if (is_wp_error($response)) {
+        $data = method_exists($response, 'get_error_data') ? $response->get_error_data() : null;
+        $GLOBALS['cg_status_retry_after'] = is_array($data) ? (int) ($data['retry_after'] ?? 0) : 0;
         return false;
     }
     $verified = cg_verify_signed_payload($response);
@@ -25,14 +29,34 @@ function cg_fetch_hq_configuration()
 }
 
 /**
+ * Clock for the status wait. Same source as the register and site-key
+ * gates, without depending on activation.php being loaded first.
+ */
+function cg_status_now()
+{
+    if (function_exists('cg_register_now')) {
+        return (int) cg_register_now();
+    }
+    return function_exists('cg_sitekey_now') ? (int) cg_sitekey_now() : time();
+}
+
+/**
  * Fetches data from HQ, updates local settings, and caches the result.
  *
- * @param bool $force Passed to the register call when the site has no key:
- *                    true sends it past the register gate. Only the admin's
- *                    Sync Now button passes true; cron and every automatic
- *                    caller use the default and stay gated. Only a real
- *                    boolean true forces: a hook that passes an argument
- *                    (do_action with '1') must stay gated.
+ * A failed status call (any HTTP error, timeout, HQ down or bad signature)
+ * stores a wait in cg_status_next_allowed_at: Retry-After clamped to
+ * 60..600 seconds. Calls inside that wait return false without contacting
+ * HQ, unless $force is exactly true ("Sync now" and the status check
+ * that commits a newly claimed site key).
+ *
+ * @param bool $force Only a real boolean true counts (a hook that passes an
+ *                    argument, do_action with '1', must not force). True
+ *                    does two things: when the site has no key it sends the
+ *                    register call past the register gate, and it skips the
+ *                    stored status wait. Only the admin's Sync Now button
+ *                    and the site-key claim commit pass true; cron and every
+ *                    automatic caller use the default.
+ * @return bool True when a verified status was stored.
  */
 function cg_sync_with_hq($force = false)
 {
@@ -49,7 +73,22 @@ function cg_sync_with_hq($force = false)
         }
     }
 
+    // Kept in an option, not a transient, so the wait never depends on
+    // object-cache eviction or transient expiry.
+    if ($force !== true && (int) get_option('cg_status_next_allowed_at', 0) > cg_status_now()) {
+        return false;
+    }
+
     $config = cg_fetch_hq_configuration();
+
+    if (!($config && is_array($config) && isset($config['status']))) {
+        $retry_after = (int) ($GLOBALS['cg_status_retry_after'] ?? 0);
+        $wait = min(10 * MINUTE_IN_SECONDS, max(MINUTE_IN_SECONDS, $retry_after));
+        update_option('cg_status_next_allowed_at', cg_status_now() + $wait, false);
+        return false;
+    }
+
+    delete_option('cg_status_next_allowed_at');
 
     if ($config && is_array($config) && isset($config['status'])) {
         update_option('cg_license_status', $config['status']);
@@ -119,7 +158,9 @@ function cg_handle_force_sync_ajax()
             cg_register_reconnect_lock_release($lock);
         }
     } else {
-        $synced = cg_sync_with_hq();
+        // A key is stored, so no register call can happen here: true only
+        // skips a status wait left from an earlier failed status call.
+        $synced = cg_sync_with_hq(true);
     }
 
     if ($synced) {
