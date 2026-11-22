@@ -1613,3 +1613,64 @@ function cg_count_uncounted_auto_blocks($table)
         current_time('mysql')
     ));
 }
+
+/**
+ * Duplicate blocker defaults. One list for the activation seed, the upgrade
+ * seed, the checkout check and the settings page, so the page never shows a
+ * switch as off while checkout treats it as on.
+ *
+ * @return array
+ */
+function cg_duplicate_blocker_defaults()
+{
+    return [
+        'duplicate_blocker_enabled'      => 1,
+        'duplicate_blocker_window'       => 10,
+        'duplicate_blocker_mode'         => 'identical',
+        'duplicate_blocker_match_phone'  => 1,
+        'duplicate_blocker_match_device' => 1,
+        'duplicate_blocker_match_ip'     => 1,
+        'duplicate_blocker_match_email'  => 1,
+    ];
+}
+
+/**
+ * Saves the duplicate blocker defaults that are missing from
+ * cg_plugin_options. Keys that already exist are never changed, so a value
+ * the merchant saved (including 0) stays as it is.
+ *
+ * @return bool True when the option was updated.
+ */
+function cg_seed_duplicate_blocker_defaults()
+{
+    $options = get_option('cg_plugin_options', []);
+    $options = is_array($options) ? $options : [];
+    $updated = false;
+    foreach (cg_duplicate_blocker_defaults() as $k => $v) {
+        if (!isset($options[$k])) {
+            $options[$k] = $v;
+            $updated = true;
+        }
+    }
+    if ($updated) {
+        update_option('cg_plugin_options', $options);
+    }
+    return $updated;
+}
+
+/**
+ * On/off state of a duplicate blocker switch: the saved value when there is
+ * one, otherwise the default from cg_duplicate_blocker_defaults().
+ *
+ * @param array  $options cg_plugin_options value.
+ * @param string $key     Option key, e.g. duplicate_blocker_enabled.
+ * @return bool
+ */
+function cg_duplicate_blocker_switch($options, $key)
+{
+    if (is_array($options) && isset($options[$key])) {
+        return !empty($options[$key]);
+    }
+    $defaults = cg_duplicate_blocker_defaults();
+    return !empty($defaults[$key]);
+}

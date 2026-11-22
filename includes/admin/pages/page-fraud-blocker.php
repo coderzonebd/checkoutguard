@@ -371,7 +371,7 @@ function cg_render_fraud_blocker_page()
                 <tr>
                     <th scope="row"><label for="cg_duplicate_blocker_enabled"><?php _e('Enable Duplicate Blocker', 'checkoutguard'); ?></label></th>
                     <td>
-                        <label><input type="checkbox" id="cg_duplicate_blocker_enabled" value="1" <?php checked(!empty($cg_options['duplicate_blocker_enabled'])); ?>>
+                        <label><input type="checkbox" id="cg_duplicate_blocker_enabled" value="1" <?php checked(cg_duplicate_blocker_switch($cg_options, 'duplicate_blocker_enabled')); ?>>
                         <?php _e('Block rapid duplicate checkout submissions.', 'checkoutguard'); ?></label>
                     </td>
                 </tr>
@@ -434,7 +434,7 @@ function cg_render_fraud_blocker_page()
                     </th>
                     <td>
                         <?php
-                        $default_dup_msg = __('You have already placed an order (#{order_id}) recently. Please wait a few moments before ordering again, or contact us if you need to modify your order.', 'checkoutguard');
+                        $default_dup_msg = __('You have already placed an order recently. Please wait a few moments before ordering again, or contact us if you need to modify your order.', 'checkoutguard');
                         $saved_dup_msg = $cg_options['duplicate_blocker_message'] ?? '';
                         $is_pro = cg_is_pro_plan();
                         ?>
