@@ -4,7 +4,7 @@ Tags: woocommerce, abandoned cart, checkout, invoice, fraud blocker
 Requires at least: 5.8
 Tested up to: 7.1
 Requires PHP: 8.0
-Stable tag: 1.4.2
+Stable tag: 1.5.0
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -307,6 +307,15 @@ After installation, go to **CheckoutGuard > Settings** and click **Sync Now**. I
 9. WordPress Dashboard widget (screenshot-9.png)
 
 == Changelog ==
+
+= 1.5.0 =
+* Security: after the update CheckoutGuard finishes a security update with our server on its own. Nothing to do. If it cannot finish, a notice with a "Reconnect now" button is shown in the admin; orders always go through.
+* Security: customer email and phone are no longer written into the page HTML of the block buttons and of masked checkouts.
+* Feature: the Free plan shows full contact details for 5 new checkouts per usage period.
+* Changed: on paid plans, an order with a low courier success ratio is now placed and put on hold for review instead of being blocked (you can switch back to blocking in Courier Analytics). Free plans block as before.
+* Improved: automatic blocks no longer count toward the fraud usage limit, and the courier ratio check runs once per checkout.
+* Improved: database updates are retried automatically; the settings page shows a notice if they fail three times in a row.
+* Fixed: deleting a blocklist entry now tells a database error apart from an entry that no longer exists.
 
 = 1.4.2 =
 * Security: order data shown by the admin JavaScript on CheckoutGuard screens is now escaped (XSS fix).
