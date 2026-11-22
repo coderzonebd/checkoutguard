@@ -195,6 +195,25 @@ function cg_courier_current_api_key()
 }
 
 /**
+ * True when a courier-check error should start the site-wide wait: a
+ * timeout (cURL 28) or an HQ 5xx. Connect/DNS failures (cURL 7, 6),
+ * 4xx and 429 never do.
+ */
+function cg_courier_error_starts_wait($error)
+{
+    if (!is_wp_error($error)) {
+        return false;
+    }
+    $data = $error->get_error_data();
+    $status = is_array($data) ? (int) ($data['status'] ?? 0) : 0;
+    if ($status >= 500 && $status <= 599) {
+        return true;
+    }
+    $message = (string) $error->get_error_message();
+    return stripos($message, 'cURL error 28') !== false || stripos($message, 'Operation timed out') !== false;
+}
+
+/**
  * Calls the secure HQ proxy and returns the REAL, aggregated data.
  * Results are cached in a transient for 6 hours to reduce HQ server requests.
  */
@@ -227,10 +246,19 @@ function cg_perform_all_api_calls($phone_number, $order_id, $bypass_cache = fals
         return cg_courier_error_results($auth_reject);
     }
 
+    // HQ timed out or failed a moment ago: skip the call and fail open.
+    // Nothing is cached for this phone. A force refresh still calls HQ.
+    if (!$bypass_cache && get_transient(CG_COURIER_TIMEOUT_WAIT_TRANSIENT) !== false) {
+        return cg_courier_error_results(__('Courier providers are taking too long to respond. Please try again in a few moments.', 'checkoutguard'));
+    }
+
     $response = cg_call_hq_api('/sites/courier-check', ['phone_number' => $phone_number]);
 
     if (is_wp_error($response)) {
         cg_courier_maybe_remember_auth_reject($response);
+        if (cg_courier_error_starts_wait($response)) {
+            set_transient(CG_COURIER_TIMEOUT_WAIT_TRANSIENT, 1, CG_COURIER_TIMEOUT_WAIT_TTL);
+        }
         $error_message = $response->get_error_message();
         if (empty($error_message)) {
             $error_message = 'API Error';
@@ -267,6 +295,9 @@ function cg_perform_all_api_calls($phone_number, $order_id, $bypass_cache = fals
             set_transient('cg_api_cache', $config, DAY_IN_SECONDS);
         }
     }
+
+    // A courier-check success ends the wait.
+    delete_transient(CG_COURIER_TIMEOUT_WAIT_TRANSIENT);
 
     // Cache successful results for 6 hours
     set_transient($cache_key, $results, 6 * HOUR_IN_SECONDS);

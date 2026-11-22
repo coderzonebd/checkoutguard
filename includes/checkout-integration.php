@@ -1242,7 +1242,18 @@ class CG_Validation_Engine
             $threshold = isset($options['ratio_blocker_threshold']) ? (int) $options['ratio_blocker_threshold'] : 20;
             $grace_period = isset($options['ratio_blocker_grace_period']) ? (int) $options['ratio_blocker_grace_period'] : 5;
 
-            $ratio_data = cg_perform_all_api_calls($context->phone, 0);
+            // Short HQ timeout for this call only; the admin check keeps 30 s.
+            $prev_timeout = $GLOBALS['cg_hq_timeout_override'] ?? null;
+            $GLOBALS['cg_hq_timeout_override'] = (int) CG_CHECKOUT_COURIER_TIMEOUT;
+            try {
+                $ratio_data = cg_perform_all_api_calls($context->phone, 0);
+            } finally {
+                if ($prev_timeout === null) {
+                    unset($GLOBALS['cg_hq_timeout_override']);
+                } else {
+                    $GLOBALS['cg_hq_timeout_override'] = $prev_timeout;
+                }
+            }
             // A failed courier check (no key, HQ down, 429, timeout) comes back
             // as cache_source "error" with a zeroed summary. That 0% is not
             // the customer's ratio, so it never blocks or holds an order,
