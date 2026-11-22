@@ -1534,26 +1534,38 @@ add_action('woocommerce_before_order_object_save', 'cg_universal_order_save_guar
  * Without this the draft stays pending and shows up as a live order for the
  * same customer. Cancelled is outside the duplicate lookup statuses and the
  * save guard skips it. WooCommerce sends the admin "Order cancelled" email on
- * pending -> cancelled; a blocked attempt was never a real order, so that one
- * email is switched off for this order only. Stock is not touched: a draft
- * never reduced it.
+ * pending -> cancelled; a blocked attempt was never a real order, so the order
+ * is marked and cg_mute_closed_attempt_cancelled_email() keeps that email off.
+ * Stock is not touched: a draft never reduced it.
  *
  * @param WC_Order $order The blocked attempt.
  */
 function cg_close_blocked_store_api_attempt($order)
 {
-    $order_id = $order->get_id();
-    $mute = function ($enabled, $email_order) use ($order_id) {
-        if ($email_order instanceof WC_Order && $email_order->get_id() === $order_id) {
-            return false;
-        }
-        return $enabled;
-    };
-    add_filter('woocommerce_email_enabled_cancelled_order', $mute, 10, 2);
+    $order->update_meta_data('_cg_attempt_closed', '1');
     $order->set_status('cancelled', __('CheckoutGuard blocked this checkout attempt.', 'checkoutguard'));
     $order->save();
-    remove_filter('woocommerce_email_enabled_cancelled_order', $mute, 10);
 }
+
+/**
+ * Keep the admin "Order cancelled" email off for a closed Store API attempt.
+ *
+ * The decision comes from the order meta, not from request timing, so it also
+ * holds when WooCommerce defers transactional emails to shutdown or to a later
+ * Action Scheduler run. Orders cancelled by any other path are not affected.
+ *
+ * @param bool          $enabled     Whether the email is enabled.
+ * @param WC_Order|null $email_order The order the email is about, if any.
+ * @return bool
+ */
+function cg_mute_closed_attempt_cancelled_email($enabled, $email_order = null)
+{
+    if ($email_order instanceof WC_Order && $email_order->get_meta('_cg_attempt_closed', true) === '1') {
+        return false;
+    }
+    return $enabled;
+}
+add_filter('woocommerce_email_enabled_cancelled_order', 'cg_mute_closed_attempt_cancelled_email', 10, 2);
 
 /**
  * 3. WooCommerce Store API Checkout Guard (Gutenberg Checkout Block / Twenty Twenty-Five Theme / FSE)
