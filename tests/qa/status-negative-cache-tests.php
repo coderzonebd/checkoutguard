@@ -356,9 +356,26 @@ $GLOBALS['QA_R403'] = $R403;
 list($a, $wait, $b, $keys, $key) = qa_n14(['code' => 201, 'body' => ['api_key' => 'qa-new-key-not-real']]);
 ok('N14a', 'register with a new api_key in a wait: wait cleared, next save -> 1 status call with the new key', $a === 1 && $wait === null && $b === 1 && $keys === ['qa-new-key-not-real'] && $key === 'qa-new-key-not-real', "first=$a wait=" . ($wait === null ? 'none' : '+' . ((int) $wait - $GLOBALS['QA_T0'])) . " next=$b new_key_used=" . var_export($keys === ['qa-new-key-not-real'], true));
 list($a, $wait, $b) = qa_n14(['code' => 500, 'body' => ['error' => 'qa down']]);
-ok('N14b', 'register fails in a wait: wait kept, next save -> 0 status calls', $a === 1 && $wait !== null && $b === 0, "first=$a wait=" . ($wait === null ? 'none' : '+' . ((int) $wait - $GLOBALS['QA_T0'])) . " next=$b");
+ok('N14b', 'register fails in a wait: wait kept, next save -> 0 status calls', $a === 1 && $wait !== null && (int) $wait - $GLOBALS['QA_T0'] === 60 && $b === 0, "first=$a wait=" . ($wait === null ? 'none' : '+' . ((int) $wait - $GLOBALS['QA_T0'])) . " next=$b");
 list($a, $wait, $b) = qa_n14(['code' => 201, 'body' => ['api_key' => 'qa-own-key-not-real']]);
-ok('N14c', 'register returns the same key in a wait: wait kept, next save -> 0 status calls', $a === 1 && $wait !== null && $b === 0, "first=$a wait=" . ($wait === null ? 'none' : '+' . ((int) $wait - $GLOBALS['QA_T0'])) . " next=$b");
+ok('N14c', 'register returns the same key in a wait: wait kept, next save -> 0 status calls', $a === 1 && $wait !== null && (int) $wait - $GLOBALS['QA_T0'] === 60 && $b === 0, "first=$a wait=" . ($wait === null ? 'none' : '+' . ((int) $wait - $GLOBALS['QA_T0'])) . " next=$b");
+
+// N15: a stored wait more than 600 s ahead cannot come from this code (the
+// longest wait is 600 s), e.g. the clock was moved back after it was written.
+// It is ignored: the save calls status. A wait of exactly 600 s still holds.
+function qa_n15($ahead) {
+    qa_reset(); $GLOBALS['QA_ROUTES'] = $GLOBALS['QA_R403'];
+    update_option('cg_status_next_allowed_at', $GLOBALS['QA_T0'] + $ahead, false);
+    $b = qa_saves_at([0]);
+    $wait = get_option('cg_status_next_allowed_at', null);
+    return [$b, $wait === null ? 'none' : (int) $wait - $GLOBALS['QA_T0']];
+}
+list($b, $w) = qa_n15(3600);
+ok('N15a', 'stored wait +3600 s (clock moved back): ignored, save -> 1 status call, new wait +60', $b === 1 && $w === 60, "calls=$b wait=$w");
+list($b, $w) = qa_n15(601);
+ok('N15b', 'stored wait +601 s: ignored, save -> 1 status call', $b === 1 && $w === 60, "calls=$b wait=$w");
+list($b, $w) = qa_n15(600);
+ok('N15c', 'stored wait +600 s (the longest real wait): kept, save -> 0 status calls', $b === 0 && $w === 600, "calls=$b wait=$w");
 
 $out = ob_get_clean();
 // restore
