@@ -218,6 +218,14 @@ $p2 = qa_checkout($good);
 $tt14 = qa_wait_ttl();
 ok('C14', 'other HQ endpoint 2xx in the wait: wait stays, next checkout 0 calls', $p1[0] === 1 && count($GLOBALS['QA_OTHER_CALLS']) === 1 && !is_wp_error($other) && $p2[0] === 0 && $p2[2] && $tt14 !== null, json_encode([$p1, $p2]) . ' other=' . (is_wp_error($other) ? $other->get_error_code() : 'ok') . ' ttl=' . var_export($tt14, true));
 
+// C15: the admin popup (no bypass) honours the wait: 0 calls, fails open as
+// error, wait stays. Only "try again" / bypass makes a call (C8).
+qa_clear_waits();
+$q1 = qa_checkout($t28);
+$q = qa_admin($good, false);
+$tt15 = qa_wait_ttl();
+ok('C15', 'admin popup without bypass in the wait: 0 calls, error, wait stays', $q1[0] === 1 && $q[0] === 0 && $q[2] === 'error' && $tt15 !== null, json_encode([$q1, $q]) . ' ttl=' . var_export($tt15, true));
+
 foreach ($GLOBALS['QA_PHONES'] as $p) { delete_transient('cg_courier_cache_' . md5($p)); }
 qa_clear_waits();
 delete_transient('cg_courier_auth_reject');
