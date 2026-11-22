@@ -163,7 +163,7 @@ function cg_courier_maybe_remember_auth_reject($error)
     }
     set_transient(CG_COURIER_AUTH_REJECT_TRANSIENT, [
         'key' => md5(cg_courier_current_api_key()),
-        'message' => substr(sanitize_text_field($error->get_error_message()), 0, 200),
+        'message' => mb_substr(sanitize_text_field($error->get_error_message()), 0, 200),
     ], CG_COURIER_AUTH_REJECT_TTL);
 }
 

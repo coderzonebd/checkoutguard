@@ -127,6 +127,12 @@ qa_set_key(null);
 $i1 = qa_check($u401); $i2 = qa_check($u401);
 ok('N12', 'no key at all: no HQ call, nothing kept (api_key_missing is local)', $i1 === [0, 'error'] && $i2 === [0, 'error'] && !qa_kept(), json_encode([$i1, $i2]));
 
+delete_transient('cg_courier_auth_reject');
+qa_set_key('qa-key-one-not-real');
+qa_check(['code' => 401, 'body' => ['error' => str_repeat('a', 199) . str_repeat('ক', 10)]]);
+$kept_msg = (string) (get_transient('cg_courier_auth_reject')['message'] ?? '');
+ok('N14', 'kept message cut at 200 characters, never inside a multibyte character', mb_strlen($kept_msg) === 200 && mb_check_encoding($kept_msg, 'UTF-8'), 'len=' . mb_strlen($kept_msg) . ' utf8=' . var_export(mb_check_encoding($kept_msg, 'UTF-8'), true));
+
 // Checkout path: grace 0, kept 401 -> order allowed, HQ not called.
 delete_transient('cg_courier_auth_reject');
 qa_set_key('qa-key-one-not-real', 0);
