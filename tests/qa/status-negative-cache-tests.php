@@ -14,6 +14,8 @@
  * writes a new wait, if it succeeds it clears the wait. A register that
  * stores a new api_key clears the wait too; a failed register or the same key
  * keeps it.
+ * The wait only stops status calls: it never blocks an order, even with
+ * no cg_api_cache (N16).
  *
  * The wait must use the plugin clock (cg_register_now() / cg_sitekey_now(),
  * filter cg_sitekey_now), so this test can move time without sleeping.
@@ -376,6 +378,49 @@ list($b, $w) = qa_n15(601);
 ok('N15b', 'stored wait +601 s: ignored, save -> 1 status call', $b === 1 && $w === 60, "calls=$b wait=$w");
 list($b, $w) = qa_n15(600);
 ok('N15c', 'stored wait +600 s (the longest real wait): kept, save -> 0 status calls', $b === 0 && $w === 600, "calls=$b wait=$w");
+list($b, $w) = qa_n15(0);
+ok('N15d', 'stored wait == now (the wait just ended): save -> 1 status call, new wait +60', $b === 1 && $w === 60, "calls=$b wait=$w");
+
+// N16: the status wait only stops status calls; it never blocks an order.
+// With a wait running and no cg_api_cache, the checkout security validation
+// (classic woocommerce_after_checkout_validation and woocommerce_checkout_process
+// guards and the shared validation engine) lets a clean order through and makes no status call.
+// Courier check off so no other HQ route is involved; placeholder contact
+// values unique to this run (the engine reuses a result per context).
+qa_reset(); $GLOBALS['QA_ROUTES'] = $GLOBALS['QA_R403'];
+$o = get_option('cg_plugin_options', []);
+$o['enable_courier_service'] = false;
+cg_update_options_from_hq($o);
+$a = qa_saves_at([0]);
+qa_set_now(5);
+$wait = get_option('cg_status_next_allowed_at', null);
+$cache = get_transient('cg_api_cache');
+$before = qa_status();
+$qa_c = [
+    'billing_first_name' => 'QA', 'billing_last_name' => 'Order',
+    'billing_phone' => '0170' . substr(preg_replace('/\D/', '', hexdec($GLOBALS['QA_RUN']) . '0000000'), 0, 7),
+    'billing_email' => 'qa-n16-' . $GLOBALS['QA_RUN'] . '@example.invalid',
+    'billing_address_1' => 'QA road', 'billing_city' => 'QA', 'billing_postcode' => '1000',
+];
+$errors = new WP_Error();
+cg_after_checkout_validation_guard($qa_c, $errors);
+$classic = $errors->get_error_messages();
+$msg = cg_run_checkout_security_validation([
+    'phone' => '0180' . substr($qa_c['billing_phone'], 4), 'email' => 'qa-n16b-' . $GLOBALS['QA_RUN'] . '@example.invalid',
+    'first_name' => 'QA', 'last_name' => 'Order', 'ip' => '127.0.0.1', 'device_fp' => 'qafp' . $GLOBALS['QA_RUN'] . 'n16',
+], null, 'qa_n16');
+// woocommerce_checkout_process guard: reads $_POST, reports through wc_add_notice().
+if (function_exists('WC') && WC() && !WC()->session) { WC()->initialize_session(); }
+wc_clear_notices();
+$_POST = $_REQUEST = array_merge($qa_c, [
+    'billing_phone' => '0190' . substr($qa_c['billing_phone'], 4), 'billing_email' => 'qa-n16c-' . $GLOBALS['QA_RUN'] . '@example.invalid',
+]);
+cg_checkout_process_guard();
+$_POST = $_REQUEST = [];
+$process = wc_get_notices('error');
+wc_clear_notices();
+$calls = qa_status() - $before;
+ok('N16', 'status wait running, no cg_api_cache: clean order passes (validation guard, process guard, engine), 0 status calls', $a === 1 && $wait !== null && $cache === false && $classic === [] && $msg === null && $process === [] && $calls === 0, "first=$a wait=" . ($wait === null ? 'none' : '+' . ((int) $wait - $GLOBALS['QA_T0'])) . ' cache=' . ($cache === false ? 'none' : 'set') . ' classic=' . json_encode($classic) . ' engine=' . var_export($msg, true) . ' process=' . count($process) . " status=$calls");
 
 $out = ob_get_clean();
 // restore
