@@ -693,6 +693,9 @@ function cg_get_recent_matching_orders_for_duplicate_check($customer_data, $wind
     $match_email  = !isset($options['duplicate_blocker_match_email']) || !empty($options['duplicate_blocker_match_email']);
     $match_device = !isset($options['duplicate_blocker_match_device']) || !empty($options['duplicate_blocker_match_device']);
     $match_ip     = !isset($options['duplicate_blocker_match_ip']) || !empty($options['duplicate_blocker_match_ip']);
+    // D2 pending founder decision: device, IP, phone and email are OR-matched
+    // below, so an IP-only or device-only hit blocks, and 'identical' mode
+    // also accepts an order-total-only match. Behaviour is unchanged here.
 
     $valid_statuses = apply_filters('cg_duplicate_blocker_order_statuses', ['processing', 'pending', 'on-hold', 'completed']);
     $exclude_id = ($current_order instanceof WC_Order) ? (int) $current_order->get_id() : 0;
