@@ -20,6 +20,9 @@
  * A6  not shown to non-admins.
  * A7  the Reconnect button works: after the gate, cg_register_reconnect_attempt()
  *     sends one register (not 'not_needed').
+ * A8  status already 'failed: ...' (HQ was down), then 409 already_registered:
+ *     exactly one error notice, the already-registered one, with Reconnect
+ *     (the plain failed notice is not shown next to it).
  *
  * Run on a local test site only (never production):
  *   wp eval-file tests/qa/register-already-registered-notice-tests.php
@@ -205,6 +208,19 @@ wp_set_current_user(0);
 $b = qa_ar_notice();
 wp_set_current_user($GLOBALS['QA_ADMIN']);
 ok('A6', 'hidden for non-admins (admin sees it)', $admin_sees && $b === null, 'admin_sees=' . var_export($admin_sees, true) . ' guest ' . qa_ar_fmt($b));
+
+// A8: register failed first (HQ down), then 409 already_registered: one error notice only
+qa_reset();
+cg_register_site_with_hq();
+$failed_first = cg_register_failed();
+$GLOBALS['QA_NOW'] += 61;
+$GLOBALS['QA_ROUTES'] = $GLOBALS['QA_AR'];
+cg_register_site_with_hq();
+$status = get_option('cg_license_status');
+$GLOBALS['QA_NOW'] += 61;
+$errs = array_values(array_filter(qa_notice_blocks(), function ($b) { return strpos(' ' . $b['class'] . ' ', ' notice-error ') !== false; }));
+$one = count($errs) === 1 ? $errs[0] : null;
+ok('A8', 'failed status, then already_registered: exactly 1 error notice, the already-registered one, with Reconnect', $failed_first && strpos((string) $status, 'failed') === 0 && $one !== null && stripos($one['text'], 'already registered') !== false && qa_ar_ok($one) && qa_has_button($one), 'failed_first=' . var_export($failed_first, true) . ' status=' . substr((string) $status, 0, 7) . ' error_notices=' . count($errs) . ' ' . qa_ar_fmt($one));
 
 // restore
 qa_reset();
