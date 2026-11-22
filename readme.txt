@@ -309,7 +309,7 @@ After installation, go to **CheckoutGuard > Settings** and click **Sync Now**. I
 == Changelog ==
 
 = 1.5.0 =
-* Security: after the update CheckoutGuard finishes a security update with our server on its own. Nothing to do. If it cannot finish, a notice with a "Reconnect now" button is shown in the admin; orders always go through.
+* Security: after updating, CheckoutGuard reconnects to our server automatically. Nothing to do. If it cannot, a notice with a "Reconnect now" button is shown in the admin; orders always go through.
 * Security: customer email and phone are no longer written into the page HTML of the block buttons and of masked checkouts.
 * Feature: the Free plan shows full contact details for 5 new checkouts per usage period.
 * Changed: on paid plans, an order with a low courier success ratio is now placed and put on hold for review instead of being blocked (you can switch back to blocking in Courier Analytics). Free plans block as before.
