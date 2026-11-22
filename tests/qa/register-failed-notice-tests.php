@@ -143,6 +143,25 @@ qa_reset();
 list($reg) = qa_notices();
 ok('N9', 'no key, status not failed: no register notice', $reg === '', '');
 
+// N10: reconnect where register answers 2xx without a key: the gate set
+// before the call is the only gate, so a second click stays gated
+qa_reset();
+cg_register_site_with_hq();
+$GLOBALS['QA_NOW'] += 61; $GLOBALS['QA_LOG'] = [];
+$GLOBALS['QA_ROUTES'] = ['/sites/register' => ['code' => 201, 'body' => ['site' => ['domain' => 'qa.test']]], '/sites/status' => ['code' => 'down']];
+$a = cg_register_reconnect_attempt(); $b = cg_register_reconnect_attempt();
+$n = count(array_filter($GLOBALS['QA_LOG'], function ($p) { return $p === '/sites/register'; }));
+ok('N10', '2xx without key: second reconnect gated, one register', $a === 'tried' && $b === 'gated' && $n === 1 && cg_register_failed(), "a=$a b=$b register_calls=$n");
+
+// N11: same for "already taken" (register sets no gate on that path)
+qa_reset();
+cg_register_site_with_hq();
+$GLOBALS['QA_NOW'] += 61; $GLOBALS['QA_LOG'] = [];
+$GLOBALS['QA_ROUTES'] = ['/sites/register' => ['code' => 409, 'body' => ['error' => 'Domain already taken']], '/sites/status' => ['code' => 'down']];
+$a = cg_register_reconnect_attempt(); $b = cg_register_reconnect_attempt();
+$n = count(array_filter($GLOBALS['QA_LOG'], function ($p) { return $p === '/sites/register'; }));
+ok('N11', 'already taken: second reconnect gated, one register', $a === 'tried' && $b === 'gated' && $n === 1, "a=$a b=$b register_calls=$n");
+
 // restore
 qa_reset();
 foreach ($GLOBALS['QA_ORIG'] as $name => $val) {
