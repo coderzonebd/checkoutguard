@@ -179,10 +179,14 @@ function cg_sitekey_is_site_key($key)
 function cg_sitekey_needed()
 {
     $key = cg_sitekey_current_key();
-    if ($key === '') {
-        return false; // Registration handles a site without any key.
-    }
     $state = cg_sitekey_state();
+    if ($key === '') {
+        // A site without any key normally gets one from registration. Once
+        // HQ answers register with 409 claim_required (fresh install after
+        // the legacy deadline, contract §1a), the only way in is a keyless
+        // claim round: request-site-key and claim-key without X-Api-Key.
+        return ($state['legacy_code'] ?? '') === 'claim_required';
+    }
     return !cg_sitekey_is_site_key($key) || !empty($state['pending_until']);
 }
 
@@ -305,6 +309,11 @@ function cg_sitekey_rollback($why)
     if (!empty($state['legacy_key'])) {
         $options['api_key'] = (string) $state['legacy_key'];
         cg_update_options_from_hq($options);
+    } elseif (array_key_exists('legacy_key', $state) && !empty($options['api_key'])) {
+        // Keyless claim (contract §1a): there was no key before the pending
+        // one, so drop the rejected key instead of keeping it as if confirmed.
+        unset($options['api_key']);
+        cg_update_options_from_hq($options);
     }
     unset($state['pending_until'], $state['legacy_key']);
     $state['fails'] = (int) ($state['fails'] ?? 0) + 1;
@@ -388,7 +397,8 @@ function cg_sitekey_request($reason = 'auto')
 
         $GLOBALS['cg_sitekey_in_flow'] = true;
         try {
-            $response = cg_call_hq_api('/sites/request-site-key', ['request_id' => $state['request_id']], 'POST');
+            // A keyless site (contract §1a) sends no X-Api-Key at all.
+            $response = cg_call_hq_api('/sites/request-site-key', ['request_id' => $state['request_id']], 'POST', cg_sitekey_current_key() !== '');
         } finally {
             $GLOBALS['cg_sitekey_in_flow'] = false;
         }
@@ -627,7 +637,7 @@ function cg_sitekey_claim()
             $tries++;
             $GLOBALS['cg_sitekey_in_flow'] = true;
             try {
-                $response = cg_call_hq_api('/sites/claim-key', ['nonce' => (string) $entry['n']], 'POST');
+                $response = cg_call_hq_api('/sites/claim-key', ['nonce' => (string) $entry['n']], 'POST', cg_sitekey_current_key() !== '');
             } finally {
                 $GLOBALS['cg_sitekey_in_flow'] = false;
             }
