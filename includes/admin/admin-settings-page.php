@@ -467,8 +467,13 @@ function cg_render_account_usage_tab()
                         if ($displayed_status === 'active') $status_class = 'cg-status-badge--active';
                         elseif ($displayed_status === 'suspended') $status_class = 'cg-status-badge--warning';
                         ?>
-                        <span class="cg-status-badge <?php echo esc_attr($status_class); ?>">
-                            <?php echo esc_html(ucwords($displayed_status)); ?>
+                        <?php
+                        // A failed sync or registration keeps the raw reason
+                        // (e.g. a cURL error) only as a tooltip for support.
+                        $status_failed = is_string($displayed_status) && strpos($displayed_status, 'failed') === 0;
+                        ?>
+                        <span class="cg-status-badge <?php echo esc_attr($status_class); ?>"<?php if ($status_failed): ?> title="<?php echo esc_attr($displayed_status); ?>"<?php endif; ?>>
+                            <?php echo $status_failed ? esc_html__('Not connected', 'checkoutguard') : esc_html(ucwords($displayed_status)); ?>
                         </span>
                     </div>
                 </div>

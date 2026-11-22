@@ -11,6 +11,10 @@ if (!defined('CG_DB_SCHEMA_VERSION')) {
 }
 define('CG_MIGRATION_FAIL_OPTION', 'cg_migration_fail_count');
 define('CG_MIGRATION_NOTICE_AFTER', 3);
+// Earliest time the admin's "Reconnect now" may call register again after a
+// failed registration (at least a minute, longer when HQ sent Retry-After).
+define('CG_REGISTER_GATE_OPTION', 'cg_register_next_allowed_at');
+define('CG_REGISTER_MIN_GAP', MINUTE_IN_SECONDS);
 
 function cg_plugin_activate()
 {
@@ -102,6 +106,7 @@ function cg_register_site_with_hq()
         $options = get_option('cg_plugin_options', []);
         $options['api_key'] = sanitize_text_field($response['api_key']);
         cg_update_options_from_hq($options);
+        delete_option(CG_REGISTER_GATE_OPTION);
         return;
     }
 
@@ -122,9 +127,107 @@ function cg_register_site_with_hq()
         );
         if (!$is_already_taken) {
             update_option('cg_license_status', 'failed: ' . $response->get_error_message());
+            $data = $response->get_error_data();
+            $retry_after = is_array($data) ? (int) ($data['retry_after'] ?? 0) : 0;
+            update_option(CG_REGISTER_GATE_OPTION, cg_register_now() + max(CG_REGISTER_MIN_GAP, $retry_after), false);
         }
     }
 }
+
+function cg_register_now()
+{
+    return function_exists('cg_sitekey_now') ? cg_sitekey_now() : time();
+}
+
+/**
+ * True while the site has no key because registration failed (HQ down,
+ * 429, timeout, no key returned) and no SiteKey refusal explains it. The
+ * SiteKey notice covers 409 claim_required and the 403 deadline codes.
+ */
+function cg_register_failed()
+{
+    $options = get_option('cg_plugin_options', []);
+    if (is_array($options) && !empty($options['api_key'])) {
+        return false;
+    }
+    $status = get_option('cg_license_status', '');
+    if (!is_string($status) || strpos($status, 'failed') !== 0) {
+        return false;
+    }
+    $state = function_exists('cg_sitekey_state') ? cg_sitekey_state() : [];
+    return empty($state['legacy_blocked_at']);
+}
+
+/**
+ * Admin notice while registration failed and the site has no key: checks
+ * are off, so say so on the dashboard and CheckoutGuard pages, in plain
+ * words (no raw transport error, never the word "key").
+ */
+function cg_render_register_failed_notice()
+{
+    if (!current_user_can('manage_options') || !cg_register_failed()) {
+        return;
+    }
+    $page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : '';
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    $on_dashboard = $screen && $screen->id === 'dashboard';
+    if (!$on_dashboard && strpos($page, 'cg-') !== 0) {
+        return;
+    }
+    $gate = (int) get_option(CG_REGISTER_GATE_OPTION, 0);
+    echo '<div class="notice notice-error"><p><strong>' . esc_html__('CheckoutGuard is not protecting checkouts right now.', 'checkoutguard') . '</strong> ';
+    echo esc_html__('This site could not connect to CheckoutGuard yet. Orders still go through, but without the fraud check.', 'checkoutguard') . ' ';
+    if ($gate > cg_register_now()) {
+        echo esc_html(sprintf(
+            /* translators: %s: time after which the admin may try again */
+            __('You can try again after %s.', 'checkoutguard'),
+            wp_date(get_option('date_format') . ' ' . get_option('time_format'), $gate)
+        )) . ' ';
+        echo esc_html__('If it keeps failing, contact CheckoutGuard support.', 'checkoutguard');
+    } else {
+        $url = wp_nonce_url(admin_url('admin-post.php?action=cg_register_reconnect'), 'cg_register_reconnect');
+        echo '<a class="button button-secondary" href="' . esc_url($url) . '">' . esc_html__('Reconnect now', 'checkoutguard') . '</a> ';
+        echo esc_html__('Click "Reconnect now". If it keeps failing, contact CheckoutGuard support.', 'checkoutguard');
+    }
+    echo '</p></div>';
+}
+add_action('admin_notices', 'cg_render_register_failed_notice');
+
+/**
+ * One manual registration attempt, at most one per gate (a minute, or the
+ * Retry-After HQ sent). The gate moves before the call, so a double click
+ * or a reload never sends a second request.
+ *
+ * @return string 'not_needed', 'gated' or 'tried'.
+ */
+function cg_register_reconnect_attempt()
+{
+    if (!cg_register_failed()) {
+        return 'not_needed';
+    }
+    $now = cg_register_now();
+    if ((int) get_option(CG_REGISTER_GATE_OPTION, 0) > $now) {
+        return 'gated';
+    }
+    update_option(CG_REGISTER_GATE_OPTION, $now + CG_REGISTER_MIN_GAP, false);
+    if (!function_exists('cg_sync_with_hq')) {
+        require_once CG_ADMIN_DIR . 'admin-settings-page.php';
+    }
+    cg_sync_with_hq(); // Registers first when there is no key, then syncs.
+    return 'tried';
+}
+
+function cg_handle_register_reconnect()
+{
+    if (!current_user_can('manage_options')) {
+        wp_die(esc_html__('Permission denied.', 'checkoutguard'), 403);
+    }
+    check_admin_referer('cg_register_reconnect');
+    cg_register_reconnect_attempt();
+    wp_safe_redirect(wp_get_referer() ?: admin_url());
+    exit;
+}
+add_action('admin_post_cg_register_reconnect', 'cg_handle_register_reconnect');
 
 /**
  * Report plugin activation/deactivation status to SaaS.
