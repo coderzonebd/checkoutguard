@@ -23,6 +23,13 @@
  * A8  status already 'failed: ...' (HQ was down), then 409 already_registered:
  *     exactly one error notice, the already-registered one, with Reconnect
  *     (the plain failed notice is not shown next to it).
+ * A9  409 already_registered first, then a different failure: 503 (A9a),
+ *     2xx with no key (A9b) or HQ down (A9c). The option is deleted, the
+ *     already-registered notice is gone and the plain failed notice is the
+ *     one error notice left.
+ * A10 option present and cg_plugin_options has an api_key (the option was
+ *     left behind by a path that skipped the settings hook): no
+ *     already-registered notice.
  *
  * Run on a local test site only (never production):
  *   wp eval-file tests/qa/register-already-registered-notice-tests.php
@@ -221,6 +228,41 @@ $GLOBALS['QA_NOW'] += 61;
 $errs = array_values(array_filter(qa_notice_blocks(), function ($b) { return strpos(' ' . $b['class'] . ' ', ' notice-error ') !== false; }));
 $one = count($errs) === 1 ? $errs[0] : null;
 ok('A8', 'failed status, then already_registered: exactly 1 error notice, the already-registered one, with Reconnect', $failed_first && strpos((string) $status, 'failed') === 0 && $one !== null && stripos($one['text'], 'already registered') !== false && qa_ar_ok($one) && qa_has_button($one), 'failed_first=' . var_export($failed_first, true) . ' status=' . substr((string) $status, 0, 7) . ' error_notices=' . count($errs) . ' ' . qa_ar_fmt($one));
+
+// A9: already registered, then another failure: the old note goes, the failed notice shows
+foreach ([
+    ['A9a', 'HQ 503', ['/sites/register' => ['code' => 503, 'body' => ['error' => 'unavailable']], '/sites/status' => ['code' => 'down']]],
+    ['A9b', '2xx with no key', ['/sites/register' => ['code' => 201, 'body' => ['ok' => true]], '/sites/status' => ['code' => 'down']]],
+    ['A9c', 'HQ down', ['/sites/register' => ['code' => 'down'], '/sites/status' => ['code' => 'down']]],
+] as $c) {
+    qa_reset();
+    $GLOBALS['QA_ROUTES'] = $GLOBALS['QA_AR'];
+    cg_register_site_with_hq();
+    $before = qa_opt_row();
+    $GLOBALS['QA_NOW'] += 61;
+    $GLOBALS['QA_ROUTES'] = $c[2];
+    cg_register_site_with_hq();
+    $n = qa_registers();
+    $row = qa_opt_row();
+    $b = qa_ar_notice();
+    $errs = array_values(array_filter(qa_notice_blocks(), function ($x) { return strpos(' ' . $x['class'] . ' ', ' notice-error ') !== false; }));
+    $failed_notice = count($errs) === 1 && stripos($errs[0]['text'], 'could not connect') !== false;
+    ok($c[0], 'already_registered, then ' . $c[1] . ': option deleted, failed notice is the one error notice', qa_opt_present($before) && $n === 2 && $row === null && $b === null && cg_register_failed() && $failed_notice, "registers=$n before " . qa_opt_fmt($before) . ', after ' . qa_opt_fmt($row) . ' ' . qa_ar_fmt($b) . ' error_notices=' . count($errs) . ' failed_notice=' . ($failed_notice ? 'yes' : 'no'));
+}
+
+// A10: the option is still there but the site has a key: no already-registered notice
+qa_reset();
+$GLOBALS['QA_ROUTES'] = $GLOBALS['QA_AR'];
+cg_register_site_with_hq();
+$o = get_option('cg_plugin_options', []);
+$o = is_array($o) ? $o : [];
+$o['api_key'] = 'qa-shared-key-not-real';
+cg_update_options_from_hq($o);
+// The settings hook deleted it; put it back as if another path had skipped the hook.
+update_option($GLOBALS['QA_OPT'], $GLOBALS['QA_NOW'], false);
+$row = qa_opt_row();
+$b = qa_ar_notice();
+ok('A10', 'option present but api_key set: no already-registered notice', qa_opt_present($row) && !cg_register_already_registered() && $b === null, qa_opt_fmt($row) . ' ' . qa_ar_fmt($b));
 
 // restore
 qa_reset();
