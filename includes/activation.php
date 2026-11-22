@@ -153,9 +153,12 @@ function cg_register_site_with_hq($force = false)
 
     // Handle WP_Error responses
     if (is_wp_error($response)) {
+        // HQ answers 409 {"error":"already_registered"} when the domain already
+        // has a key; older HQ builds said "already taken". Both keep the status.
         $is_already_taken = (
             $response->get_error_code() === 'api_error' &&
-            str_contains($response->get_error_message(), 'already taken')
+            (str_contains($response->get_error_message(), 'already taken')
+                || $response->get_error_message() === 'already_registered')
         );
         if (!$is_already_taken) {
             update_option('cg_license_status', 'failed: ' . $response->get_error_message());
