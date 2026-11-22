@@ -17,6 +17,7 @@
  *      order: once the real order is outside the window, the next attempt goes
  *      through (F4a at t+80, F4b at t+100 after two blocked attempts). F4-ctl
  *      checks that attempts inside the window are still blocked.
+ *      F4 runs last because it defines REST_REQUEST for the rest of the process.
  *      F4c: a blocked attempt leaves no pending order or draft; if WC made one
  *      it is cancelled or in the trash (asserted by order count and status).
  *
@@ -123,6 +124,8 @@ function qa_dup_cleanup()
 }
 
 $saved_options = get_option('cg_plugin_options', []);
+// K deletes cg_db_version to simulate a fresh install; put it back at the end.
+$saved_db_version = get_option('cg_db_version', null);
 $product = qa_dup_product();
 
 // Test data only (made-up names, numbers and addresses).
@@ -148,11 +151,14 @@ function qa_dup_ui_state()
     if (!function_exists('cg_render_fraud_blocker_page')) {
         require_once CG_ADMIN_DIR . 'admin-pages.php';
     }
+    $prev_user = get_current_user_id();
     $admins = get_users(['role' => 'administrator', 'number' => 1, 'fields' => 'ID']);
     wp_set_current_user($admins ? (int) $admins[0] : 1);
     ob_start();
     cg_render_fraud_blocker_page();
     $html = ob_get_clean();
+    // Render as admin, then go back: F4 checks out as a guest.
+    wp_set_current_user($prev_user);
     $state = [];
     if (preg_match_all('/<input\b[^>]*\bid="cg_duplicate_blocker_(\w+)"[^>]*>/', $html, $m, PREG_SET_ORDER)) {
         foreach ($m as $hit) {
@@ -331,42 +337,6 @@ foreach ($cases as $label => $cust) {
 }
 qa_dup_cleanup();
 
-// ---- F4: blocked Store API attempts do not count as earlier orders ----
-add_filter('woocommerce_store_api_disable_nonce_check', '__return_true');
-qa_dup_set_options(['duplicate_blocker_window' => 1]);
-$F4 = ['Delta', '01600000404', 'qa-f4@example.test'];
-qa_dup_delete_orders(qa_dup_orders_by_email($F4[2]));
-$pid = $product->get_id();
-
-// F4a: t+0 order, t+40 blocked, t+80 goes through.
-$r0 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
-qa_dup_age_orders(qa_dup_orders_by_email($F4[2]), 40);
-$r40 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
-qa_dup_check('F4-ctl [a] t+40 inside the window is blocked', $r0[0] === 200 && $r40[0] === 400, 't+0 ' . implode('/', $r0) . ', t+40 ' . implode('/', $r40));
-// F4c: the blocked attempt leaves no pending order or draft behind; if WC
-// created one it is cancelled or in the trash. Only the t+0 order is live.
-$live = qa_dup_live_orders($F4[2]);
-qa_dup_check('F4c [a] blocked t+40 attempt leaves no live order (only the t+0 order)', $r40[0] === 400 && count($live) === 1, qa_dup_fmt_live($live));
-qa_dup_age_orders(qa_dup_orders_by_email($F4[2]), 40);
-$r80 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
-qa_dup_check('F4a t+80: real order is outside the window, blocked t+40 attempt does not block', $r80[0] === 200, 't+80 ' . implode('/', $r80));
-qa_dup_delete_orders(qa_dup_orders_by_email($F4[2]));
-
-// F4b: t+0 order, t+40 and t+50 blocked, t+100 goes through.
-$r0 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
-qa_dup_age_orders(qa_dup_orders_by_email($F4[2]), 40);
-$r40 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
-qa_dup_age_orders(qa_dup_orders_by_email($F4[2]), 10);
-$r50 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
-qa_dup_check('F4-ctl [b] t+40 and t+50 inside the window are blocked', $r0[0] === 200 && $r40[0] === 400 && $r50[0] === 400, 't+0 ' . implode('/', $r0) . ', t+40 ' . implode('/', $r40) . ', t+50 ' . implode('/', $r50));
-$live = qa_dup_live_orders($F4[2]);
-qa_dup_check('F4c [b] two blocked attempts leave no live order (only the t+0 order)', $r40[0] === 400 && $r50[0] === 400 && count($live) === 1, qa_dup_fmt_live($live));
-qa_dup_age_orders(qa_dup_orders_by_email($F4[2]), 50);
-$r100 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
-qa_dup_check('F4b t+100: two blocked attempts do not renew the window', $r100[0] === 200, 't+100 ' . implode('/', $r100));
-qa_dup_delete_orders(qa_dup_orders_by_email($F4[2]));
-remove_filter('woocommerce_store_api_disable_nonce_check', '__return_true');
-
 // ---- U: no options, settings page state equals runtime state ----
 qa_dup_set_options([]);
 $ui = qa_dup_ui_state();
@@ -427,7 +397,50 @@ foreach ($pending as $label => $cfg) {
     }
 }
 
+// F4 runs last: the Store API helper defines REST_REQUEST, which cannot be
+// undefined, so no other section may run after it.
+// ---- F4: blocked Store API attempts do not count as earlier orders ----
+add_filter('woocommerce_store_api_disable_nonce_check', '__return_true');
+qa_dup_set_options(['duplicate_blocker_window' => 1]);
+$F4 = ['Delta', '01600000404', 'qa-f4@example.test'];
+qa_dup_delete_orders(qa_dup_orders_by_email($F4[2]));
+$pid = $product->get_id();
+
+// F4a: t+0 order, t+40 blocked, t+80 goes through.
+$r0 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
+qa_dup_age_orders(qa_dup_orders_by_email($F4[2]), 40);
+$r40 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
+qa_dup_check('F4-ctl [a] t+40 inside the window is blocked', $r0[0] === 200 && $r40[0] === 400, 't+0 ' . implode('/', $r0) . ', t+40 ' . implode('/', $r40));
+// F4c: the blocked attempt leaves no pending order or draft behind; if WC
+// created one it is cancelled or in the trash. Only the t+0 order is live.
+$live = qa_dup_live_orders($F4[2]);
+qa_dup_check('F4c [a] blocked t+40 attempt leaves no live order (only the t+0 order)', $r40[0] === 400 && count($live) === 1, qa_dup_fmt_live($live));
+qa_dup_age_orders(qa_dup_orders_by_email($F4[2]), 40);
+$r80 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
+qa_dup_check('F4a t+80: real order is outside the window, blocked t+40 attempt does not block', $r80[0] === 200, 't+80 ' . implode('/', $r80));
+qa_dup_delete_orders(qa_dup_orders_by_email($F4[2]));
+
+// F4b: t+0 order, t+40 and t+50 blocked, t+100 goes through.
+$r0 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
+qa_dup_age_orders(qa_dup_orders_by_email($F4[2]), 40);
+$r40 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
+qa_dup_age_orders(qa_dup_orders_by_email($F4[2]), 10);
+$r50 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
+qa_dup_check('F4-ctl [b] t+40 and t+50 inside the window are blocked', $r0[0] === 200 && $r40[0] === 400 && $r50[0] === 400, 't+0 ' . implode('/', $r0) . ', t+40 ' . implode('/', $r40) . ', t+50 ' . implode('/', $r50));
+$live = qa_dup_live_orders($F4[2]);
+qa_dup_check('F4c [b] two blocked attempts leave no live order (only the t+0 order)', $r40[0] === 400 && $r50[0] === 400 && count($live) === 1, qa_dup_fmt_live($live));
+qa_dup_age_orders(qa_dup_orders_by_email($F4[2]), 50);
+$r100 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
+qa_dup_check('F4b t+100: two blocked attempts do not renew the window', $r100[0] === 200, 't+100 ' . implode('/', $r100));
+qa_dup_delete_orders(qa_dup_orders_by_email($F4[2]));
+remove_filter('woocommerce_store_api_disable_nonce_check', '__return_true');
+
 update_option('cg_plugin_options', $saved_options);
 $product->delete(true);
+if ($saved_db_version === null) {
+    delete_option('cg_db_version');
+} else {
+    update_option('cg_db_version', $saved_db_version);
+}
 
 echo 'RESULT pass=' . $GLOBALS['qa_pass'] . ' fail=' . $GLOBALS['qa_fail'] . ' skip=' . $GLOBALS['qa_skip'] . "\n";
