@@ -688,8 +688,9 @@ function cg_sitekey_claim()
 
     if ($result === 'claimed' && function_exists('cg_sync_with_hq')) {
         // The first successful call with the new key commits it
-        // (cg_sitekey_on_response sees the 2xx).
-        cg_sync_with_hq();
+        // (cg_sitekey_on_response sees the 2xx). Forced: a status wait
+        // left from an earlier failure must not hold back this check.
+        cg_sync_with_hq(true);
         $state = cg_sitekey_state();
         if (empty($state['pending_until']) && cg_sitekey_is_site_key(cg_sitekey_current_key())) {
             $result = 'committed';
