@@ -11,7 +11,9 @@
  * or Retry-After when HQ sends one, capped at 600 s; nothing verified is
  * cached while it fails. A verified status clears the wait. The admin
  * "Sync now" button calls status even during a wait; if that call fails it
- * writes a new wait, if it succeeds it clears the wait.
+ * writes a new wait, if it succeeds it clears the wait. A register that
+ * stores a new api_key clears the wait too; a failed register or the same key
+ * keeps it.
  *
  * The wait must use the plugin clock (cg_register_now() / cg_sitekey_now(),
  * filter cg_sitekey_now), so this test can move time without sleeping.
@@ -327,6 +329,36 @@ do_action('cg_daily_sync_hook');
 $h = qa_status() - $before;
 $c = qa_saves_at([61]);
 ok('N13', 'cron cg_daily_sync_hook in a wait: 0 status calls; 1 call at +61 s', $a === 1 && $h === 0 && $c === 1, "first=$a cron=$h at61=$c");
+
+// N14: a register that stores a NEW api_key clears the status wait (Tanvir,
+// 22 Nov): the next save calls status right away, with the new key. A failed
+// register, or a register that returns the key already stored, keeps the wait.
+$GLOBALS['QA_STATUS_KEYS'] = [];
+add_filter('pre_http_request', function ($pre, $args, $url) {
+    if (strpos((string) $url, '/sites/status') !== false) {
+        $GLOBALS['QA_STATUS_KEYS'][] = (string) ($args['headers']['X-Api-Key'] ?? '');
+    }
+    return $pre;
+}, PHP_INT_MAX - 1, 3);
+function qa_n14($register) {
+    qa_reset(); $GLOBALS['QA_ROUTES'] = $GLOBALS['QA_R403'];
+    $a = qa_saves_at([0]);
+    qa_set_now(5);
+    $GLOBALS['QA_ROUTES'] = $GLOBALS['QA_R403'] + ['/sites/register' => $register];
+    cg_register_site_with_hq();
+    $wait = get_option('cg_status_next_allowed_at', null);
+    $GLOBALS['QA_STATUS_KEYS'] = [];
+    $b = qa_saves_at([6]);
+    $o = get_option('cg_plugin_options', []);
+    return [$a, $wait, $b, $GLOBALS['QA_STATUS_KEYS'], (string) ($o['api_key'] ?? '')];
+}
+$GLOBALS['QA_R403'] = $R403;
+list($a, $wait, $b, $keys, $key) = qa_n14(['code' => 201, 'body' => ['api_key' => 'qa-new-key-not-real']]);
+ok('N14a', 'register with a new api_key in a wait: wait cleared, next save -> 1 status call with the new key', $a === 1 && $wait === null && $b === 1 && $keys === ['qa-new-key-not-real'] && $key === 'qa-new-key-not-real', "first=$a wait=" . ($wait === null ? 'none' : '+' . ((int) $wait - $GLOBALS['QA_T0'])) . " next=$b new_key_used=" . var_export($keys === ['qa-new-key-not-real'], true));
+list($a, $wait, $b) = qa_n14(['code' => 500, 'body' => ['error' => 'qa down']]);
+ok('N14b', 'register fails in a wait: wait kept, next save -> 0 status calls', $a === 1 && $wait !== null && $b === 0, "first=$a wait=" . ($wait === null ? 'none' : '+' . ((int) $wait - $GLOBALS['QA_T0'])) . " next=$b");
+list($a, $wait, $b) = qa_n14(['code' => 201, 'body' => ['api_key' => 'qa-own-key-not-real']]);
+ok('N14c', 'register returns the same key in a wait: wait kept, next save -> 0 status calls', $a === 1 && $wait !== null && $b === 0, "first=$a wait=" . ($wait === null ? 'none' : '+' . ((int) $wait - $GLOBALS['QA_T0'])) . " next=$b");
 
 $out = ob_get_clean();
 // restore
