@@ -215,11 +215,11 @@ function cg_render_register_failed_notice()
 add_action('admin_notices', 'cg_render_register_failed_notice');
 
 /**
- * One manual registration attempt, at most one per gate (a minute, or the
- * Retry-After HQ sent). The gate moves before the call, so a double click
- * or a reload never sends a second request.
+ * One manual registration attempt. An admin click is not held by the gate:
+ * it always sends one register and moves the gate first, so the automatic
+ * path (checkout saves, cron) stays gated after it.
  *
- * @return string 'not_needed', 'gated' or 'tried'.
+ * @return string 'not_needed' or 'tried'.
  */
 function cg_register_reconnect_attempt()
 {
@@ -227,9 +227,6 @@ function cg_register_reconnect_attempt()
         return 'not_needed';
     }
     $now = cg_register_now();
-    if ((int) get_option(CG_REGISTER_GATE_OPTION, 0) > $now) {
-        return 'gated';
-    }
     update_option(CG_REGISTER_GATE_OPTION, $now + CG_REGISTER_MIN_GAP, false);
     if (!function_exists('cg_sync_with_hq')) {
         require_once CG_ADMIN_DIR . 'admin-settings-page.php';
