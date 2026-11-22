@@ -137,6 +137,10 @@ ok('G7', 'Reconnect while the gate is open: tried, exactly one register', $gate_
 
 // G15: the failed Reconnect at +10 s writes a new gate (+70 s); the auto path
 // (checkout saves) still honours it: none in +11..+69 s, one at +70 s.
+// G15 runs on the state G7 leaves (no qa_reset). When G7 fails because
+// Reconnect is still gated, no new gate is written at +10 s and the old gate
+// ends inside +11..+69 s, so G15 fails too (e.g. in_gate=1 at70=0). Read a
+// G15 FAIL together with G7.
 $GLOBALS['QA_LOG'] = [];
 foreach ([11, 20, 40, 60, 69] as $t) { $GLOBALS['QA_NOW'] = 1800000000 + $t; qa_checkout_save($t); }
 $b = qa_registers();
