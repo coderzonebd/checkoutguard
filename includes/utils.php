@@ -239,6 +239,7 @@ function cg_call_hq_api($endpoint, $body = [], $method = 'POST', $require_api_ke
         return new WP_Error('api_error', $error_message, [
             'status' => $response_code,
             'code' => $error_code_field,
+            'error' => (is_array($response_body) && isset($response_body['error']) && is_string($response_body['error'])) ? sanitize_key($response_body['error']) : '',
             'retry_after' => cg_parse_retry_after(wp_remote_retrieve_header($response, 'retry-after')),
         ]);
     }
