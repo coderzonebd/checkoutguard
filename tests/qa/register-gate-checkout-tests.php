@@ -317,6 +317,19 @@ $s = qa_sync_now();
 $n = qa_registers();
 ok('G13b-ctl', 'Sync Now, no Reconnect running, gate over: exactly 1 register', $s === 'error' && $n === 1, "sync=$s register=$n");
 
+// G13a: activation passes force: re-activating the plugin
+// inside the 60 s gate of a failed register still sends one register. The
+// sync that activation runs after it stays gated (the forced try wrote a new
+// gate), so it is exactly one.
+qa_reset();
+cg_register_site_with_hq();
+$a = qa_registers();
+$GLOBALS['QA_NOW'] = 1800000000 + 10; $GLOBALS['QA_LOG'] = [];
+$gate_open = (int) get_option('cg_register_next_allowed_at', 0) > $GLOBALS['QA_NOW'];
+cg_plugin_activate();
+$b = qa_registers();
+ok('G13a', 'HQ down: activate again at +10 s (gate open) -> exactly 1 register', $a === 1 && $gate_open && $b === 1, "first=$a gate_open=" . var_export($gate_open, true) . " on_activate=$b calls=" . json_encode($GLOBALS['QA_LOG']));
+
 $out = ob_get_clean();
 // U1-U3: the register gate has an upper bound of 600 s (10 min), the same
 // cap the status wait uses. A stored gate further ahead than that (a clock
