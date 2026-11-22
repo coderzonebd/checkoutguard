@@ -50,6 +50,14 @@ foreach (['cg_plugin_options', 'cg_license_status', 'cg_register_next_allowed_at
 $GLOBALS['QA_CACHE_ORIG'] = get_transient('cg_api_cache');
 $GLOBALS['QA_USER_ORIG'] = get_current_user_id();
 add_filter('cg_sitekey_now', function () { return $GLOBALS['QA_NOW']; });
+// Expiry of each cg_* transient on the plugin clock (see qa_set_now).
+$GLOBALS['QA_TEXP'] = [];
+// WP 6.8 renamed setted_transient to set_transient (the old name is deprecated).
+add_action(version_compare($GLOBALS['wp_version'], '6.8', '>=') ? 'set_transient' : 'setted_transient', function ($transient, $value, $expiration) {
+    if (strpos($transient, 'cg_') === 0 && (int) $expiration > 0) {
+        $GLOBALS['QA_TEXP'][$transient] = $GLOBALS['QA_NOW'] + (int) $expiration;
+    }
+}, 10, 3);
 $GLOBALS['QA_LOG'] = []; $GLOBALS['QA_ROUTES'] = [];
 add_filter('pre_http_request', function ($pre, $args, $url) {
     $path = preg_replace('#^.*?/api/v1#', '', (string) parse_url($url, PHP_URL_PATH));
@@ -97,7 +105,7 @@ function qa_reset() {
     $o['api_key'] = 'qa-own-key-not-real';
     cg_update_options_from_hq($o);
     update_option('cg_license_status', 'active');
-    $GLOBALS['QA_LOG'] = []; $GLOBALS['QA_ROUTES'] = []; $GLOBALS['QA_NOW'] = $GLOBALS['QA_T0'];
+    $GLOBALS['QA_LOG'] = []; $GLOBALS['QA_ROUTES'] = []; $GLOBALS['QA_NOW'] = $GLOBALS['QA_T0']; $GLOBALS['QA_TEXP'] = [];
     wp_set_current_user(0);
     // A save that passed the limit check stored a row under this process's
     // WooCommerce session; drop it so the next case starts with no row.
@@ -133,14 +141,27 @@ function qa_set_now($t) {
     $new = $GLOBALS['QA_T0'] + $t;
     $d = $new - $GLOBALS['QA_NOW'];
     $GLOBALS['QA_NOW'] = $new;
-    if ($d > 0) {
-        $names = $wpdb->get_col("SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE '\\_transient\\_timeout\\_cg\\_%'");
-        foreach ($names as $name) {
+    // Re-anchor also when the plugin clock does not move (several saves at
+    // the same second): real seconds still pass between them.
+    $d = max(0, $d);
+    // WP expires a transient against the real time(), and real seconds pass
+    // while the test runs. Re-anchor each cg_* transient the plugin set in
+    // this case to its expiry on the plugin clock (set time + TTL), so its
+    // remaining life is the same on a fast or a slow machine. A cg_*
+    // transient set some other way is only moved back by the clock step.
+    $rn = time();
+    $names = $wpdb->get_col("SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE '\\_transient\\_timeout\\_cg\\_%'");
+    foreach ($names as $name) {
+        $tr = substr($name, strlen('_transient_timeout_'));
+        if (isset($GLOBALS['QA_TEXP'][$tr])) {
+            $left = $GLOBALS['QA_TEXP'][$tr] - $new;
+            $wpdb->update($wpdb->options, ['option_value' => (string) ($left > 0 ? $rn + $left : $rn - 1)], ['option_name' => $name]);
+        } else {
             $wpdb->query($wpdb->prepare("UPDATE {$wpdb->options} SET option_value = CAST(option_value AS SIGNED) - %d WHERE option_name = %s", $d, $name));
-            wp_cache_delete($name, 'options');
         }
-        wp_cache_delete('alloptions', 'options'); wp_cache_delete('notoptions', 'options');
+        wp_cache_delete($name, 'options');
     }
+    wp_cache_delete('alloptions', 'options'); wp_cache_delete('notoptions', 'options');
 }
 // Saves at the given offsets (seconds from T0); returns status calls made.
 function qa_saves_at(array $offsets) {
