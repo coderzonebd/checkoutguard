@@ -7,6 +7,7 @@
  * (cg_register_next_allowed_at) was written but never read, so one checkout
  * sent several POST /sites/register. Rule: at most one register per gate
  * (60 s, or Retry-After) on this path; the admin's Reconnect still works.
+ * The same holds when HQ answers 2xx without a key and for "already taken".
  *
  * Run on a local test site with WooCommerce only (never production):
  *   wp eval-file tests/qa/register-gate-checkout-tests.php
@@ -136,6 +137,35 @@ $GLOBALS['QA_ROUTES'] = ['/sites/register' => ['code' => 201, 'body' => ['api_ke
 qa_checkout_save(1); $GLOBALS['QA_NOW'] += 5; qa_checkout_save(2);
 $o = get_option('cg_plugin_options', []);
 ok('G8', 'HQ up: one register, key stored, no second register', qa_registers() === 1 && ($o['api_key'] ?? '') === 'qa-shared-key-not-real' && get_option('cg_register_next_allowed_at', null) === null, 'register=' . qa_registers());
+
+// G9: HQ answers 2xx without a key (HQ-side setup issue): six saves in 13 s -> one register.
+qa_reset();
+$GLOBALS['QA_ROUTES'] = ['/sites/register' => ['code' => 201, 'body' => ['site' => ['domain' => 'example.test']]]];
+for ($i = 0; $i < 6; $i++) { qa_checkout_save($i); $GLOBALS['QA_NOW'] += 2; }
+$st = (string) get_option('cg_license_status', '');
+ok('G9', '2xx without a key: 6 saves in 13 s -> 1 register, failed status kept', qa_registers() === 1 && strpos($st, 'failed') === 0, 'register=' . qa_registers() . ' status=' . substr($st, 0, 40));
+
+// G10: 2xx without a key is not blocked for good: after 61 s one more register, not two.
+$GLOBALS['QA_NOW'] = 1800000000 + 61; $GLOBALS['QA_LOG'] = [];
+qa_checkout_save(20); qa_checkout_save(21);
+ok('G10', '2xx without a key: after 61 s exactly one more register', qa_registers() === 1, 'register=' . qa_registers());
+
+// G11: "already taken": six saves in 13 s -> one register, SiteKey state untouched.
+qa_reset();
+$GLOBALS['QA_ROUTES'] = ['/sites/register' => ['code' => 409, 'body' => ['error' => 'Domain already taken']]];
+for ($i = 0; $i < 6; $i++) { qa_checkout_save($i); $GLOBALS['QA_NOW'] += 2; }
+$sk = get_option('cg_sitekey_state', null);
+ok('G11', 'already taken: 6 saves in 13 s -> 1 register, no SiteKey state written', qa_registers() === 1 && empty($sk['legacy_blocked_at']) && empty($sk['pending_until']), 'register=' . qa_registers() . ' sitekey=' . json_encode($sk));
+
+// G12: "already taken" after one Reconnect: saves inside the next 60 s send no register.
+qa_reset();
+$GLOBALS['QA_ROUTES'] = ['/sites/register' => ['code' => 409, 'body' => ['error' => 'Domain already taken']]];
+update_option('cg_license_status', 'failed: qa');
+wp_set_current_user($GLOBALS['QA_ADMIN']);
+$a = cg_register_reconnect_attempt();
+$after_reconnect = qa_registers();
+for ($t = 5; $t < 60; $t += 5) { $GLOBALS['QA_NOW'] = 1800000000 + $t; qa_checkout_save($t); }
+ok('G12', 'already taken: Reconnect once, then saves for 55 s -> no further register', $a === 'tried' && $after_reconnect === 1 && qa_registers() === 1, "a=$a after_reconnect=$after_reconnect register=" . qa_registers());
 
 $out = ob_get_clean();
 // restore
