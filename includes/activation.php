@@ -44,7 +44,9 @@ function cg_plugin_activate()
     if (!get_option('cg_license_status')) {
         update_option('cg_license_status', 'active');
     }
-    cg_register_site_with_hq();
+    // Activation is an explicit admin action: register now even if an earlier
+    // attempt left the gate closed.
+    cg_register_site_with_hq(true);
 
     if (function_exists('cg_send_plugin_analytics')) {
         cg_send_plugin_analytics('plugin_activation');
@@ -97,10 +99,10 @@ function cg_create_blocked_orders_table()
  * or a 2xx without a key) CG_REGISTER_GATE_OPTION holds the earliest time of
  * the next one; until then this returns without calling HQ, so checkout
  * saves, syncs and page loads never repeat a register HQ just refused or
- * could not answer. Only the admin's "Reconnect now" passes $force, after
- * it has checked and moved the gate itself.
+ * could not answer. Only explicit admin actions pass $force: plugin
+ * activation and "Reconnect now" (which has checked and moved the gate itself).
  *
- * @param bool $force Skip the gate check (Reconnect only).
+ * @param bool $force Skip the gate check (activation and Reconnect only).
  */
 function cg_register_site_with_hq($force = false)
 {
