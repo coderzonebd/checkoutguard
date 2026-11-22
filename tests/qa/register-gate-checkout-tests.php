@@ -167,6 +167,35 @@ $after_reconnect = qa_registers();
 for ($t = 5; $t < 60; $t += 5) { $GLOBALS['QA_NOW'] = 1800000000 + $t; qa_checkout_save($t); }
 ok('G12', 'already taken: Reconnect once, then saves for 55 s -> no further register', $a === 'tried' && $after_reconnect === 1 && qa_registers() === 1, "a=$a after_reconnect=$after_reconnect register=" . qa_registers());
 
+// G13: the real HQ answer for a domain that already has a key is 409
+// {"error":"already_registered"} (no "already taken" text). Whatever status
+// the plugin shows for it, the register gate must hold: one register in
+// 0..13 s, none at +59 s, one more at +60 s.
+qa_reset();
+$GLOBALS['QA_ROUTES'] = ['/sites/register' => ['code' => 409, 'body' => ['error' => 'already_registered']]];
+for ($i = 0; $i < 6; $i++) { qa_checkout_save($i); $GLOBALS['QA_NOW'] += 2; }
+$a = qa_registers();
+$GLOBALS['QA_NOW'] = 1800000000 + 59; $GLOBALS['QA_LOG'] = [];
+qa_checkout_save(30); qa_checkout_save(31);
+$b = qa_registers();
+$GLOBALS['QA_NOW'] = 1800000000 + 60; $GLOBALS['QA_LOG'] = [];
+qa_checkout_save(40); qa_checkout_save(41);
+$c = qa_registers();
+ok('G13', '409 already_registered: 6 saves in 13 s -> 1 register, +59 s -> 0, +60 s -> 1', $a === 1 && $b === 0 && $c === 1, "first=$a at59=$b at60=$c gate=" . (int) get_option('cg_register_next_allowed_at', 0));
+
+// G14: gate edge. The gate ends exactly at first try + 60 s: a save at
+// +59 s sends no register, a save at +60 s sends one (gate > now, not >=).
+qa_reset();
+qa_checkout_save(1);
+$a = qa_registers();
+$GLOBALS['QA_NOW'] = 1800000000 + 59; $GLOBALS['QA_LOG'] = [];
+qa_checkout_save(2);
+$b = qa_registers();
+$GLOBALS['QA_NOW'] = 1800000000 + 60; $GLOBALS['QA_LOG'] = [];
+qa_checkout_save(3); qa_checkout_save(4);
+$c = qa_registers();
+ok('G14', 'HQ down: gate edge, +59 s -> 0 register, +60 s -> exactly 1', $a === 1 && $b === 0 && $c === 1, "first=$a at59=$b at60=$c");
+
 $out = ob_get_clean();
 // restore
 qa_reset();
