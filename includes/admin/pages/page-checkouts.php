@@ -222,6 +222,7 @@ function cg_get_checkout_table_rows_html($results, $current_status)
     ob_start();
     if (!empty($results)) {
         foreach ($results as $row): ?>
+            <?php $cg_show_contact = cg_can_show_contact($row); ?>
             <tr id="cg-entry-row-<?php echo esc_attr($row->id); ?>">
                 <?php // START of Change: Reordered cells and made Name clickable ?>
                 <td><?php echo esc_html($row->id); ?></td>
@@ -238,7 +239,7 @@ function cg_get_checkout_table_rows_html($results, $current_status)
                     </a>
                 </td>
                 <td>
-                    <?php if (!cg_is_pro_plan() && !empty($row->email)): ?>
+                    <?php if (!$cg_show_contact && !empty($row->email)): ?>
                         <span class="cg-pro-masked" data-cg-tooltip="<?php esc_attr_e('Upgrade to Pro to see full email', 'checkoutguard'); ?>"><?php echo esc_html(cg_mask_email($row->email)); ?></span>
                     <?php else: ?>
                         <?php echo esc_html($row->email); ?>
@@ -246,7 +247,7 @@ function cg_get_checkout_table_rows_html($results, $current_status)
                 </td>
 
                 <td>
-                    <?php if (!cg_is_pro_plan() && !empty($row->phone)): ?>
+                    <?php if (!$cg_show_contact && !empty($row->phone)): ?>
                         <span class="cg-pro-masked" data-cg-tooltip="<?php esc_attr_e('Upgrade to Pro to see full number', 'checkoutguard'); ?>"><?php echo esc_html(cg_mask_phone($row->phone)); ?></span>
                     <?php else: ?>
                         <?php echo esc_html($row->phone); ?>

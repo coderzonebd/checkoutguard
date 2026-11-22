@@ -3,7 +3,7 @@
 Plugin Name: CheckoutGuard
 Plugin URI: https://wordpress.org/plugins/checkoutguard/
 Description: Tracks incomplete WooCommerce checkouts, provides recovery tools, a dashboard, and fraud blocking.
-Version: 1.4.2
+Version: 1.5.0
 Requires Plugins: woocommerce
 WC requires at least: 7.0
 WC tested up to: 11.3.1
@@ -20,7 +20,7 @@ if (!defined('WPINC')) {
 }
 
 
-define('CG_VERSION', '1.4.2');
+define('CG_VERSION', '1.5.0');
 define('CG_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('CG_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('CG_PLUGIN_FILE', __FILE__);
@@ -42,7 +42,8 @@ define('CG_PRICING_URL', 'https://coderzonebd.com/products/checkoutguard');
 
 require_once CG_INC_DIR . 'utils.php';
 require_once CG_INC_DIR . 'analytics.php';
-require_once CG_INC_DIR . 'sitekey-request.php';
+require_once CG_INC_DIR . 'contact-reveal.php';
+require_once CG_INC_DIR . 'site-key.php';
 
 /**
  * Declares compatibility with WooCommerce High-Performance Order Storage.
@@ -130,6 +131,7 @@ function cg_init_plugin()
     require_once CG_INC_DIR . 'enqueue.php';
     require_once CG_INC_DIR . 'ajax-handlers.php';
     require_once CG_INC_DIR . 'checkout-integration.php';
+    require_once CG_INC_DIR . 'ratio-hold.php';
     require_once CG_INC_DIR . 'invoice.php';
     require_once CG_ADMIN_DIR . 'admin-menus.php';
     require_once CG_ADMIN_DIR . 'print-order-page.php';

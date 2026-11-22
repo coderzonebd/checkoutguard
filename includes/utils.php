@@ -92,6 +92,33 @@ function cg_get_root_domain($url)
 }
 
 /**
+ * Retry-After in seconds, delta-seconds form only (an HTTP-date, a negative
+ * or a fractional value gives 0, so the caller uses its own backoff). A
+ * repeated header uses its first value. Capped at 24 hours; a long digit
+ * string is over the cap anyway and is not cast (no integer overflow).
+ *
+ * @param mixed $header Raw header value (string, or array if repeated).
+ * @return int Seconds in 0..DAY_IN_SECONDS.
+ */
+function cg_parse_retry_after($header)
+{
+    if (is_array($header)) {
+        $header = reset($header);
+    }
+    if (!is_string($header) && !is_int($header)) {
+        return 0;
+    }
+    $header = trim((string) $header);
+    if ($header === '' || !ctype_digit($header)) {
+        return 0;
+    }
+    if (strlen($header) > 9) {
+        return DAY_IN_SECONDS;
+    }
+    return min((int) $header, DAY_IN_SECONDS);
+}
+
+/**
  * A centralized function for making API calls to the HQ.
  *
  * @param string $endpoint The API endpoint to call (e.g., '/sites/register').
@@ -136,6 +163,11 @@ function cg_call_hq_api($endpoint, $body = [], $method = 'POST', $require_api_ke
         $timeout = defined('CG_SETTINGS_PUSH_TIMEOUT') ? (int) CG_SETTINGS_PUSH_TIMEOUT : 5;
     } else {
         $timeout = 15;
+    }
+    // A caller on a customer-facing path (the period sync before a new
+    // incomplete checkout is saved) may ask for a shorter timeout.
+    if (isset($GLOBALS['cg_hq_timeout_override']) && (int) $GLOBALS['cg_hq_timeout_override'] > 0) {
+        $timeout = min($timeout, (int) $GLOBALS['cg_hq_timeout_override']);
     }
 
     $args = [
@@ -187,15 +219,23 @@ function cg_call_hq_api($endpoint, $body = [], $method = 'POST', $require_api_ke
 
     $response_body = json_decode(wp_remote_retrieve_body($response), true);
 
+    // Site key (1.5.0): HQ tells the legacy-deadline answers apart by "code",
+    // never by the message text.
+    $error_code_field = (is_array($response_body) && isset($response_body['code']) && is_string($response_body['code']))
+        ? sanitize_key($response_body['code'])
+        : '';
+    if (function_exists('cg_sitekey_on_response') && empty($GLOBALS['cg_sitekey_in_flow'])) {
+        cg_sitekey_on_response($response_code, $error_code_field, (string) ($headers['X-Api-Key'] ?? ''));
+    }
+
     if ($response_code >= 300) {
         $error_message = $response_body['message'] ?? $response_body['error'] ?? 'Unknown API Error';
         cg_log_api_hit($endpoint, $method, false, $response_code, $error_message);
-        $error_data = ['status' => $response_code];
-        if ($response_code === 429) {
-            // Raw header; the caller decides how to use it (SiteKey T1).
-            $error_data['retry_after'] = wp_remote_retrieve_header($response, 'retry-after');
-        }
-        return new WP_Error('api_error', $error_message, $error_data);
+        return new WP_Error('api_error', $error_message, [
+            'status' => $response_code,
+            'code' => $error_code_field,
+            'retry_after' => cg_parse_retry_after(wp_remote_retrieve_header($response, 'retry-after')),
+        ]);
     }
 
     // A 2xx response with an endpoint-shaped-but-empty api_key (HQ has no key
@@ -309,10 +349,12 @@ function cg_log_api_hit($endpoint, $method, $success, $status_code = null, $mess
  * array on success, or a WP_Error on failure — same convention as
  * cg_call_hq_api() itself, so callers handle both the same way.
  *
- * This is what makes the plan/settings/limits data tamper-evident: a
- * spoofed server response, a MITM'd reply, or a directly-edited local cache
- * all fail this check, because none of them can produce a signature that
- * verifies against our public key without the server's private key.
+ * This makes the plan/settings/limits data in a status reply tamper-evident:
+ * a spoofed server response or a MITM'd reply fails this check, because it
+ * cannot carry a signature that verifies against our public key without the
+ * server's private key. Only the reply is checked here: the verified payload
+ * is then stored in the cg_api_cache transient and read back without a
+ * second check, so anyone who can write to the database can still change it.
  *
  * @param array|WP_Error $response The raw decoded response from cg_call_hq_api().
  * @return array|WP_Error The verified payload, or a WP_Error explaining why it wasn't trusted.
@@ -327,14 +369,28 @@ function cg_verify_signed_payload($response)
     }
 
     $public_key = base64_decode(CG_HQ_PUBLIC_KEY);
-    $signature = base64_decode($response['signature']);
-    $is_valid = sodium_crypto_sign_verify_detached($signature, $response['payload_string'], $public_key);
+    $signature = base64_decode((string) $response['signature'], true);
+    $is_valid = false;
+    if (is_string($signature) && strlen($signature) === SODIUM_CRYPTO_SIGN_BYTES && is_string($response['payload_string'])) {
+        try {
+            $is_valid = sodium_crypto_sign_verify_detached($signature, $response['payload_string'], $public_key);
+        } catch (Throwable $e) {
+            $is_valid = false;
+        }
+    }
 
     if (!$is_valid) {
         return new WP_Error('signature_invalid', __('Cryptographic signature verification failed — the server response may have been tampered with.', 'checkoutguard'));
     }
 
     $payload = json_decode($response['payload_string'], true);
+
+    // The same HQ key signs site key nonce deliveries, which always carry a
+    // purpose field; a status payload never does, so one can never pass as
+    // the other.
+    if (!is_array($payload) || array_key_exists('purpose', $payload)) {
+        return new WP_Error('signature_invalid', __('Cryptographic signature verification failed — the server response may have been tampered with.', 'checkoutguard'));
+    }
 
     // Generous freshness window — this is a periodic poll (daily cron +
     // manual force-sync), not a nonce challenge-response, so this only
@@ -589,21 +645,27 @@ function cg_cleanup_expired_blocks_handler()
     ];
 
     foreach ($tables as $table => $action_type) {
-        // Count how many expired rows will be deleted
-        $expired_count = (int) $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM {$table} WHERE expires_at IS NOT NULL AND expires_at < %s",
+        // Only rows that were counted toward usage give a decrement back;
+        // automatic blocks (usage_counted = 0) were never counted. The
+        // decrements follow the rows this DELETE really removed (no separate
+        // COUNT), so a row deleted by someone else in between is never
+        // decremented twice. Without the column (migration not done yet)
+        // behave like 1.4.2: every expired row is counted.
+        $has_column = cg_blocklist_has_usage_counted($table);
+        $counted_sql = $has_column ? ' AND COALESCE(usage_counted, 1) = 1' : '';
+        $counted_deleted = $wpdb->query($wpdb->prepare(
+            "DELETE FROM {$table} WHERE expires_at IS NOT NULL AND expires_at < %s{$counted_sql}",
             $now
         ));
-
-        if ($expired_count > 0) {
+        for ($i = 0; $i < (int) $counted_deleted; $i++) {
+            cg_decrement_usage_count($action_type);
+        }
+        if ($has_column) {
+            // Expired automatic blocks: removed without any decrement.
             $wpdb->query($wpdb->prepare(
-                "DELETE FROM {$table} WHERE expires_at IS NOT NULL AND expires_at < %s",
+                "DELETE FROM {$table} WHERE expires_at IS NOT NULL AND expires_at < %s AND usage_counted = 0",
                 $now
             ));
-            // Decrement usage count for each expired item removed
-            for ($i = 0; $i < $expired_count; $i++) {
-                cg_decrement_usage_count($action_type);
-            }
         }
     }
 
@@ -615,22 +677,369 @@ function cg_cleanup_expired_blocks_handler()
 }
 
 /**
- * Checks if the current site is on a Pro (non-Free) plan.
- * Fail-closed: returns false if cache is missing or plan is unknown.
- *
- * @return bool True if the plan is not "Free".
+ * Plan slugs that always unlock the Pro features. Matched exactly after
+ * strtolower(trim()); anything else (a typo, "pro-yearly", a slug HQ adds
+ * later) is not Pro until it is added here.
  */
-function cg_is_pro_plan()
+define('CG_PRO_PLAN_SLUGS', ['pro', 'custom']);
+
+/**
+ * Plans that keep the Pro features while the signed /sites/status payload
+ * carries a future `grandfathered_until` (sites that were on these plans
+ * before the 1.5.0 plan change).
+ */
+define('CG_GRANDFATHERED_PLAN_SLUGS', ['basic', 'standard']);
+
+/**
+ * The cached plan slug, lowercased and trimmed, or null when unknown.
+ *
+ * @param mixed $cache The cg_api_cache value (verified /sites/status payload).
+ * @return string|null
+ */
+function cg_plan_slug($cache)
 {
-    $cache = get_transient('cg_api_cache');
+    if (!is_array($cache)) {
+        return null;
+    }
     // The backend's /sites/status response key is "plan_slug" (falls back to
     // the older "plan" key in case a future response ever sends both).
     $plan_value = $cache['plan_slug'] ?? $cache['plan'] ?? null;
-    if (!$cache || $plan_value === null) {
-        return false;
+    if (!is_string($plan_value)) {
+        return null;
     }
     $plan = strtolower(trim($plan_value));
-    return $plan !== 'free' && strpos($plan, 'free') !== 0;
+    return $plan === '' ? null : $plan;
+}
+
+/**
+ * Parses the `grandfathered_until` value of the signed status payload.
+ * Accepted forms:
+ *   - an RFC 3339 date-time in UTC or with an offset, with or without a
+ *     fraction of a second of 1-9 digits (the HQ format, e.g.
+ *     `2026-12-15T10:23:45.123456Z`; a longer fraction is rejected;
+ *     lifetime plans send `2099-12-31T00:00:00Z`). It is read with
+ *     DateTimeImmutable in UTC. A fraction rounds the result up to the next
+ *     whole second, so `now >= until` never ends the window early.
+ *   - a date `YYYY-MM-DD`, valid through that whole UTC day (the value
+ *     returned is 00:00:00 UTC of the next day).
+ * Anything else (no zone, impossible date or time, padding, non-string) is
+ * invalid and gives null.
+ *
+ * @param mixed $value
+ * @return int|null Unix timestamp (UTC) of the first second without Pro, or null.
+ */
+function cg_parse_grandfathered_until($value)
+{
+    if (!is_string($value) || $value === '') {
+        return null;
+    }
+    if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/D', $value, $m)) {
+        $year = (int) $m[1];
+        $month = (int) $m[2];
+        $day = (int) $m[3];
+        if (!checkdate($month, $day, $year)) {
+            return null;
+        }
+        $ts = gmmktime(0, 0, 0, $month, $day + 1, $year);
+        // A 32-bit PHP cannot hold dates after 2038 (e.g. lifetime 2099-12-31).
+        return is_int($ts) ? $ts : PHP_INT_MAX;
+    }
+    $re = '/^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?([Zz]|[+-](\d{2}):(\d{2}))$/D';
+    if (!preg_match($re, $value, $m)) {
+        return null;
+    }
+    if (!checkdate((int) $m[2], (int) $m[3], (int) $m[1])
+        || (int) $m[4] > 23 || (int) $m[5] > 59 || (int) $m[6] > 59) {
+        return null;
+    }
+    $zone = '+00:00';
+    if (strtoupper($m[8]) !== 'Z') {
+        if ((int) $m[9] > 23 || (int) $m[10] > 59) {
+            return null;
+        }
+        $zone = $m[8];
+    }
+    $fraction = isset($m[7]) ? $m[7] : '';
+    // DateTimeImmutable keeps microseconds; digits after the sixth only
+    // matter for the round-up below.
+    $micro = substr(str_pad($fraction, 6, '0'), 0, 6);
+    $text = sprintf('%s-%s-%sT%s:%s:%s.%s%s', $m[1], $m[2], $m[3], $m[4], $m[5], $m[6], $micro, $zone);
+    $dt = DateTimeImmutable::createFromFormat('!Y-m-d\TH:i:s.uP', $text, new DateTimeZone('UTC'));
+    $errors = DateTimeImmutable::getLastErrors();
+    if ($dt === false || (is_array($errors) && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))) {
+        return null;
+    }
+    $ts = $dt->setTimezone(new DateTimeZone('UTC'))->getTimestamp();
+    if (!is_int($ts)) {
+        return PHP_INT_MAX;
+    }
+    if (ltrim($fraction, '0') !== '') {
+        $ts = ($ts === PHP_INT_MAX) ? $ts : $ts + 1;
+    }
+    return $ts;
+}
+
+/**
+ * The `grandfathered_until` value to use for a fresh one. null (or a missing
+ * key) means no grandfather and is used as it is. A value that cannot be
+ * parsed does not end the window: the last verified value is kept (when it
+ * parses), otherwise there is no grandfather. The plan itself never changes
+ * here, so a paid plan stays paid.
+ *
+ * @param mixed $value    The new value.
+ * @param mixed $previous The last verified value.
+ * @return mixed
+ */
+function cg_grandfathered_until_or_previous($value, $previous)
+{
+    if ($value === null || cg_parse_grandfathered_until($value) !== null) {
+        return $value;
+    }
+    return ($previous !== null && cg_parse_grandfathered_until($previous) !== null) ? $previous : null;
+}
+
+/**
+ * True when a Basic/Standard site is still inside its grandfather window.
+ * The field must be present, non-null, a valid RFC 3339 time with a zone
+ * (or a date `YYYY-MM-DD`, valid through that UTC day), and not yet passed:
+ * the window ends when now >= until. A missing key (older HQ) or null means
+ * no grandfather.
+ *
+ * @param mixed $cache The cg_api_cache value.
+ * @return bool
+ */
+function cg_is_grandfathered($cache)
+{
+    if (!in_array(cg_plan_slug($cache), CG_GRANDFATHERED_PLAN_SLUGS, true)) {
+        return false;
+    }
+    $until = cg_parse_grandfathered_until($cache['grandfathered_until'] ?? null);
+    if ($until === null) {
+        return false;
+    }
+    $now = function_exists('cg_reveal_now') ? cg_reveal_now() : time();
+    return $now < $until;
+}
+
+define('CG_LAST_KNOWN_PLAN_OPTION', 'cg_last_known_plan');
+define('CG_LAST_KNOWN_PLAN_MAX_AGE', 72 * HOUR_IN_SECONDS);
+define('CG_LEGACY_DEADLINE_MAX_AHEAD', 60 * DAY_IN_SECONDS);
+
+/**
+ * legacy_key_deadline from a verified /sites/status payload (SiteKey contract §7):
+ * RFC3339 UTC with a "Z" suffix, e.g. 2027-02-19T00:00:00Z. Anything else,
+ * including date-only values and offsets, gives null. A date further than
+ * CG_LEGACY_DEADLINE_MAX_AHEAD after $synced_at is clamped to that bound.
+ * The plugin has no hard end of its own: the deadline comes only from HQ.
+ *
+ * @param mixed $value     Raw field value.
+ * @param int   $synced_at Time of the verified sync.
+ * @return int|null Unix timestamp, or null when absent or invalid.
+ */
+function cg_parse_legacy_key_deadline($value, $synced_at)
+{
+    if (!is_string($value) || !preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/D', $value)) {
+        return null;
+    }
+    $ts = cg_parse_grandfathered_until($value);
+    if (!is_int($ts) || $ts === PHP_INT_MAX) {
+        return null;
+    }
+    return min($ts, (int) $synced_at + CG_LEGACY_DEADLINE_MAX_AHEAD);
+}
+
+/**
+ * Why the plan sync is failing, from the SiteKey state written by
+ * cg_sitekey_on_response(). Only a refusal recorded at or after the last
+ * verified sync counts; an older one was followed by a good sync.
+ *
+ * @param int $synced_at Time of the last verified sync.
+ * @return string 'expired' (403 legacy_expired), 'key' (claim_required,
+ *                site_key_required, site_key_mismatch) or '' (none: network,
+ *                5xx or anything else).
+ */
+function cg_plan_key_failure($synced_at)
+{
+    if (!function_exists('cg_sitekey_state')) {
+        return '';
+    }
+    $state = cg_sitekey_state();
+    $at = $state['legacy_blocked_at'] ?? null;
+    if (!is_int($at) || $at < $synced_at) {
+        return '';
+    }
+    $code = (string) ($state['legacy_code'] ?? '');
+    if ($code === 'legacy_expired') {
+        return 'expired';
+    }
+    if (in_array($code, ['claim_required', 'site_key_required', 'site_key_mismatch'], true)) {
+        return 'key';
+    }
+    return '';
+}
+
+/**
+ * Remembers the plan from a verified /sites/status sync, so the paid features
+ * survive an HQ outage longer than the 24-hour cg_api_cache transient.
+ *
+ * @param array $config Verified /sites/status payload.
+ */
+function cg_remember_last_known_plan($config)
+{
+    if (!is_array($config)) {
+        return;
+    }
+    $grandfathered_until = $config['grandfathered_until'] ?? null;
+    if ($grandfathered_until !== null && cg_parse_grandfathered_until($grandfathered_until) === null) {
+        $previous = get_option(CG_LAST_KNOWN_PLAN_OPTION, null);
+        $previous = is_array($previous) ? ($previous['grandfathered_until'] ?? null) : null;
+        $grandfathered_until = cg_grandfathered_until_or_previous($grandfathered_until, $previous);
+        error_log(sprintf(
+            '[CheckoutGuard] grandfathered_until from HQ could not be parsed (type %s, length %d); %s',
+            gettype($config['grandfathered_until']),
+            is_string($config['grandfathered_until']) ? strlen($config['grandfathered_until']) : 0,
+            $grandfathered_until === null ? 'no earlier verified value' : 'keeping the last verified value'
+        ));
+    }
+    $synced_at = function_exists('cg_reveal_now') ? cg_reveal_now() : time();
+    update_option(CG_LAST_KNOWN_PLAN_OPTION, [
+        'plan_slug' => cg_plan_slug($config),
+        'status' => is_string($config['status'] ?? null) ? strtolower(trim($config['status'])) : null,
+        'grandfathered_until' => $grandfathered_until,
+        'synced_at' => $synced_at,
+        // SiteKey contract §7: only the signed status may set the site's deadline.
+        'legacy_key_deadline' => cg_parse_legacy_key_deadline($config['legacy_key_deadline'] ?? null, $synced_at),
+    ], false);
+}
+
+/**
+ * Until when the last verified plan is kept while HQ refuses this site's key
+ * (claim_required, site_key_required, site_key_mismatch): the
+ * legacy_key_deadline from the last signed status (SiteKey contract §7).
+ * Null when there is no key refusal or no valid deadline; the plan then
+ * follows the 72-hour rule.
+ *
+ * @return int|null
+ */
+function cg_plan_key_grace_until()
+{
+    $last = get_option(CG_LAST_KNOWN_PLAN_OPTION, null);
+    if (!is_array($last) || !isset($last['synced_at']) || !is_int($last['synced_at'])) {
+        return null;
+    }
+    if (cg_plan_key_failure($last['synced_at']) !== 'key') {
+        return null;
+    }
+    $deadline = $last['legacy_key_deadline'] ?? null;
+    return is_int($deadline) ? $deadline : null;
+}
+
+/**
+ * The plan to decide paid features on, never older than 72 hours after the
+ * last verified sync. The cg_api_cache transient alone is not enough: local
+ * usage writes (cg_increment_usage_count() and friends) re-save it with a new
+ * 24-hour TTL, so on a busy shop it can outlive an HQ outage indefinitely.
+ * The age therefore comes from the last verified sync (cg_last_known_plan,
+ * or cg_last_synced for a site upgraded from 1.4.x before its first sync).
+ *
+ * @return array{plan_slug: ?string, status: ?string, grandfathered_until: mixed, source: string}
+ */
+function cg_effective_plan()
+{
+    $none = ['plan_slug' => null, 'status' => null, 'grandfathered_until' => null, 'source' => 'none'];
+    $now = function_exists('cg_reveal_now') ? cg_reveal_now() : time();
+    $last = get_option(CG_LAST_KNOWN_PLAN_OPTION, null);
+    $last = is_array($last) ? $last : null;
+
+    $synced_at = null;
+    if ($last !== null && isset($last['synced_at']) && is_int($last['synced_at'])) {
+        $synced_at = $last['synced_at'];
+    } else {
+        $legacy = get_transient('cg_last_synced');
+        if (is_numeric($legacy)) {
+            $synced_at = (int) $legacy;
+        }
+    }
+    if ($synced_at === null || $synced_at > $now) {
+        return $none;
+    }
+    $failure = cg_plan_key_failure($synced_at);
+    if ($failure === 'expired') {
+        return $none;
+    }
+    if (($now - $synced_at) > CG_LAST_KNOWN_PLAN_MAX_AGE) {
+        $grace = cg_plan_key_grace_until();
+        if ($failure !== 'key' || $last === null || $grace === null || $now >= $grace) {
+            return $none;
+        }
+        return [
+            'plan_slug' => is_string($last['plan_slug'] ?? null) ? $last['plan_slug'] : null,
+            'status' => is_string($last['status'] ?? null) ? $last['status'] : null,
+            'grandfathered_until' => cg_grandfathered_until_or_previous($last['grandfathered_until'] ?? null, null),
+            'source' => 'key_grace',
+        ];
+    }
+
+    $cache = get_transient('cg_api_cache');
+    if (is_array($cache)) {
+        return [
+            'plan_slug' => cg_plan_slug($cache),
+            'status' => is_string($cache['status'] ?? null) ? strtolower(trim($cache['status'])) : null,
+            'grandfathered_until' => cg_grandfathered_until_or_previous(
+                $cache['grandfathered_until'] ?? null,
+                $last !== null ? ($last['grandfathered_until'] ?? null) : null
+            ),
+            'source' => 'cache',
+        ];
+    }
+    if ($last !== null) {
+        return [
+            'plan_slug' => is_string($last['plan_slug'] ?? null) ? $last['plan_slug'] : null,
+            'status' => is_string($last['status'] ?? null) ? $last['status'] : null,
+            'grandfathered_until' => $last['grandfathered_until'] ?? null,
+            'source' => 'last_known',
+        ];
+    }
+    return $none;
+}
+
+/**
+ * Paid plan (Basic, Standard, Pro, Custom, ...): any known slug other than
+ * "free" with status "active". Expired, suspended or inactive sites count as
+ * Free, and so does a site whose plan is unknown (no cache and no verified
+ * sync in the last 72 hours). Separate from cg_is_pro_plan(): a Basic site
+ * after its grandfather window is paid but not Pro.
+ *
+ * @return bool
+ */
+function cg_is_paid_plan()
+{
+    $plan = cg_effective_plan();
+    return $plan['plan_slug'] !== null && $plan['plan_slug'] !== 'free' && $plan['status'] === 'active';
+}
+
+/**
+ * Checks if the current site may use the Pro features.
+ * Pro and Custom always; Basic and Standard only while grandfathered.
+ * Pro implies paid: it reads the same cg_effective_plan() as
+ * cg_is_paid_plan(), with the same 72-hour age rule, and is false whenever
+ * the site is not paid (unknown plan, free, or status other than active).
+ *
+ * @return bool
+ */
+function cg_is_pro_plan()
+{
+    if (!cg_is_paid_plan()) {
+        return false;
+    }
+    $plan = cg_effective_plan();
+    if (in_array($plan['plan_slug'], CG_PRO_PLAN_SLUGS, true)) {
+        return true;
+    }
+    return cg_is_grandfathered([
+        'plan_slug' => $plan['plan_slug'],
+        'grandfathered_until' => $plan['grandfathered_until'],
+    ]);
 }
 
 /**
@@ -667,6 +1076,75 @@ function cg_mask_email($email)
         return $local . '***@' . $domain;
     }
     return substr($local, 0, 2) . '***@' . $domain;
+}
+
+/**
+ * Block/unblock buttons never carry a full email or phone in the HTML. They
+ * carry an opaque reference to the record instead ("checkout:12",
+ * "blocked_order:7", "order:55"); the server turns it back into the value
+ * with cg_resolve_block_ref(). Other types keep data-value.
+ *
+ * @param array $item Button item: type, value, and ref for email/phone.
+ * @return string Escaped attribute with a leading space.
+ */
+function cg_block_button_target_attr(array $item)
+{
+    if (in_array($item['type'] ?? '', ['email', 'phone'], true)) {
+        return ' data-ref="' . esc_attr((string) ($item['ref'] ?? '')) . '"';
+    }
+    return ' data-value="' . esc_attr((string) ($item['value'] ?? '')) . '"';
+}
+
+/**
+ * Resolves a block-button reference to the full email or phone, on the
+ * server, and only for a user who may see it. The AJAX handler has already
+ * checked the nonce and manage_options. Per source:
+ * - checkout: the record must be visible under the plan (cg_can_show_contact);
+ * - blocked_order: Pro plan (the popup masks these for everyone else);
+ * - order: manage_woocommerce (WooCommerce shows the billing fields there).
+ *
+ * @param string $ref  Reference from data-ref.
+ * @param string $type 'email' or 'phone'.
+ * @return string|WP_Error The value (phone normalized), or an error that
+ *                         does not say whether the record exists.
+ */
+function cg_resolve_block_ref($ref, $type)
+{
+    global $wpdb;
+    $denied = new WP_Error('cg_ref_denied', __('This item cannot be blocked from here.', 'checkoutguard'));
+    if (!in_array($type, ['email', 'phone'], true) || !is_string($ref)
+        || !preg_match('/^(checkout|blocked_order|order):([1-9][0-9]{0,18})$/', $ref, $m)) {
+        return $denied;
+    }
+    $id = (int) $m[2];
+    $value = '';
+    if ($m[1] === 'checkout') {
+        $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}cg_incomplete_checkouts WHERE id = %d", $id));
+        if (!$row || !function_exists('cg_can_show_contact') || !cg_can_show_contact($row)) {
+            return $denied;
+        }
+        $value = (string) ($type === 'email' ? $row->email : $row->phone);
+    } elseif ($m[1] === 'blocked_order') {
+        if (!cg_is_pro_plan()) {
+            return $denied;
+        }
+        $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}cg_blocked_orders WHERE id = %d", $id));
+        if (!$row) {
+            return $denied;
+        }
+        $value = (string) ($type === 'email' ? $row->email_address : $row->phone_number);
+    } else {
+        $order = function_exists('wc_get_order') ? wc_get_order($id) : false;
+        // A refund id returns WC_Order_Refund, which has no billing fields.
+        if (!($order instanceof WC_Order) || !current_user_can('manage_woocommerce')) {
+            return $denied;
+        }
+        $value = (string) ($type === 'email' ? $order->get_billing_email() : $order->get_billing_phone());
+    }
+    if ($type === 'phone' && $value !== '' && function_exists('cg_normalize_phone_number')) {
+        $value = (string) cg_normalize_phone_number($value);
+    }
+    return $value === '' ? $denied : $value;
 }
 
 /**
@@ -1020,4 +1498,113 @@ function cg_is_checkout_context()
     return (bool) apply_filters('cg_is_checkout_context', false);
 }
 
+/**
+ * Blocklist tables and the usage key each one is counted under.
+ */
+function cg_blocklist_usage_tables()
+{
+    global $wpdb;
+    return [
+        $wpdb->prefix . 'cg_blocked_ips'       => 'fraud_ips',
+        $wpdb->prefix . 'cg_blocked_emails'    => 'fraud_emails',
+        $wpdb->prefix . 'cg_blocked_numbers'   => 'fraud_phones',
+        $wpdb->prefix . 'cg_blocked_domains'   => 'fraud_domains',
+        $wpdb->prefix . 'cg_blocked_addresses' => 'fraud_addresses',
+        $wpdb->prefix . 'cg_blocked_devices'   => 'fraud_devices',
+    ];
+}
 
+/**
+ * Runtime guard: does this blocklist table have the usage_counted column?
+ * Cached per request. When it is missing (migration failed or has not run)
+ * every caller falls back to the 1.4.2 behaviour instead of writing or
+ * filtering on a column that does not exist.
+ *
+ * @param string|null $table Full table name.
+ * @param bool        $reset Clear the per-request cache (after a migration).
+ */
+function cg_blocklist_has_usage_counted($table, $reset = false)
+{
+    static $cache = [];
+    if ($reset) {
+        $cache = [];
+        return false;
+    }
+    if (!isset($cache[$table])) {
+        global $wpdb;
+        $cache[$table] = !empty($wpdb->get_results("SHOW COLUMNS FROM {$table} LIKE 'usage_counted'"));
+    }
+    return $cache[$table];
+}
+
+/**
+ * Inserts an automatic block. Automatic blocks do not count toward the
+ * plan's fraud_* usage (1.5.0), so no increment is sent and the row is
+ * stored with usage_counted = 0. Without the column it behaves like 1.4.2
+ * (counted and incremented), so nothing breaks before the migration.
+ *
+ * @return int|false Result of $wpdb->insert().
+ */
+function cg_insert_auto_block($table, array $data, $action_type)
+{
+    global $wpdb;
+    $has_column = cg_blocklist_has_usage_counted($table);
+    if ($has_column) {
+        $data['usage_counted'] = 0;
+    }
+    $inserted = $wpdb->insert($table, $data);
+    if ($inserted && !$has_column) {
+        cg_increment_usage_count($action_type);
+    }
+    return $inserted;
+}
+
+/**
+ * Deletes one blocklist row and gives usage back only if that row was
+ * counted.
+ *
+ * @return int|false Rows deleted: 1 on success, 0 when nothing matched (no
+ *                   decrement is sent), false on a database error.
+ *
+ * @param string $table       Full table name.
+ * @param string $column      Column to match on ('id' or the value column).
+ * @param mixed  $value       Value to match.
+ * @param string $action_type Usage key (fraud_*).
+ */
+function cg_delete_blocklist_row($table, $column, $value, $action_type)
+{
+    global $wpdb;
+    $has_column = cg_blocklist_has_usage_counted($table);
+    $format = $column === 'id' ? '%d' : '%s';
+    $select = $has_column ? 'id, usage_counted' : 'id';
+    $wpdb->last_error = '';
+    $row = $wpdb->get_row($wpdb->prepare("SELECT {$select} FROM {$table} WHERE {$column} = {$format} LIMIT 1", $value));
+    if (!$row) {
+        return $wpdb->last_error !== '' ? false : 0;
+    }
+    $deleted = $wpdb->delete($table, ['id' => (int) $row->id], ['%d']);
+    if ($deleted === false) {
+        return false;
+    }
+    $counted = !$has_column || $row->usage_counted === null || (int) $row->usage_counted === 1;
+    if ($deleted > 0 && $counted) {
+        cg_decrement_usage_count($action_type);
+    }
+    return (int) $deleted;
+}
+
+/**
+ * Number of active automatic blocks that are not counted toward usage.
+ * Shown next to the usage row as "+N auto-blocked (not counted)".
+ */
+function cg_count_uncounted_auto_blocks($table)
+{
+    global $wpdb;
+    if (!cg_blocklist_has_usage_counted($table)) {
+        return 0;
+    }
+    return (int) $wpdb->get_var($wpdb->prepare(
+        "SELECT COUNT(*) FROM {$table} WHERE usage_counted = 0 AND (expires_at IS NULL OR expires_at >= %s)",
+        current_time('mysql')
+    ));
+}

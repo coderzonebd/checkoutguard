@@ -4,7 +4,7 @@ Tags: woocommerce, abandoned cart, checkout, invoice, fraud blocker
 Requires at least: 5.8
 Tested up to: 7.1
 Requires PHP: 8.0
-Stable tag: 1.4.2
+Stable tag: 1.5.0
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -308,6 +308,15 @@ After installation, go to **CheckoutGuard > Settings** and click **Sync Now**. I
 
 == Changelog ==
 
+= 1.5.0 =
+* Security: after updating, CheckoutGuard reconnects to our server automatically. Nothing to do. If it cannot, a notice with a "Reconnect now" button is shown in the admin; orders always go through.
+* Security: customer email and phone are no longer written into the page HTML of the block buttons and of masked checkouts.
+* Feature: the Free plan shows full contact details for 5 new checkouts per usage period.
+* Changed: on paid plans, an order with a low courier success ratio is now placed and put on hold for review instead of being blocked (you can switch back to blocking in Courier Analytics). Free plans block as before.
+* Improved: automatic blocks no longer count toward the fraud usage limit, and the courier ratio check runs once per checkout.
+* Improved: database updates are retried automatically; the settings page shows a notice if they fail three times in a row.
+* Fixed: deleting a blocklist entry now tells a database error apart from an entry that no longer exists.
+
 = 1.4.2 =
 * Security: order data shown by the admin JavaScript on CheckoutGuard screens is now escaped (XSS fix).
 * Fixed: a repeating key-rotation loop that could make the plugin call our server again and again after a new API key was issued. The plugin now retries once with the new key.
@@ -484,6 +493,9 @@ After installation, go to **CheckoutGuard > Settings** and click **Sync Now**. I
 * Admin settings for data retention and module toggles
 
 == Upgrade Notice ==
+
+= 1.5.0 =
+Security and plan updates. After updating, the plugin reconnects automatically; no action needed.
 
 = 1.4.2 =
 Security fix for the admin screens and a fix for a connection loop after API key changes. Recommended for all sites.

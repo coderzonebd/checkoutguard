@@ -2,6 +2,16 @@
 if (!defined('ABSPATH'))
     exit;
 
+// Database schema version, kept apart from CG_VERSION: migrations run when
+// the stored cg_db_version is older than this, so a schema change does not
+// need a plugin version bump, and an older plugin (downgrade) never sees a
+// newer schema as something to migrate.
+if (!defined('CG_DB_SCHEMA_VERSION')) {
+    define('CG_DB_SCHEMA_VERSION', '1.5.0');
+}
+define('CG_MIGRATION_FAIL_OPTION', 'cg_migration_fail_count');
+define('CG_MIGRATION_NOTICE_AFTER', 3);
+
 function cg_plugin_activate()
 {
     // Buffer output to prevent "unexpected output during activation" errors
@@ -11,10 +21,16 @@ function cg_plugin_activate()
         return $errno === E_USER_NOTICE && str_contains($errstr, '_load_textdomain_just_in_time');
     }, E_USER_NOTICE);
 
+    cg_sitekey_cleanup_142();
     cg_create_database_tables();
     cg_create_blocked_orders_table();
     cg_upgrade_fraud_tables();
-    update_option('cg_db_version', CG_VERSION);
+    // Only record the schema version once every 1.5.0 column really exists
+    // (blocklist usage_counted, checkouts contact_revealed_until); otherwise cg_maybe_run_migrations() retries on a later load.
+    if (cg_ensure_150_schema()) {
+        update_option('cg_db_version', CG_DB_SCHEMA_VERSION);
+        delete_option(CG_MIGRATION_FAIL_OPTION);
+    }
     // Set initial status and trigger first sync
     if (!get_option('cg_license_status')) {
         update_option('cg_license_status', 'active');
@@ -56,6 +72,8 @@ function cg_create_blocked_orders_table()
         success_ratio INT NOT NULL,
         threshold_at_block INT NOT NULL,
         ip_address VARCHAR(100) DEFAULT '' NOT NULL,
+        action VARCHAR(10) DEFAULT 'block' NOT NULL,
+        order_id BIGINT UNSIGNED NULL DEFAULT NULL,
         PRIMARY KEY  (id)
     ) $charset_collate;";
 
@@ -183,6 +201,7 @@ function cg_create_database_tables()
         phone_number VARCHAR(30) NOT NULL,
         added_by BIGINT(20) UNSIGNED DEFAULT NULL,
         reason TEXT DEFAULT NULL,
+        usage_counted TINYINT(1) DEFAULT 1,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         UNIQUE KEY phone_number (phone_number)
@@ -195,6 +214,7 @@ function cg_create_database_tables()
         email_address VARCHAR(100) NOT NULL,
         added_by BIGINT(20) UNSIGNED DEFAULT NULL,
         reason TEXT DEFAULT NULL,
+        usage_counted TINYINT(1) DEFAULT 1,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         UNIQUE KEY email_address (email_address)
@@ -207,6 +227,7 @@ function cg_create_database_tables()
         ip_address VARCHAR(45) NOT NULL,
         added_by BIGINT(20) UNSIGNED DEFAULT NULL,
         reason TEXT DEFAULT NULL,
+        usage_counted TINYINT(1) DEFAULT 1,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         UNIQUE KEY ip_address (ip_address)
@@ -234,6 +255,7 @@ function cg_upgrade_fraud_tables()
         reason TEXT DEFAULT NULL,
         expires_at DATETIME DEFAULT NULL,
         auto_blocked TINYINT(1) DEFAULT 0,
+        usage_counted TINYINT(1) DEFAULT 1,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         UNIQUE KEY domain (domain)
@@ -249,6 +271,7 @@ function cg_upgrade_fraud_tables()
         reason TEXT DEFAULT NULL,
         expires_at DATETIME DEFAULT NULL,
         auto_blocked TINYINT(1) DEFAULT 0,
+        usage_counted TINYINT(1) DEFAULT 1,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         UNIQUE KEY address_hash (address_hash)
@@ -264,6 +287,7 @@ function cg_upgrade_fraud_tables()
         reason TEXT DEFAULT NULL,
         expires_at DATETIME DEFAULT NULL,
         auto_blocked TINYINT(1) DEFAULT 0,
+        usage_counted TINYINT(1) DEFAULT 1,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         UNIQUE KEY device_fingerprint (device_fingerprint)
@@ -317,6 +341,91 @@ function cg_upgrade_fraud_tables()
 
 
 /**
+ * Makes sure every blocklist table has the usage_counted column (1.5.0).
+ *
+ * usage_counted = 1: the row counts toward the plan's fraud_* usage (manual
+ * blocks, and every row that existed before 1.5.0). usage_counted = 0: an
+ * automatic block, which is never counted, so deleting it never decrements.
+ *
+ * $wpdb->query() does not throw when ALTER fails, so the column is checked
+ * again afterwards. Returns true only when all six tables have it; callers
+ * must not bump cg_db_version otherwise.
+ */
+function cg_ensure_usage_counted_columns()
+{
+    global $wpdb;
+    $all_present = true;
+    foreach (cg_blocklist_usage_tables() as $table => $action_type) {
+        $col = $wpdb->get_results("SHOW COLUMNS FROM {$table} LIKE 'usage_counted'");
+        if (empty($col)) {
+            $wpdb->query("ALTER TABLE {$table} ADD COLUMN usage_counted TINYINT(1) DEFAULT 1");
+            $col = $wpdb->get_results("SHOW COLUMNS FROM {$table} LIKE 'usage_counted'");
+        }
+        if (empty($col)) {
+            $all_present = false;
+        }
+    }
+    cg_blocklist_has_usage_counted(null, true);
+    return $all_present;
+}
+
+/**
+ * Makes sure cg_incomplete_checkouts has contact_revealed_until (1.5.0):
+ * the UTC end of the usage period in which a Free record was given the full
+ * email and phone. NULL (all older rows included) means masked on Free.
+ * Checked again after ALTER, like usage_counted.
+ */
+function cg_ensure_contact_reveal_column()
+{
+    global $wpdb;
+    $table = $wpdb->prefix . 'cg_incomplete_checkouts';
+    $col = $wpdb->get_results("SHOW COLUMNS FROM {$table} LIKE 'contact_revealed_until'");
+    if (empty($col)) {
+        $wpdb->query("ALTER TABLE {$table} ADD COLUMN contact_revealed_until DATETIME NULL DEFAULT NULL");
+        $col = $wpdb->get_results("SHOW COLUMNS FROM {$table} LIKE 'contact_revealed_until'");
+    }
+    if (function_exists('cg_checkouts_has_reveal_column')) {
+        cg_checkouts_has_reveal_column(true);
+    }
+    return !empty($col);
+}
+
+/**
+ * 1.5.0 ratio hold: cg_blocked_orders.action ('block' | 'hold') and the
+ * held order's id. Existing rows are blocks.
+ */
+function cg_ensure_blocked_orders_hold_columns()
+{
+    global $wpdb;
+    $table = $wpdb->prefix . 'cg_blocked_orders';
+    $ok = true;
+    $defs = [
+        'action'   => "VARCHAR(10) NOT NULL DEFAULT 'block'",
+        'order_id' => 'BIGINT UNSIGNED NULL DEFAULT NULL',
+    ];
+    foreach ($defs as $name => $def) {
+        $col = $wpdb->get_results($wpdb->prepare("SHOW COLUMNS FROM {$table} LIKE %s", $name));
+        if (empty($col)) {
+            $wpdb->query("ALTER TABLE {$table} ADD COLUMN {$name} {$def}");
+            $col = $wpdb->get_results($wpdb->prepare("SHOW COLUMNS FROM {$table} LIKE %s", $name));
+        }
+        $ok = $ok && !empty($col);
+    }
+    return $ok;
+}
+
+/**
+ * All 1.5.0 columns. Every check always runs; true only when all exist.
+ */
+function cg_ensure_150_schema()
+{
+    $usage_counted = cg_ensure_usage_counted_columns();
+    $reveal = cg_ensure_contact_reveal_column();
+    $hold = cg_ensure_blocked_orders_hold_columns();
+    return $usage_counted && $reveal && $hold;
+}
+
+/**
  * Handles tasks upon plugin deactivation.
  */
 function cg_plugin_deactivate()
@@ -332,16 +441,49 @@ function cg_plugin_deactivate()
     wp_clear_scheduled_hook('cg_daily_sync_hook');
     wp_clear_scheduled_hook('cg_cleanup_expired_blocks');
     wp_clear_scheduled_hook('cg_sitekey_retry_event');
+    wp_clear_scheduled_hook('cg_sitekey_request_event');
+    wp_clear_scheduled_hook('cg_sitekey_claim_event');
 }
 
 /**
- * Runs database migrations automatically on plugin update if stored DB version is older
- * than CG_VERSION, or if essential tables/columns are missing.
+ * Removes what the 1.4.2 site key request module left behind. That module
+ * (includes/sitekey-request.php) was replaced by includes/site-key.php in
+ * 1.5.0. The gate option cg_sitekey_next_allowed_at is kept on purpose:
+ * site-key.php uses the same option, so a Retry-After wait that 1.4.2 stored
+ * is still honoured. Safe to run more than once.
+ */
+function cg_sitekey_cleanup_142()
+{
+    wp_clear_scheduled_hook('cg_sitekey_retry_event');
+    delete_option('cg_sitekey_retry_lock');
+    delete_option('cg_sitekey_backoff_step');
+    delete_option('cg_sitekey_recent_calls');
+    delete_transient('cg_key_requested');
+}
+
+/**
+ * Version upgrade routine. Runs once whenever the stored cg_plugin_version
+ * differs from CG_VERSION (a plugin update replaces the files without calling
+ * the activation hook), before the schema migrations on the same hook.
+ */
+function cg_maybe_run_version_upgrade()
+{
+    if (get_option('cg_plugin_version') === CG_VERSION) {
+        return;
+    }
+    cg_sitekey_cleanup_142();
+    update_option('cg_plugin_version', CG_VERSION);
+}
+add_action('init', 'cg_maybe_run_version_upgrade', 4);
+
+/**
+ * Runs database migrations automatically when the stored cg_db_version is
+ * older than CG_DB_SCHEMA_VERSION.
  */
 function cg_maybe_run_migrations()
 {
     $installed_ver = get_option('cg_db_version', '1.0.0');
-    if (version_compare($installed_ver, CG_VERSION, '<')) {
+    if (version_compare($installed_ver, CG_DB_SCHEMA_VERSION, '<') && !get_transient('cg_migration_retry_pause')) {
         cg_create_database_tables();
         cg_create_blocked_orders_table();
         cg_upgrade_fraud_tables();
@@ -368,8 +510,47 @@ function cg_maybe_run_migrations()
             update_option('cg_plugin_options', $options);
         }
 
-        update_option('cg_db_version', CG_VERSION);
+        // Bump the version only when the 1.5.0 columns are really there. On
+        // failure the next page load (after a short pause, so a host that
+        // refuses ALTER is not hit with dbDelta on every request) tries again.
+        // The pause is a transient: without a persistent object cache it is
+        // stored in wp_options, so it works on every host. Consecutive
+        // failures are counted in an option for the settings-page notice.
+        if (cg_ensure_150_schema()) {
+            update_option('cg_db_version', CG_DB_SCHEMA_VERSION);
+            delete_transient('cg_migration_retry_pause');
+            delete_option(CG_MIGRATION_FAIL_OPTION);
+        } else {
+            set_transient('cg_migration_retry_pause', 1, (int) apply_filters('cg_migration_retry_pause_seconds', 60));
+            update_option(CG_MIGRATION_FAIL_OPTION, (int) get_option(CG_MIGRATION_FAIL_OPTION, 0) + 1, false);
+        }
     }
 }
 add_action('init', 'cg_maybe_run_migrations', 5);
 
+/**
+ * After CG_MIGRATION_NOTICE_AFTER failed migrations in a row (usually a host
+ * that does not allow ALTER TABLE), tell the admin, on the CheckoutGuard
+ * settings page only.
+ */
+function cg_render_migration_failed_notice()
+{
+    if (!current_user_can('manage_options')) {
+        return;
+    }
+    if (!isset($_GET['page']) || $_GET['page'] !== 'cg-settings') {
+        return;
+    }
+    $fails = (int) get_option(CG_MIGRATION_FAIL_OPTION, 0);
+    if ($fails < CG_MIGRATION_NOTICE_AFTER) {
+        return;
+    }
+    echo '<div class="notice notice-error cg-migration-failed-notice"><p>'
+        . esc_html(sprintf(
+            /* translators: %d: number of failed attempts */
+            __('CheckoutGuard could not update its database tables (%d attempts). Your hosting may not allow ALTER TABLE for the WordPress database user. Please ask your host to allow it, or contact CheckoutGuard support. The plugin keeps working with the old table layout and retries automatically.', 'checkoutguard'),
+            $fails
+        ))
+        . '</p></div>';
+}
+add_action('admin_notices', 'cg_render_migration_failed_notice');

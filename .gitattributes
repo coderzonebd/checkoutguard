@@ -18,3 +18,8 @@
 *.pdf   binary
 *.zip   binary
 *.mo    binary
+
+# Left out of `git archive` exports only. The release zip and the WordPress.org
+# deploy use .distignore; keep both lists in sync.
+/tests export-ignore
+/.gitattributes export-ignore

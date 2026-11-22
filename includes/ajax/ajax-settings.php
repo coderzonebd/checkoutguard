@@ -24,7 +24,7 @@ function cg_handle_save_page_settings()
     // Whitelist of allowed fields to update via this handler
     $allowed = [
         'custom_block_message',
-        'ratio_blocker_threshold', 'ratio_blocker_grace_period', 'ratio_blocker_message',
+        'ratio_blocker_threshold', 'ratio_blocker_grace_period', 'ratio_blocker_message', 'ratio_action',
         'fraud_auto_block_enabled', 'fraud_auto_block_attempts', 'fraud_auto_block_window', 'fraud_auto_block_duration',
         'fraud_velocity_enabled', 'fraud_velocity_max_attempts', 'fraud_velocity_window',
         'fraud_device_blocking', 'fraud_device_site_block',
@@ -60,6 +60,10 @@ function cg_handle_save_page_settings()
             case 'duplicate_blocker_match_ip':
             case 'duplicate_blocker_match_email':
                 $options[$key] = !empty($value) && $value !== '0' && $value !== 'false';
+                break;
+            case 'ratio_action':
+                // Saved for any plan; cg_ratio_action() ignores it unless the plan is paid.
+                $options[$key] = ($value === 'block') ? 'block' : 'hold';
                 break;
             case 'duplicate_blocker_mode':
                 $options[$key] = in_array($value, ['identical', 'any'], true) ? $value : 'identical';

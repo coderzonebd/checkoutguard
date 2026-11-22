@@ -6,3 +6,5 @@
 /.gitattributes
 /.gitignore
 /.wordpress-org
+/tests
+/includes/vendor/*/*/bin/

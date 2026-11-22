@@ -1892,6 +1892,7 @@ jQuery(function ($) {
             const $button = $(this),
                 blockType = $button.data('block-type'),
                 value = $button.data('value'),
+                ref = $button.data('ref') || '',
                 nonce = $button.data('nonce'),
                 deviceInfo = $button.data('device-info') || '';
             $button.prop('disabled', true).html('<span class="spinner is-active" style="float:left; margin: 2px 5px 0 0;"></span> Blocking...');
@@ -1900,9 +1901,14 @@ jQuery(function ($) {
                 action: 'cg_add_blocked_item',
                 nonce,
                 block_type: blockType,
-                value,
                 reason: `Blocked from Order #${$('#post_ID').val()}`
             };
+            // Email/phone buttons carry a reference only (cg_resolve_block_ref).
+            if (ref) {
+                postData.ref = ref;
+            } else {
+                postData.value = value;
+            }
             if (blockType === 'device' && deviceInfo) {
                 postData.device_info = deviceInfo;
             }
@@ -1911,10 +1917,10 @@ jQuery(function ($) {
 
                 if (response.success) {
                     const unblockNonce = cg_admin_params.delete_blocker_item_nonce;
-                    // Built with .attr() so value and device info are escaped.
+                    // Built with .attr() so ref/value/device info are escaped.
                     const $newUnblockButton = $('<button type="button" class="button cg-unblock-from-order"></button>')
                         .attr('data-block-type', blockType)
-                        .attr('data-value', value)
+                        .attr(ref ? 'data-ref' : 'data-value', ref ? ref : value)
                         .attr('data-nonce', unblockNonce)
                         .html('<span class="dashicons dashicons-unlock"></span> Unblock');
                     if (deviceInfo) {
@@ -1940,22 +1946,28 @@ jQuery(function ($) {
             const $button = $(this),
                 blockType = $button.data('block-type'),
                 value = $button.data('value'),
+                ref = $button.data('ref') || '',
                 nonce = $button.data('nonce');
             $button.prop('disabled', true).html('<span class="spinner is-active" style="float:left; margin: 2px 5px 0 0;"></span> Unblocking...');
 
-            $.post(cg_admin_params.ajax_url, {
+            var postData = {
                 action: 'cg_delete_blocked_item',
                 nonce,
-                block_type: blockType,
-                value
+                block_type: blockType
+            };
+            if (ref) {
+                postData.ref = ref;
+            } else {
+                postData.value = value;
+            }
 
-            }).done(function (response) {
+            $.post(cg_admin_params.ajax_url, postData).done(function (response) {
 
                 if (response.success) {
                     const newNonce = cg_admin_params.fraud_blocker_nonce;
                     const $newBlockButton = $('<button type="button" class="button cg-block-from-order"></button>')
                         .attr('data-block-type', blockType)
-                        .attr('data-value', value)
+                        .attr(ref ? 'data-ref' : 'data-value', ref ? ref : value)
                         .attr('data-nonce', newNonce)
                         .html('<span class="dashicons dashicons-shield-alt"></span> Block');
                     $button.replaceWith($newBlockButton);
@@ -2075,14 +2087,20 @@ jQuery(function ($) {
         $btn.prop('disabled', true);
         $spinner.addClass('is-active');
 
+        var ratioFields = {
+            ratio_blocker_threshold: $('#cg_ratio_blocker_threshold').val(),
+            ratio_blocker_grace_period: $('#cg_ratio_blocker_grace_period').val(),
+            ratio_blocker_message: $('#cg_ratio_blocker_message').val()
+        };
+        // Shown to paid plans only.
+        if ($('#cg_ratio_action').length) {
+            ratioFields.ratio_action = $('#cg_ratio_action').val();
+        }
+
         $.post(cg_admin_params.ajax_url, {
             action: 'cg_save_page_settings',
             nonce: cg_admin_params.save_page_settings_nonce,
-            fields: {
-                ratio_blocker_threshold: $('#cg_ratio_blocker_threshold').val(),
-                ratio_blocker_grace_period: $('#cg_ratio_blocker_grace_period').val(),
-                ratio_blocker_message: $('#cg_ratio_blocker_message').val()
-            }
+            fields: ratioFields
         }).done(function (response) {
             if (response.success) {
                 cgToast.success(response.data.message || 'Settings saved successfully.');
@@ -2247,10 +2265,11 @@ jQuery(function ($) {
         var $button = $(this);
         var blockType = $button.data('block-type');
         var value = $button.data('value');
+        var ref = $button.data('ref') || '';
         var nonce = $button.data('nonce');
         var deviceInfo = $button.data('device-info') || '';
 
-        if (!blockType || !value) return;
+        if (!blockType || (!value && !ref)) return;
 
         $button.prop('disabled', true).html('<span class="dashicons dashicons-update spin"></span>');
 
@@ -2258,9 +2277,14 @@ jQuery(function ($) {
             action: 'cg_add_blocked_item',
             nonce: nonce,
             block_type: blockType,
-            value: value,
             reason: 'Blocked from checkout details popup'
         };
+        // Email/phone buttons carry a reference only (cg_resolve_block_ref).
+        if (ref) {
+            postData.ref = ref;
+        } else {
+            postData.value = value;
+        }
         if (blockType === 'device' && deviceInfo) {
             postData.device_info = deviceInfo;
         }
@@ -2290,18 +2314,25 @@ jQuery(function ($) {
         var $button = $(this);
         var blockType = $button.data('block-type');
         var value = $button.data('value');
+        var ref = $button.data('ref') || '';
         var nonce = $button.data('nonce');
 
-        if (!blockType || !value) return;
+        if (!blockType || (!value && !ref)) return;
 
         $button.prop('disabled', true).html('<span class="dashicons dashicons-update spin"></span>');
 
-        $.post(cg_admin_params.ajax_url, {
+        var postData = {
             action: 'cg_delete_blocked_item',
             nonce: nonce,
-            block_type: blockType,
-            value: value
-        }).done(function (response) {
+            block_type: blockType
+        };
+        if (ref) {
+            postData.ref = ref;
+        } else {
+            postData.value = value;
+        }
+
+        $.post(cg_admin_params.ajax_url, postData).done(function (response) {
             if (response.success) {
                 var blockNonce = cg_admin_params.fraud_blocker_nonce;
                 $button

@@ -63,10 +63,24 @@ if (!empty($options['delete_on_uninstall'])) {
         }
     }
 
+    delete_option('cg_period_synced_for');
+    delete_option('cg_migration_fail_count');
+    delete_option('cg_db_version');
+    delete_transient('cg_migration_retry_pause');
+    delete_option('cg_period_sync_lock');
+    delete_transient('cg_period_sync_backoff');
     delete_transient('cg_api_cache');
     delete_transient('cg_last_synced');
+    delete_option('cg_last_known_plan');
+    delete_option('cg_sitekey_state');
+    delete_option('cg_sitekey_next_allowed_at');
+    delete_option('cg_sitekey_lock');
+    delete_option('cg_sitekey_last_drop');
 
     // Clear scheduled cron hooks.
     wp_clear_scheduled_hook('cg_daily_sync_hook');
     wp_clear_scheduled_hook('cg_cleanup_expired_blocks');
+    wp_clear_scheduled_hook('cg_sitekey_request_event');
+    wp_clear_scheduled_hook('cg_sitekey_claim_event');
+    wp_clear_scheduled_hook('cg_sitekey_retry_event');
 }

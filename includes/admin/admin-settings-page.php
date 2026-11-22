@@ -47,6 +47,7 @@ function cg_sync_with_hq()
     if ($config && is_array($config) && isset($config['status'])) {
         update_option('cg_license_status', $config['status']);
         set_transient('cg_api_cache', $config, DAY_IN_SECONDS);
+        cg_remember_last_known_plan($config);
         set_transient('cg_last_synced', time(), WEEK_IN_SECONDS);
 
         if (isset($config['settings'])) {
@@ -357,7 +358,7 @@ add_action('admin_init', 'cg_register_settings');
 /**
  * Helper: render a single usage progress bar row.
  */
-function cg_render_usage_row($label, $used, $limit)
+function cg_render_usage_row($label, $used, $limit, $uncounted_auto = 0)
 {
     $used = (int) $used;
     $limit = (int) $limit;
@@ -388,6 +389,12 @@ function cg_render_usage_row($label, $used, $limit)
             <div class="cg-usage-bar-fill <?php echo esc_attr($bar_class); ?>"
                 style="width: <?php echo $is_unlimited ? '0' : esc_attr($percentage); ?>%"></div>
         </div>
+        <?php if ((int) $uncounted_auto > 0): ?>
+            <span class="cg-usage-row__note"><?php
+                /* translators: %d: number of automatic blocks that do not count toward the plan limit */
+                echo esc_html(sprintf(__('+%d auto-blocked (not counted)', 'checkoutguard'), (int) $uncounted_auto));
+            ?></span>
+        <?php endif; ?>
         <?php if (!$is_unlimited && $percentage >= 80): ?>
             <span class="cg-usage-row__warning"><?php echo esc_html($percentage); ?>% <?php _e('used', 'checkoutguard'); ?></span>
         <?php endif; ?>
@@ -512,6 +519,13 @@ function cg_render_account_usage_tab()
                     $cache['usage']['checkouts'] ?? 0,
                     $cache['limits']['checkouts'] ?? 0
                 ); ?>
+                <?php if (isset($cache['limits']['contact_reveals'])) {
+                    cg_render_usage_row(
+                        __('Full Contact Details (this period)', 'checkoutguard'),
+                        $cache['usage']['contact_reveals'] ?? 0,
+                        $cache['limits']['contact_reveals']
+                    );
+                } ?>
             </div>
 
             <!-- Fraud Protection -->
@@ -529,8 +543,14 @@ function cg_render_account_usage_tab()
                     'fraud_addresses' => __('Blocked Addresses', 'checkoutguard'),
                     'fraud_devices' => __('Blocked Devices', 'checkoutguard'),
                 ];
+                $fraud_tables = array_flip(cg_blocklist_usage_tables());
                 foreach ($fraud_items as $key => $label) {
-                    cg_render_usage_row($label, $cache['usage'][$key] ?? 0, $cache['limits'][$key] ?? 0);
+                    cg_render_usage_row(
+                        $label,
+                        $cache['usage'][$key] ?? 0,
+                        $cache['limits'][$key] ?? 0,
+                        isset($fraud_tables[$key]) ? cg_count_uncounted_auto_blocks($fraud_tables[$key]) : 0
+                    );
                 }
                 ?>
             </div>
@@ -576,6 +596,15 @@ function cg_render_account_usage_tab()
  */
 function cg_render_api_activity_panel()
 {
+    $drop = get_option('cg_sitekey_last_drop', []);
+    if (is_array($drop) && !empty($drop['reason']) && !empty($drop['at'])) {
+        echo '<p class="description">' . esc_html(sprintf(
+            /* translators: 1: short reason code, 2: time ago */
+            __('Last site key delivery dropped: %1$s (%2$s ago)', 'checkoutguard'),
+            sanitize_key($drop['reason']),
+            human_time_diff((int) $drop['at'])
+        )) . '</p>';
+    }
     $log = get_option('cg_api_log', []);
     if (!is_array($log) || empty($log)) {
         return;

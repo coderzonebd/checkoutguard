@@ -141,17 +141,15 @@ function cg_maybe_auto_block($ip, $email, $phone)
                 $ip
             ));
             if (!$exists) {
-                $inserted = $wpdb->insert($wpdb->prefix . 'cg_blocked_ips', [
+                // Automatic blocks are not counted toward the plan's usage (1.5.0).
+                cg_insert_auto_block($wpdb->prefix . 'cg_blocked_ips', [
                     'ip_address'  => $ip,
                     'added_by'    => 0,
                     'auto_blocked' => 1,
                     'reason'      => "Auto-blocked: {$count} failed attempts",
                     'expires_at'  => $expires_at,
                     'created_at'  => current_time('mysql'),
-                ]);
-                if ($inserted) {
-                    cg_increment_usage_count('fraud_ips');
-                }
+                ], 'fraud_ips');
             }
         }
     }
@@ -168,17 +166,15 @@ function cg_maybe_auto_block($ip, $email, $phone)
                 $email
             ));
             if (!$exists) {
-                $inserted = $wpdb->insert($wpdb->prefix . 'cg_blocked_emails', [
+                // Automatic blocks are not counted toward the plan's usage (1.5.0).
+                cg_insert_auto_block($wpdb->prefix . 'cg_blocked_emails', [
                     'email_address' => $email,
                     'added_by'      => 0,
                     'auto_blocked'  => 1,
                     'reason'        => "Auto-blocked: {$count} failed attempts",
                     'expires_at'    => $expires_at,
                     'created_at'    => current_time('mysql'),
-                ]);
-                if ($inserted) {
-                    cg_increment_usage_count('fraud_emails');
-                }
+                ], 'fraud_emails');
             }
         }
     }
@@ -195,17 +191,15 @@ function cg_maybe_auto_block($ip, $email, $phone)
                 $phone
             ));
             if (!$exists) {
-                $inserted = $wpdb->insert($wpdb->prefix . 'cg_blocked_numbers', [
+                // Automatic blocks are not counted toward the plan's usage (1.5.0).
+                cg_insert_auto_block($wpdb->prefix . 'cg_blocked_numbers', [
                     'phone_number' => $phone,
                     'added_by'     => 0,
                     'auto_blocked' => 1,
                     'reason'       => "Auto-blocked: {$count} failed attempts",
                     'expires_at'   => $expires_at,
                     'created_at'   => current_time('mysql'),
-                ]);
-                if ($inserted) {
-                    cg_increment_usage_count('fraud_phones');
-                }
+                ], 'fraud_phones');
             }
         }
     }
@@ -329,16 +323,38 @@ class CG_Validation_Result
     public $risk_score = 0;
     public $matched_order_id = null;
     public $details = [];
+    /** Ratio hold (paid plans): the checkout goes through, the order is put on hold. */
+    public $is_held = false;
 
     public function is_blocked()
     {
         return $this->is_blocked;
     }
 
+    public function is_held()
+    {
+        return $this->is_held;
+    }
+
     public static function allow($details = [])
     {
         $res = new self();
         $res->is_blocked = false;
+        $res->details = $details;
+        return $res;
+    }
+
+    /**
+     * Not blocked: the checkout continues and the order is put on hold later
+     * (see cg_mark_ratio_hold()).
+     */
+    public static function hold($code, $rule = '', $details = [])
+    {
+        $res = new self();
+        $res->is_blocked = false;
+        $res->is_held = true;
+        $res->block_code = $code;
+        $res->rule_triggered = $rule;
         $res->details = $details;
         return $res;
     }
@@ -402,6 +418,15 @@ class CG_Response_Adapter
             return;
         }
         $msg = wp_strip_all_tags($result->block_message);
+        // Classic checkout validates in woocommerce_checkout_process (notice)
+        // and again in woocommerce_after_checkout_validation ($errors); the
+        // engine returns the cached result, so report each block only once.
+        static $reported = [];
+        $key = $result->block_code . '|' . $msg;
+        if (isset($reported[$key])) {
+            return;
+        }
+        $reported[$key] = true;
         if ($errors instanceof \WP_Error) {
             $errors->add($result->block_code, $msg);
         } else {
@@ -1223,6 +1248,19 @@ class CG_Validation_Engine
                 $success_rate = (int) ($ratio_data['summary']['success_rate'] ?? 100);
 
                 if ($total_orders >= $grace_period && $success_rate <= $threshold) {
+                    // Paid plans with ratio_action "hold" (the default for paid):
+                    // let the checkout through, the order goes on-hold later.
+                    // Logged as allowed, so a hold never feeds the fraud score.
+                    if (cg_ratio_action() === 'hold') {
+                        cg_log_checkout_attempt($context->ip, $context->email, $context->phone, $context->device_fp, $context->address_hash, 'allowed', "Source: {$context->order_source}; ratio hold {$success_rate}% <= {$threshold}%");
+                        $result = CG_Validation_Result::hold('held_ratio', 'courier_success_ratio', [
+                            'success_rate' => $success_rate,
+                            'threshold'    => $threshold,
+                            'source'       => $context->order_source,
+                        ]);
+                        return self::finalize($result, $context, $cache_key);
+                    }
+
                     global $wpdb;
                     $table_name = $wpdb->prefix . 'cg_blocked_orders';
 
@@ -1387,6 +1425,19 @@ function cg_universal_ajax_order_interceptor()
 add_action('init', 'cg_universal_ajax_order_interceptor', 0);
 
 /**
+ * True while serving the Store API checkout route (/wc/store/v1/checkout or
+ * a later version), where cg_store_api_checkout_guard() does the validation.
+ */
+function cg_is_store_api_checkout_request()
+{
+    if (!defined('REST_REQUEST') || !REST_REQUEST || empty($GLOBALS['wp']) || !is_object($GLOBALS['wp'])) {
+        return false;
+    }
+    $route = isset($GLOBALS['wp']->query_vars['rest_route']) ? (string) $GLOBALS['wp']->query_vars['rest_route'] : '';
+    return (bool) preg_match('#^/wc/store(/v\d+)?/checkout/?$#', untrailingslashit($route) . '/');
+}
+
+/**
  * 2. Safe Core Order Lifecycle Guard (woocommerce_before_order_object_save)
  * Ultimate fail-safe for any direct wc_create_order() calls. Non-destructive: cancels order
  * and logs audit note instead of throwing raw database exceptions.
@@ -1401,6 +1452,14 @@ function cg_universal_order_save_guard($order, $data_store)
     // Safety check 2: Only intercept active target statuses
     $status = $order->get_status();
     if (!in_array($status, ['processing', 'pending', 'on-hold', 'completed'], true)) {
+        return;
+    }
+
+    // Safety check 2b: a Store API checkout is validated once by
+    // cg_store_api_checkout_guard(); validating the draft here as well ran
+    // every check (and the courier ratio check, with its blocked_orders row)
+    // twice per block checkout.
+    if (cg_is_store_api_checkout_request()) {
         return;
     }
 
@@ -1431,6 +1490,11 @@ function cg_universal_order_save_guard($order, $data_store)
         CG_Response_Adapter::lifecycle($result, $order);
     } else {
         $order->update_meta_data('_cg_validated', '1');
+        if (cg_mark_ratio_hold($order, $result) && in_array($status, ['processing', 'completed'], true)) {
+            // Created directly as paid/processing (no checkout payment step).
+            // The note and the blocked_orders row come from the status hook after the save.
+            $order->set_status('on-hold');
+        }
     }
 }
 add_action('woocommerce_before_order_object_save', 'cg_universal_order_save_guard', 10, 2);
@@ -1454,6 +1518,7 @@ function cg_store_api_checkout_guard($order, $request)
         CG_Response_Adapter::store_api($result);
     } else {
         $order->update_meta_data('_cg_validated', '1');
+        cg_mark_ratio_hold($order, $result);
     }
 }
 add_action('woocommerce_store_api_checkout_update_order_from_request', 'cg_store_api_checkout_guard', 10, 2);
@@ -1477,6 +1542,7 @@ function cg_order_creation_guard($order, $data)
         throw new \Exception(wp_strip_all_tags($result->block_message));
     } else {
         $order->update_meta_data('_cg_validated', '1');
+        cg_mark_ratio_hold($order, $result);
     }
 }
 add_action('woocommerce_checkout_create_order', 'cg_order_creation_guard', 10, 2);
