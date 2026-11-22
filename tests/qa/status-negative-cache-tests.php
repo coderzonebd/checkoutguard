@@ -155,7 +155,8 @@ function qa_set_now($t) {
         $tr = substr($name, strlen('_transient_timeout_'));
         if (isset($GLOBALS['QA_TEXP'][$tr])) {
             $left = $GLOBALS['QA_TEXP'][$tr] - $new;
-            $wpdb->update($wpdb->options, ['option_value' => (string) ($left > 0 ? $rn + $left : $rn - 1)], ['option_name' => $name]);
+            // WP keeps a transient while timeout == now (expired only when timeout < now).
+            $wpdb->update($wpdb->options, ['option_value' => (string) ($left >= 0 ? $rn + $left : $rn - 1)], ['option_name' => $name]);
         } else {
             $wpdb->query($wpdb->prepare("UPDATE {$wpdb->options} SET option_value = CAST(option_value AS SIGNED) - %d WHERE option_name = %s", $d, $name));
         }
