@@ -82,6 +82,11 @@ ok('E9', 'real check, no deliveries yet, grace 0: allowed', qa_is_allow($i), qa_
 
 // Paid plan, ratio_action hold: a failed check must not put the order on hold either.
 $GLOBALS['QA_PLAN_ORIG'] = get_option('cg_last_known_plan', null);
+// cg_effective_plan() reads the cg_api_cache transient first; a cached free
+// plan on the test site would hide the paid plan set below.
+$GLOBALS['QA_API_CACHE_ORIG'] = get_transient('cg_api_cache');
+$GLOBALS['QA_API_CACHE_TTL'] = max(60, (int) get_option('_transient_timeout_cg_api_cache', 0) - time());
+delete_transient('cg_api_cache');
 cg_remember_last_known_plan(['plan_slug' => 'pro', 'status' => 'active']);
 wp_cache_delete('cg_last_known_plan', 'options');
 $paid = cg_is_paid_plan();
@@ -91,6 +96,7 @@ $h = qa_run('qa-shared-key-not-real', 0, $low, 'hold');
 ok('E8', 'paid plan (hold), real ratio 10%: still held', $paid && !empty($h['is_held']) && empty($h['is_blocked']), qa_short($h));
 if ($GLOBALS['QA_PLAN_ORIG'] === null) { delete_option('cg_last_known_plan'); } else { update_option('cg_last_known_plan', $GLOBALS['QA_PLAN_ORIG'], false); }
 wp_cache_delete('cg_last_known_plan', 'options');
+if ($GLOBALS['QA_API_CACHE_ORIG'] !== false) { set_transient('cg_api_cache', $GLOBALS['QA_API_CACHE_ORIG'], $GLOBALS['QA_API_CACHE_TTL']); }
 
 $wpdb->query("DELETE FROM $table WHERE id > $max_id_before");
 cg_update_options_from_hq(is_array($GLOBALS['QA_OPTS_ORIG']) ? $GLOBALS['QA_OPTS_ORIG'] : []);
