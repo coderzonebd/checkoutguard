@@ -27,6 +27,7 @@ define('MINUTE_IN_SECONDS', 60); define('HOUR_IN_SECONDS', 3600); define('DAY_IN
 define('CG_HQ_PUBLIC_KEY', base64_encode(sodium_crypto_sign_publickey($KP)));
 define('CG_HEADQUARTERS_URL', 'http://hq.invalid');
 define('CG_PRODUCT_SLUG', 'checkoutguard');
+define('CG_COURIER_AUTH_REJECT_TRANSIENT', 'cg_courier_auth_reject'); // checkoutguard.php defines it; utils.php reads it on every HQ answer
 $GLOBALS['__opt'] = []; $GLOBALS['__tr'] = []; $GLOBALS['__resp'] = null; $GLOBALS['__hits'] = [];
 function get_option($k, $d = false) { return array_key_exists($k, $GLOBALS['__opt']) ? $GLOBALS['__opt'][$k] : $d; }
 function update_option($k, $v, $a = null) { $GLOBALS['__opt'][$k] = $v; return true; }
