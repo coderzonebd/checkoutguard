@@ -85,8 +85,23 @@ function cg_create_blocked_orders_table()
     dbDelta($sql);
 }
 
-function cg_register_site_with_hq()
+/**
+ * Registers the site with HQ and stores the key it returns.
+ *
+ * After a failed attempt CG_REGISTER_GATE_OPTION holds the earliest time of
+ * the next one; until then this returns without calling HQ, so checkout
+ * saves, syncs and page loads never repeat a register HQ just refused or
+ * could not answer. Only the admin's "Reconnect now" passes $force, after
+ * it has checked and moved the gate itself.
+ *
+ * @param bool $force Skip the gate check (Reconnect only).
+ */
+function cg_register_site_with_hq($force = false)
 {
+    if (!$force && (int) get_option(CG_REGISTER_GATE_OPTION, 0) > cg_register_now()) {
+        return;
+    }
+
     $root_domain = cg_get_root_domain(get_site_url());
     $admin_email = get_option('admin_email');
 
@@ -213,7 +228,10 @@ function cg_register_reconnect_attempt()
     if (!function_exists('cg_sync_with_hq')) {
         require_once CG_ADMIN_DIR . 'admin-settings-page.php';
     }
-    cg_sync_with_hq(); // Registers first when there is no key, then syncs.
+    // The one register this attempt allows. If it fails it sets the gate
+    // again, so the register inside the sync below stays gated.
+    cg_register_site_with_hq(true);
+    cg_sync_with_hq();
     return 'tried';
 }
 
