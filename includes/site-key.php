@@ -202,6 +202,18 @@ function cg_sitekey_mismatch()
 }
 
 /**
+ * True after HQ answered a plain 401 (no code) to the committed own key:
+ * HQ no longer knows the key this site uses. Like a mismatch it is never
+ * claimed again on its own (no loop); only the admin's Reconnect starts a new
+ * round. Cleared by any 2xx for the current key or by a new committed key.
+ */
+function cg_sitekey_rejected()
+{
+    $state = cg_sitekey_state();
+    return !empty($state['rejected_at']);
+}
+
+/**
  * Called by cg_call_hq_api() after every HQ answer (never for request-site-key
  * or claim-key themselves). Commits or rolls back a pending key and reacts to
  * the legacy deadline codes. Only schedules work; never calls HQ itself, so a
@@ -240,6 +252,29 @@ function cg_sitekey_on_response($http_code, $code, $sent_key)
             cg_sitekey_rollback('rejected');
             return;
         }
+    }
+
+    // Committed own key (not pending): only an answer about the key we use now
+    // counts, never a late answer for an older key.
+    $is_current_own = empty($state['pending_until'])
+        && cg_sitekey_is_site_key($sent_key)
+        && hash_equals(cg_sitekey_current_key(), (string) $sent_key);
+    if ($is_current_own && $http_code === 401) {
+        // 401 (plain, contract §5; an unknown code counts as none): HQ does
+        // not know this key any more. Show the reconnect notice once; do not
+        // schedule a claim round (no auto-reconnect, no loop). The plan
+        // follows the 72-hour rule as for any other failure.
+        if (empty($state['rejected_at'])) {
+            $state['rejected_at'] = cg_sitekey_now();
+            cg_sitekey_save_state($state);
+        }
+        return;
+    }
+    if ($is_current_own && $http_code >= 200 && $http_code < 300 && !empty($state['rejected_at'])) {
+        // HQ accepts the key again: the 401 was not about this key for good.
+        unset($state['rejected_at']);
+        cg_sitekey_save_state($state);
+        return;
     }
 
     if ($mismatch) {
@@ -285,7 +320,7 @@ function cg_sitekey_schedule($hook)
 function cg_sitekey_commit()
 {
     $state = cg_sitekey_state();
-    unset($state['pending_until'], $state['legacy_key'], $state['legacy_blocked_at'], $state['legacy_code'], $state['mismatch_at']);
+    unset($state['pending_until'], $state['legacy_key'], $state['legacy_blocked_at'], $state['legacy_code'], $state['mismatch_at'], $state['rejected_at']);
     $state['committed_at'] = cg_sitekey_now();
     $state['fails'] = 0;
     cg_sitekey_save_state($state);
@@ -359,7 +394,8 @@ function cg_sitekey_request($reason = 'auto')
 {
     cg_sitekey_expire_pending();
     $state = cg_sitekey_state();
-    $wanted = cg_sitekey_needed() || ($reason === 'manual' && !empty($state['mismatch_at']));
+    $wanted = cg_sitekey_needed()
+        || ($reason === 'manual' && (!empty($state['mismatch_at']) || !empty($state['rejected_at'])));
     if (!$wanted || !empty($state['pending_until'])) {
         return 'not_needed';
     }
@@ -620,7 +656,7 @@ function cg_sitekey_claim()
         $state['window_until'] = 0;
         $state['request_id'] = ''; // The round ends here; a new one uses a new id.
         cg_sitekey_save_state($state);
-        if (!empty($state['pending_until']) || (!cg_sitekey_needed() && empty($state['mismatch_at']))) {
+        if (!empty($state['pending_until']) || (!cg_sitekey_needed() && empty($state['mismatch_at']) && empty($state['rejected_at']))) {
             return 'none';
         }
 
@@ -729,7 +765,9 @@ function cg_render_sitekey_notice()
     }
     $state = cg_sitekey_state();
     $mismatch = cg_sitekey_mismatch();
-    if (empty($state['legacy_blocked_at']) || (!$mismatch && cg_sitekey_is_site_key(cg_sitekey_current_key()) && empty($state['pending_until']))) {
+    $rejected = !empty($state['rejected_at']) && empty($state['pending_until'])
+        && cg_sitekey_is_site_key(cg_sitekey_current_key());
+    if (!$rejected && (empty($state['legacy_blocked_at']) || (!$mismatch && cg_sitekey_is_site_key(cg_sitekey_current_key()) && empty($state['pending_until'])))) {
         return;
     }
     $page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : '';
@@ -741,8 +779,8 @@ function cg_render_sitekey_notice()
     $gate = cg_sitekey_gate();
     $url = wp_nonce_url(admin_url('admin-post.php?action=cg_sitekey_reconnect'), 'cg_sitekey_reconnect');
     // One notice with the same text for every refusal code (409 claim_required,
-    // 403 legacy_expired, site_key_required, site_key_mismatch): checks are off
-    // in all of them. The text never mentions a key.
+    // 403 legacy_expired, site_key_required, site_key_mismatch, and a plain 401
+    // for the committed own key): checks are off in all of them. The text never mentions a key.
     echo '<div class="notice notice-error"><p><strong>' . esc_html__('CheckoutGuard is not protecting checkouts right now.', 'checkoutguard') . '</strong> ';
     echo esc_html__('A security update needs to finish on this site. Orders still go through, but without the fraud check.', 'checkoutguard') . ' ';
     $plan_note = cg_sitekey_plan_note();
