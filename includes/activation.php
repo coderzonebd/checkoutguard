@@ -88,7 +88,8 @@ function cg_create_blocked_orders_table()
 /**
  * Registers the site with HQ and stores the key it returns.
  *
- * After a failed attempt CG_REGISTER_GATE_OPTION holds the earliest time of
+ * After a failed attempt (HQ down, an HTTP error including "already taken",
+ * or a 2xx without a key) CG_REGISTER_GATE_OPTION holds the earliest time of
  * the next one; until then this returns without calling HQ, so checkout
  * saves, syncs and page loads never repeat a register HQ just refused or
  * could not answer. Only the admin's "Reconnect now" passes $force, after
@@ -131,6 +132,8 @@ function cg_register_site_with_hq($force = false)
     // problem, so nothing this site can retry will fix it on its own.
     if (!is_wp_error($response) && is_array($response) && empty($response['api_key'])) {
         update_option('cg_license_status', 'failed: Headquarters accepted registration but returned no API key. This is a server-side configuration issue — please contact support.');
+        // A retry right away gets the same answer; wait like any failure.
+        update_option(CG_REGISTER_GATE_OPTION, cg_register_now() + CG_REGISTER_MIN_GAP, false);
         return;
     }
 
@@ -142,10 +145,13 @@ function cg_register_site_with_hq($force = false)
         );
         if (!$is_already_taken) {
             update_option('cg_license_status', 'failed: ' . $response->get_error_message());
-            $data = $response->get_error_data();
-            $retry_after = is_array($data) ? (int) ($data['retry_after'] ?? 0) : 0;
-            update_option(CG_REGISTER_GATE_OPTION, cg_register_now() + max(CG_REGISTER_MIN_GAP, $retry_after), false);
         }
+        // "Already taken" keeps the current status, but it is still a
+        // refused register: gate it like every other failure so checkout
+        // saves and syncs do not repeat it.
+        $data = $response->get_error_data();
+        $retry_after = is_array($data) ? (int) ($data['retry_after'] ?? 0) : 0;
+        update_option(CG_REGISTER_GATE_OPTION, cg_register_now() + max(CG_REGISTER_MIN_GAP, $retry_after), false);
     }
 }
 
