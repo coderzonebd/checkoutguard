@@ -315,6 +315,18 @@ $b = qa_saves_at([301, 330]);
 $c = qa_saves_at([362]);
 ok('N12', '403 RA 300, then bad signature at +301 s -> next wait 60 s (1 call at +362 s)', $a === 1 && $b === 1 && $c === 1, "first=$a badsig=$b at362=$c");
 
+// N13: the 6-hourly cron runs cg_sync_with_hq through cg_daily_sync_hook, and
+// do_action() passes '' as $force. Only a real true may skip the wait: the
+// cron inside a wait makes no status call, and the wait still ends on time.
+qa_reset(); $GLOBALS['QA_ROUTES'] = $R403;
+$a = qa_saves_at([0]);
+qa_set_now(10);
+$before = qa_status();
+do_action('cg_daily_sync_hook');
+$h = qa_status() - $before;
+$c = qa_saves_at([61]);
+ok('N13', 'cron cg_daily_sync_hook in a wait: 0 status calls; 1 call at +61 s', $a === 1 && $h === 0 && $c === 1, "first=$a cron=$h at61=$c");
+
 $out = ob_get_clean();
 // restore
 qa_reset();
