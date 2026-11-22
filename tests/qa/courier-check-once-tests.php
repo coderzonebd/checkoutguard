@@ -93,13 +93,29 @@ cg_perform_all_api_calls('01611222333', 0, true);
 $to = $GLOBALS['QA_CALLS'][0]['timeout'] ?? 0;
 ok('C7', 'admin/manual path keeps 30 s timeout', $to === 30, "timeout=$to");
 
+// C10: an error that starts no wait and is not cached (HQ 400 or 429) is
+// still checked once per request: three validations
+// of one checkout, same phone, same format -> one courier-check. This is the
+// only case where the request memo alone keeps it to one call.
+foreach ([['C10a', 'HQ 400', ['code' => 400, 'body' => ['error' => 'bad_request']], '01731222333', 12], ['C10b', 'HQ 429', ['code' => 429, 'body' => ['error' => 'too_many_requests']], '01741222333', 15]] as $c) {
+    $GLOBALS['QA_HTTP'] = $c[2];
+    // Own phone and emails per case: the engine reuses a result for an identical context.
+    qa_reset([$c[3]]);
+    qa_validate($c[3], $c[4]); qa_validate($c[3], $c[4] + 1); qa_validate($c[3], $c[4] + 2);
+    $n = count($GLOBALS['QA_CALLS']);
+    $w = defined('CG_COURIER_TIMEOUT_WAIT_TRANSIENT') ? (get_transient(CG_COURIER_TIMEOUT_WAIT_TRANSIENT) !== false ? 'on' : 'off') : 'n/a';
+    $tc = get_transient('cg_courier_cache_' . md5($c[3])) !== false ? 'yes' : 'no';
+    ok($c[0], $c[1] . ': one courier-check for 3 validations (no wait, not cached)', $n === 1 && $w !== 'on' && $tc === 'no', "calls=$n wait=$w cached=$tc");
+}
+$GLOBALS['QA_HTTP'] = ['code' => 'timeout'];
+
 // C8: a forced refresh (admin "Refresh") bypasses the request memo.
 qa_reset(['01511222333']);
 cg_perform_all_api_calls('01511222333', 0); cg_perform_all_api_calls('01511222333', 0, true);
 $n = count($GLOBALS['QA_CALLS']);
 ok('C8', 'bypass_cache sends a new call', $n === 2, "calls=$n");
 
-foreach (['01721222333', '01711222333', '+880 1711-222333', '8801711222333', '01811222333', '+8801811222333', '01911222333', '01611222333', '01511222333'] as $p) { delete_transient('cg_courier_cache_' . md5($p)); }
+foreach (['01731222333', '01741222333', '01721222333', '01711222333', '+880 1711-222333', '8801711222333', '01811222333', '+8801811222333', '01911222333', '01611222333', '01511222333'] as $p) { delete_transient('cg_courier_cache_' . md5($p)); }
 delete_transient(CG_COURIER_AUTH_REJECT_TRANSIENT);
 if (defined('CG_COURIER_TIMEOUT_WAIT_TRANSIENT')) { delete_transient(CG_COURIER_TIMEOUT_WAIT_TRANSIENT); }
 cg_update_options_from_hq(is_array($GLOBALS['QA_OPTS_ORIG']) ? $GLOBALS['QA_OPTS_ORIG'] : []);
