@@ -30,6 +30,20 @@ if (!defined('ABSPATH')) {
 $GLOBALS['QA_T0'] = 1800000000;
 $GLOBALS['QA_NOW'] = $GLOBALS['QA_T0'];
 $GLOBALS['QA_ORIG'] = [];
+// Whatever a fix uses to keep the wait (option or transient, any name), the
+// cases must not share it: every cg_* option or transient that was not there
+// when the run started is removed at each reset and at the end.
+function qa_cg_option_names() {
+    global $wpdb;
+    return $wpdb->get_col("SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE 'cg\\_%' OR option_name LIKE '\\_transient\\_cg\\_%' OR option_name LIKE '\\_transient\\_timeout\\_cg\\_%'");
+}
+$GLOBALS['QA_OPT_SNAP'] = array_flip(qa_cg_option_names());
+function qa_drop_new_options() {
+    foreach (qa_cg_option_names() as $name) {
+        if (!isset($GLOBALS['QA_OPT_SNAP'][$name])) { delete_option($name); wp_cache_delete($name, 'options'); }
+    }
+    wp_cache_delete('notoptions', 'options'); wp_cache_delete('alloptions', 'options');
+}
 foreach (['cg_plugin_options', 'cg_license_status', 'cg_register_next_allowed_at', 'cg_sitekey_state', 'cg_status_next_allowed_at'] as $o) {
     $GLOBALS['QA_ORIG'][$o] = get_option($o, null);
 }
@@ -77,6 +91,7 @@ function qa_reset() {
     }
     wp_cache_delete('notoptions', 'options'); wp_cache_delete('alloptions', 'options');
     wp_clear_scheduled_hook('cg_sitekey_request_event');
+    qa_drop_new_options();
     delete_transient('cg_api_cache');
     $o = is_array($GLOBALS['QA_ORIG']['cg_plugin_options']) ? $GLOBALS['QA_ORIG']['cg_plugin_options'] : [];
     $o['api_key'] = 'qa-own-key-not-real';
@@ -227,7 +242,9 @@ $f = qa_force_sync();
 $gate = (int) get_option('cg_status_next_allowed_at', 0);
 $c = qa_saves_at([65]);
 $d = qa_saves_at([71]);
-ok('N11a', 'Sync now in a wait: 1 status call; failure writes a new wait (+10 s -> +70 s)', $a === 1 && $f === 1 && $gate === $GLOBALS['QA_T0'] + 70 && $c === 0 && $d === 1, "first=$a sync=$f gate=" . ($gate ? '+' . ($gate - $GLOBALS['QA_T0']) : 'none') . " at65=$c at71=$d");
+// Judged by behaviour only (a fix may keep the wait under any name); the gate
+// value in the detail is read from the reference fix's option, if present.
+ok('N11a', 'Sync now in a wait: 1 status call; failure writes a new wait (+10 s -> +70 s)', $a === 1 && $f === 1 && $c === 0 && $d === 1, "first=$a sync=$f gate=" . ($gate ? '+' . ($gate - $GLOBALS['QA_T0']) : 'none') . " at65=$c at71=$d");
 
 // N11b: "Sync now" during a wait, HQ answers with a verified status -> the wait
 // is cleared and the status is cached. Needs the test key pair (as N9).
@@ -239,15 +256,20 @@ if ($sk === null) {
     $GLOBALS['QA_ROUTES'] = ['/sites/status' => $okres];
     $GLOBALS['QA_NOW'] = $GLOBALS['QA_T0'] + 10;
     $f = qa_force_sync();
-    $gate = get_option('cg_status_next_allowed_at', null);
     $cache = get_transient('cg_api_cache');
-    ok('N11b', 'Sync now in a wait, verified status -> wait cleared, cached', $a === 1 && $f === 1 && $gate === null && is_array($cache) && isset($cache['limits']['checkouts']), "first=$a sync=$f gate=" . ($gate === null ? 'none' : 'set') . ' cache=' . (is_array($cache) ? 'yes' : 'no'));
+    // Wait cleared: with the cache gone and HQ failing again, the next save
+    // inside the old window (+15 s) syncs at once.
+    delete_transient('cg_api_cache');
+    $GLOBALS['QA_ROUTES'] = $R403;
+    $e = qa_saves_at([15]);
+    ok('N11b', 'Sync now in a wait, verified status -> wait cleared, cached', $a === 1 && $f === 1 && $e === 1 && is_array($cache) && isset($cache['limits']['checkouts']), "first=$a sync=$f cache=" . (is_array($cache) ? 'yes' : 'no') . " save_at15=$e");
 }
 
 $out = ob_get_clean();
 // restore
 qa_reset();
 qa_drop_rows();
+qa_drop_new_options();
 foreach ($GLOBALS['QA_ORIG'] as $name => $val) {
     if ($val === null) { delete_option($name); } elseif ($name === 'cg_plugin_options') { cg_update_options_from_hq($val); } else { update_option($name, $val); }
 }
