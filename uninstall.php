@@ -72,6 +72,7 @@ if (!empty($options['delete_on_uninstall'])) {
     delete_transient('cg_period_sync_backoff');
     delete_transient('cg_api_cache');
     delete_transient('cg_last_synced');
+    delete_transient('cg_courier_auth_reject');
     delete_option('cg_last_known_plan');
     delete_option('cg_sitekey_state');
     delete_option('cg_sitekey_next_allowed_at');
