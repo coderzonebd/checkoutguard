@@ -92,6 +92,33 @@ function cg_get_root_domain($url)
 }
 
 /**
+ * Retry-After in seconds, delta-seconds form only (an HTTP-date, a negative
+ * or a fractional value gives 0, so the caller uses its own backoff). A
+ * repeated header uses its first value. Capped at 24 hours; a long digit
+ * string is over the cap anyway and is not cast (no integer overflow).
+ *
+ * @param mixed $header Raw header value (string, or array if repeated).
+ * @return int Seconds in 0..DAY_IN_SECONDS.
+ */
+function cg_parse_retry_after($header)
+{
+    if (is_array($header)) {
+        $header = reset($header);
+    }
+    if (!is_string($header) && !is_int($header)) {
+        return 0;
+    }
+    $header = trim((string) $header);
+    if ($header === '' || !ctype_digit($header)) {
+        return 0;
+    }
+    if (strlen($header) > 9) {
+        return DAY_IN_SECONDS;
+    }
+    return min((int) $header, DAY_IN_SECONDS);
+}
+
+/**
  * A centralized function for making API calls to the HQ.
  *
  * @param string $endpoint The API endpoint to call (e.g., '/sites/register').
@@ -204,11 +231,10 @@ function cg_call_hq_api($endpoint, $body = [], $method = 'POST', $require_api_ke
     if ($response_code >= 300) {
         $error_message = $response_body['message'] ?? $response_body['error'] ?? 'Unknown API Error';
         cg_log_api_hit($endpoint, $method, false, $response_code, $error_message);
-        $retry_after = wp_remote_retrieve_header($response, 'retry-after');
         return new WP_Error('api_error', $error_message, [
             'status' => $response_code,
             'code' => $error_code_field,
-            'retry_after' => (is_string($retry_after) && ctype_digit(trim($retry_after))) ? min((int) trim($retry_after), DAY_IN_SECONDS) : 0,
+            'retry_after' => cg_parse_retry_after(wp_remote_retrieve_header($response, 'retry-after')),
         ]);
     }
 

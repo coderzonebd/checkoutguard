@@ -96,6 +96,18 @@ function cg_sitekey_backoff_seconds($step)
 }
 
 /**
+ * Adds 0-25% random jitter on top of a wait, never below it, so sites that
+ * failed together (e.g. a 429 wave) do not all ask again at the same second.
+ * Used for the request-site-key failure gate only; the gate set before the
+ * call and the claim-key gates stay exact.
+ */
+function cg_sitekey_jitter($seconds)
+{
+    $seconds = max(0, (int) $seconds);
+    return $seconds + (int) floor($seconds * wp_rand(0, 250) / 1000);
+}
+
+/**
  * Atomic lock: INSERT IGNORE succeeds for exactly one request (add_option()
  * checks in PHP first and is not atomic). A stale lock is removed by its exact
  * value only, then the race runs again.
@@ -391,7 +403,7 @@ function cg_sitekey_request($reason = 'auto')
         $state['request_id'] = '';
         $state['fails'] = $fails + 1;
         cg_sitekey_save_state($state);
-        cg_sitekey_set_gate($now + max(cg_sitekey_backoff_seconds($fails), $retry_after));
+        cg_sitekey_set_gate($now + max(cg_sitekey_jitter(cg_sitekey_backoff_seconds($fails)), $retry_after));
         return 'failed';
     } finally {
         cg_sitekey_release_lock($token);
