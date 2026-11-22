@@ -124,10 +124,28 @@ function qa_checkout_save($i) {
 function qa_status() {
     return count(array_filter($GLOBALS['QA_LOG'], function ($p) { return $p === '/sites/status'; }));
 }
+// Move the plugin clock to T0 + $t. Transient expiry uses the real clock, so
+// every cg_* transient's timeout is moved back by the same step: a wait kept
+// in a transient then ends when the plugin clock says so, and a transient
+// whose own expiry is shorter than the wait it stores is caught.
+function qa_set_now($t) {
+    global $wpdb;
+    $new = $GLOBALS['QA_T0'] + $t;
+    $d = $new - $GLOBALS['QA_NOW'];
+    $GLOBALS['QA_NOW'] = $new;
+    if ($d > 0) {
+        $names = $wpdb->get_col("SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE '\\_transient\\_timeout\\_cg\\_%'");
+        foreach ($names as $name) {
+            $wpdb->query($wpdb->prepare("UPDATE {$wpdb->options} SET option_value = CAST(option_value AS SIGNED) - %d WHERE option_name = %s", $d, $name));
+            wp_cache_delete($name, 'options');
+        }
+        wp_cache_delete('alloptions', 'options'); wp_cache_delete('notoptions', 'options');
+    }
+}
 // Saves at the given offsets (seconds from T0); returns status calls made.
 function qa_saves_at(array $offsets) {
     $before = qa_status();
-    foreach ($offsets as $k => $t) { $GLOBALS['QA_NOW'] = $GLOBALS['QA_T0'] + $t; qa_checkout_save($t * 100 + $k); }
+    foreach ($offsets as $k => $t) { qa_set_now($t); qa_checkout_save($t * 100 + $k); }
     return qa_status() - $before;
 }
 // The admin "Sync now" button: wp_ajax_cg_force_sync_ajax as an administrator.
@@ -237,7 +255,7 @@ ok('N10', '403 Retry-After 3600: wait capped at 600 s (1 call in 0..599 s, 1 at 
 // new wait from that moment (checkout saves then wait 60 s from the click).
 qa_reset(); $GLOBALS['QA_ROUTES'] = $R403;
 $a = qa_saves_at([0]);
-$GLOBALS['QA_NOW'] = $GLOBALS['QA_T0'] + 10;
+qa_set_now(10);
 $f = qa_force_sync();
 $gate = (int) get_option('cg_status_next_allowed_at', 0);
 $c = qa_saves_at([65]);
@@ -254,7 +272,7 @@ if ($sk === null) {
     qa_reset(); $GLOBALS['QA_ROUTES'] = $R403;
     $a = qa_saves_at([0]);
     $GLOBALS['QA_ROUTES'] = ['/sites/status' => $okres];
-    $GLOBALS['QA_NOW'] = $GLOBALS['QA_T0'] + 10;
+    qa_set_now(10);
     $f = qa_force_sync();
     $cache = get_transient('cg_api_cache');
     // Wait cleared: with the cache gone and HQ failing again, the next save
@@ -264,6 +282,17 @@ if ($sk === null) {
     $e = qa_saves_at([15]);
     ok('N11b', 'Sync now in a wait, verified status -> wait cleared, cached', $a === 1 && $f === 1 && $e === 1 && is_array($cache) && isset($cache['limits']['checkouts']), "first=$a sync=$f cache=" . (is_array($cache) ? 'yes' : 'no') . " save_at15=$e");
 }
+
+// N12: a Retry-After belongs to the call that sent it. 403 with Retry-After 300,
+// then after that wait a failure without one (200 with a bad signature) in the
+// same PHP process -> the new wait is the 60 s minimum, not 300 s again
+// (the kept Retry-After must be reset when a sync starts).
+qa_reset(); $GLOBALS['QA_ROUTES'] = ['/sites/status' => ['code' => 403, 'ra' => '300', 'body' => ['message' => 'qa forbidden']]];
+$a = qa_saves_at([0]);
+$GLOBALS['QA_ROUTES'] = ['/sites/status' => ['code' => 200, 'body' => ['payload_string' => '{}', 'signature' => 'AAAA']]];
+$b = qa_saves_at([301, 330]);
+$c = qa_saves_at([362]);
+ok('N12', '403 RA 300, then bad signature at +301 s -> next wait 60 s (1 call at +362 s)', $a === 1 && $b === 1 && $c === 1, "first=$a badsig=$b at362=$c");
 
 $out = ob_get_clean();
 // restore
