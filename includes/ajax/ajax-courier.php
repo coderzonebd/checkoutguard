@@ -219,7 +219,66 @@ function cg_courier_error_starts_wait($error)
  */
 function cg_perform_all_api_calls($phone_number, $order_id, $bypass_cache = false)
 {
+    // One phone may arrive in different formats (+880..., spaces, dashes);
+    // normalize it so all of them share one cache entry and one HQ call.
+    $normalized = cg_normalize_phone_number($phone_number);
+    if ($normalized !== '') {
+        $phone_number = $normalized;
+    }
     $cache_key = 'cg_courier_cache_' . md5($phone_number);
+
+    // Classic checkout validates up to three times in one request. Reuse the
+    // result of this request, failed checks included (they are not cached in
+    // the transient), so a slow HQ is waited for once, not three times.
+    if (!$bypass_cache) {
+        $memo = cg_courier_request_memo($phone_number);
+        if ($memo !== null) {
+            $memo['order_id'] = $order_id;
+            if ($order_id > 0 && ($memo['cache_source'] ?? '') !== 'error') {
+                cg_update_order_meta($order_id, '_cg_success_ratio_data', $memo);
+            }
+            return $memo;
+        }
+    }
+    $results = cg_perform_all_api_calls_uncached_request($phone_number, $order_id, $bypass_cache, $cache_key);
+    if (is_array($results)) {
+        cg_courier_request_memo($phone_number, $results);
+    }
+    return $results;
+}
+
+/**
+ * Request-scope memo of courier results, keyed by normalized phone.
+ * Read: cg_courier_request_memo($phone). Write: pass $value. Lives only for
+ * the current PHP request.
+ */
+function cg_courier_request_memo($phone_number, $value = null, $reset = false)
+{
+    static $memo = [];
+    if ($reset) {
+        $memo = [];
+        return null;
+    }
+    if ($value !== null) {
+        $memo[$phone_number] = $value;
+        return $value;
+    }
+    return $memo[$phone_number] ?? null;
+}
+
+/**
+ * Clears the request-scope courier memo (used by tests).
+ */
+function cg_courier_request_memo_reset()
+{
+    cg_courier_request_memo('', null, true);
+}
+
+/**
+ * Transient cache, waits and the HQ call behind cg_perform_all_api_calls().
+ */
+function cg_perform_all_api_calls_uncached_request($phone_number, $order_id, $bypass_cache, $cache_key)
+{
 
     // Delete local cache if a force refresh was requested
     if ($bypass_cache) {
