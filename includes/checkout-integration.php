@@ -1529,6 +1529,33 @@ function cg_universal_order_save_guard($order, $data_store)
 add_action('woocommerce_before_order_object_save', 'cg_universal_order_save_guard', 10, 2);
 
 /**
+ * Close a Store API checkout attempt that CheckoutGuard blocked.
+ *
+ * Without this the draft stays pending and shows up as a live order for the
+ * same customer. Cancelled is outside the duplicate lookup statuses and the
+ * save guard skips it. WooCommerce sends the admin "Order cancelled" email on
+ * pending -> cancelled; a blocked attempt was never a real order, so that one
+ * email is switched off for this order only. Stock is not touched: a draft
+ * never reduced it.
+ *
+ * @param WC_Order $order The blocked attempt.
+ */
+function cg_close_blocked_store_api_attempt($order)
+{
+    $order_id = $order->get_id();
+    $mute = function ($enabled, $email_order) use ($order_id) {
+        if ($email_order instanceof WC_Order && $email_order->get_id() === $order_id) {
+            return false;
+        }
+        return $enabled;
+    };
+    add_filter('woocommerce_email_enabled_cancelled_order', $mute, 10, 2);
+    $order->set_status('cancelled', __('CheckoutGuard blocked this checkout attempt.', 'checkoutguard'));
+    $order->save();
+    remove_filter('woocommerce_email_enabled_cancelled_order', $mute, 10);
+}
+
+/**
  * 3. WooCommerce Store API Checkout Guard (Gutenberg Checkout Block / Twenty Twenty-Five Theme / FSE)
  */
 function cg_store_api_checkout_guard($order, $request)
@@ -1548,6 +1575,7 @@ function cg_store_api_checkout_guard($order, $request)
         // order (WooCommerce may keep the draft after the exception below).
         $order->update_meta_data('_cg_blocked', '1');
         $order->update_meta_data('_cg_block_code', $result->block_code);
+        cg_close_blocked_store_api_attempt($order);
         CG_Response_Adapter::store_api($result);
     } else {
         $order->update_meta_data('_cg_validated', '1');
