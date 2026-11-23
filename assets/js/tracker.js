@@ -128,6 +128,9 @@ jQuery(function ($) {
 
     let debounceTimeout;
     const debounceDelay = 800;
+    // Set when the customer places the order, so a pending debounced send
+    // (e.g. from the blur on the place-order click) is not sent after it.
+    var orderSubmitted = false;
 
     function getFieldValue(selectors) {
         for (var i = 0; i < selectors.length; i++) {
@@ -217,6 +220,10 @@ jQuery(function ($) {
             product_id: productId,
             quantity: productQty
         };
+
+        if (orderSubmitted) {
+            return;
+        }
 
         if (checkoutData.billing_email || checkoutData.billing_phone || checkoutData.billing_first_name || checkoutData.billing_address_1) {
             $.post(cg_checkout_params.ajax_url, checkoutData);
@@ -339,7 +346,19 @@ jQuery(function ($) {
     // DUPLICATE SUBMISSION PREVENTION (Client-Side)
     // ====================================================================
     var isSubmittingCheckout = false;
+    var orderSubmittedTimer;
+    function stopTrackingForOrder() {
+        orderSubmitted = true;
+        clearTimeout(debounceTimeout);
+        // A successful order leaves the page. If we are still here later
+        // (client-side validation stopped the submit), track again.
+        clearTimeout(orderSubmittedTimer);
+        orderSubmittedTimer = setTimeout(function () {
+            orderSubmitted = false;
+        }, 10000);
+    }
     $(document.body).on('checkout_place_order', function () {
+        stopTrackingForOrder();
         if (isSubmittingCheckout) {
             return false;
         }
@@ -356,6 +375,7 @@ jQuery(function ($) {
             e.stopPropagation();
             return false;
         }
+        stopTrackingForOrder();
         isSubmittingCheckout = true;
         setTimeout(function () {
             isSubmittingCheckout = false;
@@ -364,6 +384,11 @@ jQuery(function ($) {
 
     $(document.body).on('checkout_error updated_checkout', function () {
         isSubmittingCheckout = false;
+    });
+
+    // The order failed: the customer is still on the checkout, track again.
+    $(document.body).on('checkout_error', function () {
+        orderSubmitted = false;
     });
 
 

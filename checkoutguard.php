@@ -37,6 +37,9 @@ define('CG_COURIER_AUTH_REJECT_TTL', 5 * 60);
 define('CG_CHECKOUT_COURIER_TIMEOUT', 5);
 define('CG_COURIER_TIMEOUT_WAIT_TRANSIENT', 'cg_courier_timeout_wait');
 define('CG_COURIER_TIMEOUT_WAIT_TTL', 60);
+// Seconds after an order during which a late tracker request for the same
+// customer is not saved as a new incomplete checkout.
+define('CG_ORDER_PLACED_MARK_TTL', 60);
 // Ed25519 public key used to verify the signature on GET /sites/status
 // responses (see cg_verify_signed_payload() in includes/utils.php) — public
 // keys are meant to ship embedded in the client, there's no API endpoint
@@ -186,6 +189,9 @@ function cg_init_plugin()
     // No nopriv handler: only shop staff may look up courier history.
     add_action('wp_ajax_cg_live_ratio_check', 'cg_live_ratio_check_handler');
 
+    // Block checkout: the draft becomes the real order here (no
+    // woocommerce_checkout_order_processed on this path).
+    add_action('woocommerce_store_api_checkout_order_processed', 'cg_delete_incomplete_checkout_on_order_completion', 10, 1);
     add_action('woocommerce_thankyou', 'cg_delete_incomplete_checkout_on_order_completion', 10, 1);
     add_action('woocommerce_checkout_order_processed', 'cg_delete_incomplete_checkout_on_order_completion', 10, 1);
     add_action('woocommerce_new_order', 'cg_delete_incomplete_checkout_on_order_completion', 10, 1);
