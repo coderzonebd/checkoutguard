@@ -30,6 +30,11 @@
  *      The deferral filter must be added before WooCommerce init, so it cannot be
  *      set from this file. In deferred mode F4d sends the queue through Action
  *      Scheduler itself (object cache flushed, order read back from the database).
+ *      F4e: a blocked attempt is cancelled through the lifecycle guard: status
+ *      cancelled, _cg_blocked and _cg_block_code set, one audit note with the
+ *      block code and a UTC time and without the earlier order's number. The
+ *      earlier (real) order is not touched. Stock, held stock and coupon usage
+ *      are the same before and after the blocked attempt.
  *
  * Pending founder decision (skipped unless QA_DUP_PENDING=1 is set):
  * P-off  default OFF: with no options, a different customer who only shares the
@@ -203,7 +208,7 @@ function qa_dup_runtime_state($product, $A, $B)
 
 // One guest checkout through the real Store API route, from a new cart session.
 // Returns [http_status, error_code].
-function qa_dup_store_checkout($pid, $name, $phone, $email)
+function qa_dup_store_checkout($pid, $name, $phone, $email, $coupon = '')
 {
     // Each real checkout is a new PHP request; reset the engine's per-request result cache.
     if (class_exists('CG_Validation_Engine') && property_exists('CG_Validation_Engine', 'evaluated_contexts')) {
@@ -225,6 +230,13 @@ function qa_dup_store_checkout($pid, $name, $phone, $email)
     $r->set_body(wp_json_encode(['id' => $pid, 'quantity' => 1]));
     $res = rest_do_request($r);
     $h = $res->get_headers();
+    if ($coupon !== '') {
+        $cp = new WP_REST_Request('POST', '/wc/store/v1/cart/apply-coupon');
+        $cp->set_header('Content-Type', 'application/json');
+        $cp->set_header('Cart-Token', $h['Cart-Token'] ?? '');
+        $cp->set_body(wp_json_encode(['code' => $coupon]));
+        rest_do_request($cp);
+    }
     $addr = ['first_name' => $name, 'last_name' => 'QA', 'address_1' => 'Road 1', 'city' => 'Dhaka', 'postcode' => '1200', 'country' => 'BD', 'state' => 'BD-13'];
     $c = new WP_REST_Request('POST', '/wc/store/v1/checkout');
     $c->set_header('Content-Type', 'application/json');
@@ -526,6 +538,85 @@ $o->delete(true);
 $qa_f4d_flush();
 remove_filter('pre_wp_mail', $qa_f4d_cap, 10);
 qa_dup_delete_orders(qa_dup_orders_by_email($F4[2]));
+// F4e: the blocked attempt is cancelled through the lifecycle guard, with an
+// audit note, and nothing else moves: not the earlier order, not stock, not
+// coupon usage.
+$e_prod = new WC_Product_Simple();
+$e_prod->set_name('QA dup F4e product');
+$e_prod->set_regular_price('500');
+$e_prod->set_manage_stock(true);
+$e_prod->set_stock_quantity(10);
+$e_prod->set_status('publish');
+$e_prod->save();
+$e_code = 'qa-f4e-' . strtolower(wp_generate_password(6, false, false));
+$e_cpn = new WC_Coupon();
+$e_cpn->set_code($e_code);
+$e_cpn->set_discount_type('percent');
+$e_cpn->set_amount(10);
+$e_cpn->save();
+$e_email = 'qa-f4e@example.test';
+qa_dup_delete_orders(qa_dup_orders_by_email($e_email));
+$e_state = function () use ($e_prod, $e_cpn) {
+    global $wpdb;
+    wp_cache_flush();
+    $p = wc_get_product($e_prod->get_id());
+    $c = new WC_Coupon($e_cpn->get_id());
+    $held_cpn = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE post_id = %d AND meta_key LIKE %s", $e_cpn->get_id(), '_coupon_held_%'));
+    return [
+        'stock'    => (int) $p->get_stock_quantity(),
+        'held'     => (int) wc_get_held_stock_quantity($p),
+        'usage'    => (int) $c->get_usage_count(),
+        'held_cpn' => $held_cpn,
+    ];
+};
+$r0 = qa_dup_store_checkout($e_prod->get_id(), 'Echo', '01600000505', $e_email, $e_code);
+$id0 = qa_dup_single_order_id($e_email);
+$o0 = $id0 ? wc_get_order($id0) : null;
+$st0 = $o0 ? $o0->get_status() : '';
+$num0 = $o0 ? (string) $o0->get_order_number() : '';
+$coupon0 = $o0 ? $o0->get_coupon_codes() : [];
+qa_dup_age_orders(qa_dup_orders_by_email($e_email), 40);
+$before = $e_state();
+$t_before = time();
+$r40 = qa_dup_store_checkout($e_prod->get_id(), 'Echo', '01600000505', $e_email, $e_code);
+$after = $e_state();
+wp_cache_flush();
+$attempts = array_values(array_diff(array_map('intval', qa_dup_orders_by_email($e_email)), [$id0]));
+$att = count($attempts) === 1 ? wc_get_order($attempts[0]) : null;
+qa_dup_check('F4e-ctl t+0 order went through with the coupon, t+40 is blocked', $r0[0] === 200 && $id0 > 0 && in_array($e_code, $coupon0, true) && $r40[0] === 400, 't+0 ' . implode('/', $r0) . ' id ' . $id0 . ' coupons ' . wp_json_encode($coupon0) . ', t+40 ' . implode('/', $r40));
+qa_dup_check('F4e [status] the blocked attempt is cancelled and flagged _cg_blocked / _cg_block_code', $att && $att->get_status() === 'cancelled' && $att->get_meta('_cg_blocked', true) === '1' && $att->get_meta('_cg_block_code', true) !== '', 'attempts ' . wp_json_encode($attempts) . ($att ? ', status ' . $att->get_status() . ', blocked ' . $att->get_meta('_cg_blocked', true) . ', code ' . $att->get_meta('_cg_block_code', true) : ''));
+$cg_notes = [];
+if ($att) {
+    foreach (wc_get_order_notes(['order_id' => $att->get_id()]) as $n) {
+        if (strpos($n->content, '[CheckoutGuard]') !== false) {
+            $cg_notes[] = $n->content;
+        }
+    }
+}
+$note = count($cg_notes) === 1 ? $cg_notes[0] : '';
+$note_time_ok = false;
+if ($note !== '' && preg_match('/Time: (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) UTC/', $note, $m)) {
+    $ts = strtotime($m[1] . ' UTC');
+    $note_time_ok = $ts >= $t_before - 2 && $ts <= time() + 2;
+}
+$e_bc = $att ? (string) $att->get_meta('_cg_block_code', true) : '';
+$note_ok = $note !== '' && $e_bc !== '' && strpos($note, 'Code: ' . $e_bc . '.') !== false && $note_time_ok
+    && ($num0 === '' || !preg_match('/(?<!\d)' . preg_quote($num0, '/') . '(?!\d)/', $note));
+qa_dup_check('F4e [note] one CheckoutGuard note with the block code and a UTC time, without the earlier order number', $note_ok, 'notes ' . wp_json_encode($cg_notes) . ', earlier #' . $num0);
+wp_cache_flush();
+$o0b = $id0 ? wc_get_order($id0) : null;
+$o0_cg_notes = 0;
+if ($o0b) {
+    foreach (wc_get_order_notes(['order_id' => $id0]) as $n) {
+        $o0_cg_notes += strpos($n->content, '[CheckoutGuard]') !== false ? 1 : 0;
+    }
+}
+qa_dup_check('F4e [other order] the earlier order keeps its status and gets no CheckoutGuard note', $o0b && $o0b->get_status() === $st0 && $st0 !== 'cancelled' && $o0b->get_meta('_cg_blocked', true) !== '1' && $o0_cg_notes === 0, 'id ' . $id0 . ' ' . $st0 . ' -> ' . ($o0b ? $o0b->get_status() : 'gone') . ', cg notes ' . $o0_cg_notes);
+qa_dup_check('F4e [stock/coupon] stock, held stock and coupon usage are the same before and after the blocked attempt', $before === $after, 'before ' . wp_json_encode($before) . ', after ' . wp_json_encode($after));
+qa_dup_delete_orders(qa_dup_orders_by_email($e_email));
+$e_cpn->delete(true);
+$e_prod->delete(true);
+
 remove_filter('woocommerce_store_api_disable_nonce_check', '__return_true');
 
 update_option('cg_plugin_options', $saved_options);
