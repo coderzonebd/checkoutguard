@@ -248,6 +248,15 @@ function cg_perform_all_api_calls($phone_number, $order_id, $bypass_cache = fals
     $cache_source_from_response = is_array($response) ? ($response['cache_source'] ?? null) : null;
     $results = (is_array($response) && isset($response['result'])) ? $response['result'] : $response;
 
+    // Couriers HQ actually answered for. Normalize fills a missing courier
+    // with a default (error=false) for display; that default is not data.
+    $answered_couriers = [];
+    foreach (array_keys(cg_get_supported_couriers()) as $courier_key) {
+        if (is_array($results) && isset($results[$courier_key]) && is_array($results[$courier_key])) {
+            $answered_couriers[$courier_key] = true;
+        }
+    }
+
     $results = cg_normalize_courier_results_shape($results);
 
     // Preserve cache_source from the backend ('server_cache' or 'fresh'), fallback for old server
@@ -259,11 +268,12 @@ function cg_perform_all_api_calls($phone_number, $order_id, $bypass_cache = fals
 
     $results['order_id'] = $order_id;
 
-    // When every courier returned an error there is no courier data at all:
-    // do not count it as a local usage and do not cache it for 6 hours.
+    // When every courier returned an error (or was missing from the answer)
+    // there is no courier data at all: do not count it as a local usage and
+    // do not cache it for 6 hours.
     $all_failed = true;
     foreach (array_keys(cg_get_supported_couriers()) as $courier_key) {
-        if (empty($results[$courier_key]['error'])) {
+        if (isset($answered_couriers[$courier_key]) && empty($results[$courier_key]['error'])) {
             $all_failed = false;
             break;
         }
