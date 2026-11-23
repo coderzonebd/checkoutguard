@@ -509,6 +509,8 @@ ok('G13j', 'forced register sees the Reconnect lock held', $s === 'error' && $b 
 // The ages are counted from the second the lock was set (recorded by the
 // setted_transient action), not from the second the callback runs, so a
 // slow register request before the callback cannot make +44 s look expired.
+// On its own G13l pins the TTL to 44 or 45 s (TTL 44 still passes);
+// G13e-ttl and L4c pin the constant to exactly 45.
 foreach (['G13l-reconnect', 'G13l-syncnow'] as $gid) {
     qa_reset();
     cg_register_site_with_hq();
