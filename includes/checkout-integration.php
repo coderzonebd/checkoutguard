@@ -1600,8 +1600,11 @@ function cg_store_api_checkout_guard($order, $request)
 
     $result = CG_Validation_Engine::validate($context);
     if ($result->is_blocked()) {
-        // Mark and cancel the attempt so the duplicate lookup never counts it as
-        // an earlier order (WooCommerce keeps the draft after the exception below).
+        // Mark the attempt so the duplicate lookup never counts it as an earlier
+        // order, whatever its status (WooCommerce keeps the draft after the
+        // exception below). A draft or pending attempt is also cancelled.
+        $order->update_meta_data('_cg_blocked', '1');
+        $order->update_meta_data('_cg_block_code', $result->block_code);
         cg_close_blocked_store_api_attempt($order, $result);
         CG_Response_Adapter::store_api($result);
     } else {
