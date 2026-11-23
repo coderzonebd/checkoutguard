@@ -707,6 +707,7 @@ function cg_recover_order_ajax_handler()
         $order_data = array(
             'status' => 'wc-processing',
             'customer_id' => $entry->user_id ? $entry->user_id : 0,
+            'created_via' => 'cg-recover',
         );
         $order = wc_create_order($order_data);
 
@@ -760,13 +761,28 @@ function cg_recover_order_ajax_handler()
             'admin_notes' => trim($entry->admin_notes . "\n" . sprintf(__('Recovered as WC Order #%d on %s.', 'checkoutguard'), $order_id, current_time('mysql')))
         );
 
-        $wpdb->update(
+        // Guarded by the status read above: a second Recover click on the
+        // same entry that lands at the same time updates 0 rows.
+        $updated = $wpdb->update(
             $table_name,
             $update_data,
-            array('id' => $entry_id),
+            array('id' => $entry_id, 'status' => $entry->status),
             cg_get_db_formats($update_data),
-            array('%d')
+            array('%d', '%s')
         );
+
+        // The entry is 'recovered' now and is kept; other incomplete rows of
+        // the same customer are cleaned up (woocommerce_new_order ran before
+        // the billing address was set). If the update failed the entry is
+        // still 'incomplete' and the cleanup would delete it: skip it.
+        if ($updated !== false) {
+            // A recovered row is not counted as an incomplete checkout:
+            // give its usage back, as the manual invoice does.
+            if ($updated === 1) {
+                cg_decrement_usage_count('checkouts');
+            }
+            cg_delete_incomplete_checkout_on_order_completion($order_id);
+        }
 
         wp_send_json_success(array(
             'message' => sprintf(__('Order #%s created successfully from incomplete checkout ID %d and set to Processing.', 'checkoutguard'), $order_id, $entry_id),
