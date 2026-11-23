@@ -299,19 +299,25 @@ function cg_render_register_already_registered_notice()
         return;
     }
     $gate = (int) get_option(CG_REGISTER_GATE_OPTION, 0);
+    $running = get_transient(CG_REGISTER_RECONNECT_LOCK) !== false;
     echo '<div class="notice notice-error"><p><strong>' . esc_html__('CheckoutGuard is not protecting checkouts right now.', 'checkoutguard') . '</strong> ';
     echo esc_html__('This site is already registered with CheckoutGuard, but this copy of the plugin is not connected to it. Orders still go through, but without the fraud check.', 'checkoutguard') . ' ';
-    if ($gate > cg_register_now()) {
+    // Same three states as the failed notice: Reconnect running, inside the
+    // (capped) gate, or the Reconnect button.
+    if ($running) {
+        echo esc_html__('Reconnect is running. Reload this page in a few seconds.', 'checkoutguard');
+    } elseif (cg_register_gate_left() > 0) {
         echo esc_html(sprintf(
             /* translators: %s: time after which the admin may try again */
             __('You can try again after %s.', 'checkoutguard'),
             wp_date(get_option('date_format') . ' ' . get_option('time_format'), $gate)
         )) . ' ';
+        echo esc_html__('If it keeps failing, contact CheckoutGuard support.', 'checkoutguard');
     } else {
         $url = wp_nonce_url(admin_url('admin-post.php?action=cg_register_reconnect'), 'cg_register_reconnect');
         echo '<a class="button button-secondary" href="' . esc_url($url) . '">' . esc_html__('Reconnect now', 'checkoutguard') . '</a> ';
+        echo esc_html__('If it keeps failing, contact CheckoutGuard support.', 'checkoutguard');
     }
-    echo esc_html__('If it keeps failing, contact CheckoutGuard support.', 'checkoutguard');
     echo '</p></div>';
 }
 add_action('admin_notices', 'cg_render_register_already_registered_notice');
