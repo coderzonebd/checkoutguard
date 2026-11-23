@@ -31,6 +31,12 @@ define('CG_PRODUCT_SLUG', 'checkoutguard');
 // Courier check: a 401/403 without a body code is kept this long (per key).
 define('CG_COURIER_AUTH_REJECT_TRANSIENT', 'cg_courier_auth_reject');
 define('CG_COURIER_AUTH_REJECT_TTL', 5 * 60);
+// Checkout courier check: short timeout (seconds). After a timeout or a
+// 5xx, HQ is skipped site-wide for a minute so the next customers are not
+// held too (orders fail open).
+define('CG_CHECKOUT_COURIER_TIMEOUT', 5);
+define('CG_COURIER_TIMEOUT_WAIT_TRANSIENT', 'cg_courier_timeout_wait');
+define('CG_COURIER_TIMEOUT_WAIT_TTL', 60);
 // Ed25519 public key used to verify the signature on GET /sites/status
 // responses (see cg_verify_signed_payload() in includes/utils.php) — public
 // keys are meant to ship embedded in the client, there's no API endpoint

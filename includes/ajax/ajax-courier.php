@@ -195,12 +195,90 @@ function cg_courier_current_api_key()
 }
 
 /**
+ * True when a courier-check error should start the site-wide wait: a
+ * timeout (cURL 28) or an HQ 5xx. Connect/DNS failures (cURL 7, 6),
+ * 4xx and 429 never do.
+ */
+function cg_courier_error_starts_wait($error)
+{
+    if (!is_wp_error($error)) {
+        return false;
+    }
+    $data = $error->get_error_data();
+    $status = is_array($data) ? (int) ($data['status'] ?? 0) : 0;
+    if ($status >= 500 && $status <= 599) {
+        return true;
+    }
+    $message = (string) $error->get_error_message();
+    return stripos($message, 'cURL error 28') !== false || stripos($message, 'Operation timed out') !== false;
+}
+
+/**
  * Calls the secure HQ proxy and returns the REAL, aggregated data.
  * Results are cached in a transient for 6 hours to reduce HQ server requests.
  */
 function cg_perform_all_api_calls($phone_number, $order_id, $bypass_cache = false)
 {
+    // One phone may arrive in different formats (+880..., spaces, dashes);
+    // normalize it so all of them share one cache entry and one HQ call.
+    $normalized = cg_normalize_phone_number($phone_number);
+    if ($normalized !== '') {
+        $phone_number = $normalized;
+    }
     $cache_key = 'cg_courier_cache_' . md5($phone_number);
+
+    // Classic checkout validates up to three times in one request. Reuse the
+    // result of this request, failed checks included (they are not cached in
+    // the transient), so a slow HQ is waited for once, not three times.
+    if (!$bypass_cache) {
+        $memo = cg_courier_request_memo($phone_number);
+        if ($memo !== null) {
+            $memo['order_id'] = $order_id;
+            if ($order_id > 0 && ($memo['cache_source'] ?? '') !== 'error') {
+                cg_update_order_meta($order_id, '_cg_success_ratio_data', $memo);
+            }
+            return $memo;
+        }
+    }
+    $results = cg_perform_all_api_calls_uncached_request($phone_number, $order_id, $bypass_cache, $cache_key);
+    if (is_array($results)) {
+        cg_courier_request_memo($phone_number, $results);
+    }
+    return $results;
+}
+
+/**
+ * Request-scope memo of courier results, keyed by normalized phone.
+ * Read: cg_courier_request_memo($phone). Write: pass $value. Lives only for
+ * the current PHP request.
+ */
+function cg_courier_request_memo($phone_number, $value = null, $reset = false)
+{
+    static $memo = [];
+    if ($reset) {
+        $memo = [];
+        return null;
+    }
+    if ($value !== null) {
+        $memo[$phone_number] = $value;
+        return $value;
+    }
+    return $memo[$phone_number] ?? null;
+}
+
+/**
+ * Clears the request-scope courier memo (used by tests).
+ */
+function cg_courier_request_memo_reset()
+{
+    cg_courier_request_memo('', null, true);
+}
+
+/**
+ * Transient cache, waits and the HQ call behind cg_perform_all_api_calls().
+ */
+function cg_perform_all_api_calls_uncached_request($phone_number, $order_id, $bypass_cache, $cache_key)
+{
 
     // Delete local cache if a force refresh was requested
     if ($bypass_cache) {
@@ -227,10 +305,19 @@ function cg_perform_all_api_calls($phone_number, $order_id, $bypass_cache = fals
         return cg_courier_error_results($auth_reject);
     }
 
+    // HQ timed out or failed a moment ago: skip the call and fail open.
+    // Nothing is cached for this phone. A force refresh still calls HQ.
+    if (!$bypass_cache && get_transient(CG_COURIER_TIMEOUT_WAIT_TRANSIENT) !== false) {
+        return cg_courier_error_results(__('Courier providers are taking too long to respond. Please try again in a few moments.', 'checkoutguard'));
+    }
+
     $response = cg_call_hq_api('/sites/courier-check', ['phone_number' => $phone_number]);
 
     if (is_wp_error($response)) {
         cg_courier_maybe_remember_auth_reject($response);
+        if (cg_courier_error_starts_wait($response)) {
+            set_transient(CG_COURIER_TIMEOUT_WAIT_TRANSIENT, 1, CG_COURIER_TIMEOUT_WAIT_TTL);
+        }
         $error_message = $response->get_error_message();
         if (empty($error_message)) {
             $error_message = 'API Error';
@@ -241,12 +328,19 @@ function cg_perform_all_api_calls($phone_number, $order_id, $bypass_cache = fals
         return cg_courier_error_results($error_message);
     }
 
-    // The backend nests the actual courier data under a "result" key
-    // (alongside the sibling "cache_source" key) rather than returning it
-    // flat — unwrap it before normalizing, but keep cache_source from the
+    // HQ answers a courier check with a JSON object that holds the courier
+    // data under "result" (next to "cache_source"). A 200 with any other
+    // body (not an object, no "result", or a "result" that is not an object)
+    // is an error: fail open and do NOT cache it, so the next checkout asks
+    // HQ again.
+    if (!is_array($response) || !isset($response['result']) || !is_array($response['result'])) {
+        return cg_courier_error_results(__('Courier check returned an unexpected answer.', 'checkoutguard'));
+    }
+
+    // Unwrap "result" before normalizing, but keep cache_source from the
     // outer envelope since it lives one level up from "result".
-    $cache_source_from_response = is_array($response) ? ($response['cache_source'] ?? null) : null;
-    $results = (is_array($response) && isset($response['result'])) ? $response['result'] : $response;
+    $cache_source_from_response = $response['cache_source'] ?? null;
+    $results = $response['result'];
 
     $results = cg_normalize_courier_results_shape($results);
 
@@ -267,6 +361,9 @@ function cg_perform_all_api_calls($phone_number, $order_id, $bypass_cache = fals
             set_transient('cg_api_cache', $config, DAY_IN_SECONDS);
         }
     }
+
+    // A courier-check success ends the wait.
+    delete_transient(CG_COURIER_TIMEOUT_WAIT_TRANSIENT);
 
     // Cache successful results for 6 hours
     set_transient($cache_key, $results, 6 * HOUR_IN_SECONDS);
