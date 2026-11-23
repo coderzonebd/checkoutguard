@@ -161,6 +161,7 @@ function cg_handle_save_checkout_data()
             $mark_keys[] = $phone;
         }
         if (cg_recently_placed_order($mark_keys)) {
+            cg_incomplete_insert_unlock();
             wp_send_json_success(['message' => 'Order already placed.', 'skipped' => 'order_placed']);
             return;
         }
