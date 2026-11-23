@@ -275,9 +275,13 @@ try {
     $GLOBALS['QA_MARK_KEYS'] = array_merge($GLOBALS['QA_MARK_KEYS'], ['t_' . $c['fp'], $c['fp'], $c['email'], cg_normalize_phone_number($c['phone'])]);
     cg_delete_incomplete_checkout_on_order_completion($order->get_id());
     // With the async decrement (H1) the decrement is a WP-Cron event: run
-    // the events scheduled for it now and remove them.
+    // the events scheduled for this order now and remove them. Events
+    // queued by earlier tests (other orders) are not part of this count.
     foreach ((array) _get_cron_array() as $ts => $hooks) {
         foreach ((array) ($hooks['cg_send_usage_decrements'] ?? []) as $ev) {
+            if ((string) ($ev['args'][2] ?? '') !== 'order-' . $order->get_id()) {
+                continue;
+            }
             wp_unschedule_event($ts, 'cg_send_usage_decrements', $ev['args']);
             do_action_ref_array('cg_send_usage_decrements', $ev['args']);
         }
