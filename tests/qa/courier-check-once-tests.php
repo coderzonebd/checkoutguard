@@ -186,8 +186,10 @@ foreach ([['C16c-null', 'HQ 200 with {"result": null}', ['cache_source' => 'fres
     ok($c[0], $c[1] . ': not cached, the next request calls HQ again (2 calls)', $tc === 'no' && $n === 2, "cached=$tc calls=$n src=" . (is_array($r1) ? ($r1['cache_source'] ?? '') : gettype($r1)));
 }
 // C16-ctl: a real 200 courier result is cached, so the next request makes no
-// call (C16 is not passing because nothing is ever cached).
-$GLOBALS['QA_HTTP'] = ['code' => 200, 'body' => ['cache_source' => 'fresh', 'result' => ['summary' => ['success_rate' => 90, 'total_deliveries' => 10, 'successful_deliveries' => 9, 'cancelled_deliveries' => 1]]]];
+// call (C16 is not passing because nothing is ever cached). The answer has
+// one courier with data: a summary alone counts as an all-failed answer,
+// which is never cached.
+$GLOBALS['QA_HTTP'] = ['code' => 200, 'body' => ['cache_source' => 'fresh', 'result' => ['summary' => ['success_rate' => 90, 'total_deliveries' => 10, 'successful_deliveries' => 9, 'cancelled_deliveries' => 1], 'pathao' => ['error' => false, 'total' => 10, 'success' => 9, 'cancelled' => 1, 'success_rate' => 90]]]];
 qa_reset(['01701222333']);
 cg_perform_all_api_calls('01701222333', 0);
 $tc = get_transient('cg_courier_cache_' . md5('01701222333')) !== false ? 'yes' : 'no';
