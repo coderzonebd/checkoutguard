@@ -30,6 +30,11 @@
  * A10 option present and cg_plugin_options has an api_key (the option was
  *     left behind by a path that skipped the settings hook): no
  *     already-registered notice.
+ * A11 Reconnect lock held (a Reconnect is running): the notice says
+ *     Reconnect is running and has no Reconnect button (same as the failed
+ *     notice, L2).
+ * A12 a stored gate further ahead than CG_REGISTER_MAX_WAIT: Reconnect
+ *     button, no try-again time (same as the failed notice, N12).
  *
  * Run on a local test site only (never production):
  *   wp eval-file tests/qa/register-already-registered-notice-tests.php
@@ -81,6 +86,7 @@ function qa_reset() {
     }
     wp_cache_delete('notoptions', 'options'); wp_cache_delete('alloptions', 'options');
     wp_clear_scheduled_hook('cg_sitekey_request_event');
+    delete_transient('cg_register_reconnect_lock');
     $o = is_array($GLOBALS['QA_ORIG']['cg_plugin_options']) ? $GLOBALS['QA_ORIG']['cg_plugin_options'] : [];
     unset($o['api_key']);
     cg_update_options_from_hq($o);
@@ -263,6 +269,26 @@ update_option($GLOBALS['QA_OPT'], $GLOBALS['QA_NOW'], false);
 $row = qa_opt_row();
 $b = qa_ar_notice();
 ok('A10', 'option present but api_key set: no already-registered notice', qa_opt_present($row) && !cg_register_already_registered() && $b === null, qa_opt_fmt($row) . ' ' . qa_ar_fmt($b));
+
+// A11: a Reconnect is running (lock held): "running" text, no button
+qa_reset();
+$GLOBALS['QA_ROUTES'] = $GLOBALS['QA_AR'];
+cg_register_site_with_hq();
+$GLOBALS['QA_NOW'] += 61;
+set_transient('cg_register_reconnect_lock', 1, 45);
+$b = qa_ar_notice();
+delete_transient('cg_register_reconnect_lock');
+$running = $b !== null && strpos($b['text'], 'Reconnect is running. Reload this page in a few seconds.') !== false;
+ok('A11', 'already_registered, Reconnect lock held: notice says Reconnect is running, no Reconnect button', qa_ar_ok($b) && $running && !qa_has_button($b), qa_ar_fmt($b) . ' running_text=' . ($running ? 'yes' : 'no'));
+
+// A12: gate further ahead than the 600 s cap is not trusted
+qa_reset();
+$GLOBALS['QA_ROUTES'] = $GLOBALS['QA_AR'];
+cg_register_site_with_hq();
+update_option('cg_register_next_allowed_at', $GLOBALS['QA_NOW'] + 3600, false);
+$b = qa_ar_notice();
+$try = $b !== null && stripos($b['text'], 'try again after') !== false;
+ok('A12', 'already_registered, gate 3600 s ahead (over the 600 s cap): Reconnect button, no try-again time', qa_ar_ok($b) && qa_has_button($b) && !$try, qa_ar_fmt($b) . ' try_again=' . ($try ? 'yes' : 'no'));
 
 // restore
 qa_reset();
