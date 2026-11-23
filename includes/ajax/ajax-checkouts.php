@@ -682,6 +682,11 @@ function cg_recover_order_ajax_handler()
         // the billing address was set). If the update failed the entry is
         // still 'incomplete' and the cleanup would delete it: skip it.
         if ($updated !== false) {
+            // A recovered row is not counted as an incomplete checkout:
+            // give its usage back, as the manual invoice does.
+            if ($updated) {
+                cg_decrement_usage_count('checkouts');
+            }
             cg_delete_incomplete_checkout_on_order_completion($order_id);
         }
 

@@ -104,10 +104,12 @@ function cg_delete_incomplete_checkout_on_order_completion($order_id)
     if (!empty($records)) {
         $count = count($records);
 
-        // Manual invoice: the newest matching row becomes the recovery
-        // record (like the Recover button); the rest are deleted below.
-        // Usage is still given back for every matching row.
-        if ($order->get_created_via() === 'cg-manual-invoice') {
+        // Manual invoice and WooCommerce "Add order" (both made by the
+        // merchant): the newest matching row becomes the recovery record
+        // (like the Recover button); the rest are deleted below. Usage is
+        // still given back for every matching row.
+        $created_via = $order->get_created_via();
+        if (in_array($created_via, ['cg-manual-invoice', 'admin'], true)) {
             $keep_id = (int) array_shift($records);
             $notes = (string) $wpdb->get_var($wpdb->prepare(
                 "SELECT admin_notes FROM {$table_name} WHERE id = %d",
@@ -120,7 +122,10 @@ function cg_delete_incomplete_checkout_on_order_completion($order_id)
                     'status' => 'recovered',
                     'recovered_order_id' => (int) $order_id,
                     'updated_at' => $now,
-                    'admin_notes' => trim($notes . "\n" . sprintf(__('Recovered by manual invoice as WC Order #%d on %s.', 'checkoutguard'), $order_id, $now)),
+                    'admin_notes' => trim($notes . "\n" . ($created_via === 'admin'
+                        /* translators: 1: WooCommerce order ID, 2: date and time */
+                        ? sprintf(__('Recovered by a WooCommerce admin order as WC Order #%1$d on %2$s.', 'checkoutguard'), $order_id, $now)
+                        : sprintf(__('Recovered by manual invoice as WC Order #%d on %s.', 'checkoutguard'), $order_id, $now))),
                 ],
                 ['id' => $keep_id],
                 ['%s', '%d', '%s', '%s'],
