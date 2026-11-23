@@ -80,9 +80,11 @@ function cg_delete_incomplete_checkout_on_order_completion($order_id)
         ));
 
         // HQ is told later from WP-Cron: this runs while the customer places
-        // the order, and each HQ call may wait up to 15 s.
+        // the order, and each HQ call may wait up to 15 s. Only rows this
+        // request really removed are given back (a parallel hook may have
+        // deleted some of them first).
         if ($deleted) {
-            cg_queue_usage_decrement('checkouts', $count, 'order-' . (int) $order_id);
+            cg_queue_usage_decrement('checkouts', min($count, (int) $deleted), 'order-' . (int) $order_id);
         }
     }
 }

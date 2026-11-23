@@ -143,13 +143,26 @@ function cg_send_queued_usage_decrements($action_type, $count, $ref = '')
         return;
     }
     $now = min($count, CG_USAGE_DECREMENT_MAX);
-    for ($i = 0; $i < $now; $i++) {
-        cg_call_hq_api('/sites/decrement-usage', ['action_type' => (string) $action_type]);
-    }
     // More than one run's share: the rest goes in a new event a minute
-    // later, so one cron request stays short.
+    // later, so one cron request stays short. Scheduled before the calls,
+    // so a run cut off by max_execution_time loses at most its own share.
     if ($count > $now) {
         wp_schedule_single_event(time() + MINUTE_IN_SECONDS, CG_USAGE_DECREMENT_HOOK, [(string) $action_type, $count - $now, (string) $ref]);
+    }
+    // Short timeout per call: a full share against a slow HQ takes at most
+    // CG_USAGE_DECREMENT_MAX x CG_USAGE_DECREMENT_TIMEOUT seconds.
+    $previous = $GLOBALS['cg_hq_timeout_override'] ?? null;
+    $GLOBALS['cg_hq_timeout_override'] = max(1, (int) CG_USAGE_DECREMENT_TIMEOUT);
+    try {
+        for ($i = 0; $i < $now; $i++) {
+            cg_call_hq_api('/sites/decrement-usage', ['action_type' => (string) $action_type]);
+        }
+    } finally {
+        if ($previous === null) {
+            unset($GLOBALS['cg_hq_timeout_override']);
+        } else {
+            $GLOBALS['cg_hq_timeout_override'] = $previous;
+        }
     }
 }
 

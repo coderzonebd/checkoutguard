@@ -46,6 +46,8 @@ define('CG_PRICING_URL', 'https://coderzonebd.com/products/checkoutguard');
 define('CG_USAGE_DECREMENT_HOOK', 'cg_send_usage_decrements');
 // HQ calls one queued-decrement run sends; the rest goes to a new event.
 define('CG_USAGE_DECREMENT_MAX', 20);
+// HTTP timeout (seconds) of each queued decrement call.
+define('CG_USAGE_DECREMENT_TIMEOUT', 5);
 
 require_once CG_INC_DIR . 'utils.php';
 require_once CG_INC_DIR . 'analytics.php';
