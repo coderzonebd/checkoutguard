@@ -427,6 +427,41 @@ cg_sync_with_hq();
 $plain = qa_registers();
 ok('G13c-ctl', 'inside the gate: cron sync and plain sync -> 0 register', $cron === 0 && $plain === 0, "cron=$cron plain=$plain");
 
+// G13j: the forced register runs under the Reconnect lock. The register
+// request itself sees the lock held, so a Reconnect or a second Sync Now in
+// another tab started at that moment sends nothing.
+qa_reset();
+cg_register_site_with_hq();
+$GLOBALS['QA_NOW'] = 1800000000 + 10; $GLOBALS['QA_LOG'] = [];
+$GLOBALS['QA_LOCKED'] = null;
+$GLOBALS['QA_ON_REGISTER'] = function () { $GLOBALS['QA_LOCKED'] = get_transient(CG_REGISTER_RECONNECT_LOCK) !== false; };
+$s = qa_sync_now();
+$b = qa_registers();
+$GLOBALS['QA_ON_REGISTER'] = null;
+ok('G13j', 'forced register sees the Reconnect lock held', $s === 'error' && $b === 1 && $GLOBALS['QA_LOCKED'] === true, "sync=$s register=$b locked=" . var_export($GLOBALS['QA_LOCKED'], true));
+
+// G13k: only Sync Now may force. Across the plugin code (tests excluded) there
+// is exactly one cg_sync_with_hq() call with an argument, and it is inside
+// cg_handle_force_sync_ajax(). Cron, the SiteKey claim, activation, Reconnect,
+// the usage-limit check, contact reveal and the admin refresh call it bare.
+$forced = [];
+$it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(CG_PLUGIN_DIR, FilesystemIterator::SKIP_DOTS));
+foreach ($it as $f) {
+    $rel = substr($f->getPathname(), strlen(CG_PLUGIN_DIR));
+    if (substr($rel, -4) !== '.php' || strpos($rel, 'tests/') === 0 || strpos($rel, 'vendor/') === 0) {
+        continue;
+    }
+    $src = file_get_contents($f->getPathname());
+    if (preg_match_all('/(?<!function )\bcg_sync_with_hq\s*\(\s*[^)\s]/', $src, $m, PREG_OFFSET_CAPTURE)) {
+        foreach ($m[0] as $hit) {
+            $before = substr($src, 0, $hit[1]);
+            $fn = preg_match_all('/function\s+(\w+)\s*\(/', $before, $fm) ? end($fm[1]) : '';
+            $forced[] = "$rel:$fn";
+        }
+    }
+}
+ok('G13k', 'only cg_handle_force_sync_ajax() passes force', $forced === ['includes/admin/admin-settings-page.php:cg_handle_force_sync_ajax'], 'forced=' . json_encode($forced));
+
 $out = ob_get_clean();
 // U1-U3: the register gate has an upper bound of 600 s (10 min), the same
 // cap the status wait uses. A stored gate further ahead than that (a clock
