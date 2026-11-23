@@ -133,7 +133,7 @@ cg_register_site_with_hq();
 $GLOBALS['QA_NOW'] += 61; $GLOBALS['QA_LOG'] = [];
 $b = &qa_second_click_during_register();
 $a = cg_register_reconnect_attempt();
-ok('N5', 'double click: one register only', $a === 'tried' && $b !== null && $b !== 'tried' && qa_regs() === 1, "a=$a b=" . var_export($b, true) . " log=" . json_encode($GLOBALS['QA_LOG']));
+ok('N5', 'double click: one register only', $a === 'tried' && $b === 'running' && qa_regs() === 1, "a=$a b=" . var_export($b, true) . " log=" . json_encode($GLOBALS['QA_LOG']));
 unset($b);
 
 // N6: 409 claim_required -> only the SiteKey notice
@@ -176,7 +176,7 @@ $GLOBALS['QA_ROUTES'] = ['/sites/register' => ['code' => 201, 'body' => ['site' 
 $b = &qa_second_click_during_register();
 $a = cg_register_reconnect_attempt();
 $n = qa_regs();
-ok('N10', '2xx without key: second click during the first sends nothing, one register', $a === 'tried' && $b !== null && $b !== 'tried' && $n === 1 && cg_register_failed(), "a=$a b=" . var_export($b, true) . " register_calls=$n");
+ok('N10', '2xx without key: second click during the first sends nothing, one register', $a === 'tried' && $b === 'running' && $n === 1 && cg_register_failed(), "a=$a b=" . var_export($b, true) . " register_calls=$n");
 unset($b);
 
 // N11: same for "already taken" (register sets no gate on that path)
@@ -187,7 +187,7 @@ $GLOBALS['QA_ROUTES'] = ['/sites/register' => ['code' => 409, 'body' => ['error'
 $b = &qa_second_click_during_register();
 $a = cg_register_reconnect_attempt();
 $n = qa_regs();
-ok('N11', 'already taken: second click during the first sends nothing, one register', $a === 'tried' && $b !== null && $b !== 'tried' && $n === 1, "a=$a b=" . var_export($b, true) . " register_calls=$n");
+ok('N11', 'already taken: second click during the first sends nothing, one register', $a === 'tried' && $b === 'running' && $n === 1, "a=$a b=" . var_export($b, true) . " register_calls=$n");
 unset($b);
 
 // L1: the lock is released when the call ends (failed here): a new
