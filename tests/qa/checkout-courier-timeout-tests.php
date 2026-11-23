@@ -7,6 +7,7 @@
  *    call, orders fail open; nothing verified/blocked is ever cached for it;
  *    a successful courier answer ends it. The 401/403 cache from #12 stays
  *    separate.
+ *    5xx means 500..599: 504 starts the wait, 600 does not (C6b).
  *
  * C1 needs a local slow server (answers after 35 s) on 127.0.0.1:QA_SLOW_PORT;
  * the "slow" route makes a real cURL request to it with the plugin's timeout.
@@ -171,6 +172,17 @@ foreach ([['C6', 500], ['C7', 503]] as $t) {
     $tt = qa_wait_ttl();
     ok($t[0], '(gha) HQ ' . $t[1] . ': allowed, 60 s wait, next 2 checkouts 0 HQ calls', $e1[0] === 1 && $e1[2] && $e2[0] === 0 && $e3[0] === 0 && $e2[2] && $e3[2] && $tt !== null && $tt >= QA_WAIT_MIN && $tt <= QA_WAIT_MAX, json_encode([$e1, $e2, $e3]) . ' ttl=' . var_export($tt, true));
 }
+
+// C6b: the 5xx range is 500..599 on both ends. 504 starts the wait like
+// 500/503; 600 is not 5xx, so no wait and the next checkout calls HQ again.
+qa_clear_waits();
+$x1 = qa_checkout(['code' => 504, 'body' => ['error' => 'x']]); $x2 = qa_checkout($good);
+$xt = qa_wait_ttl();
+ok('C6b', '(gha) HQ 504: allowed, 60 s wait, next checkout 0 HQ calls', $x1[0] === 1 && $x1[2] && $x2[0] === 0 && $x2[2] && $xt !== null && $xt >= QA_WAIT_MIN && $xt <= QA_WAIT_MAX, json_encode([$x1, $x2]) . ' ttl=' . var_export($xt, true));
+qa_clear_waits();
+$y1 = qa_checkout(['code' => 600, 'body' => ['error' => 'x']]); $y2 = qa_checkout($good);
+$yt = qa_wait_ttl();
+ok('C6b-ctl', 'HQ 600 is not 5xx: allowed, no wait, next checkout calls HQ (1 call)', $y1[0] === 1 && $y1[2] && $y2[0] === 1 && $y2[2] && $yt === null, json_encode([$y1, $y2]) . ' ttl=' . var_export($yt, true));
 
 // A successful courier answer ends the wait (admin force refresh is the only call made in it).
 qa_clear_waits();
