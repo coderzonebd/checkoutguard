@@ -248,6 +248,9 @@ $ttl = $GLOBALS['QA_TTL'];
 $want = defined('CG_REGISTER_RECONNECT_LOCK_TTL') ? (int) CG_REGISTER_RECONNECT_LOCK_TTL : null;
 ok('L4', "lock is transient 'cg_register_reconnect_lock', TTL = CG_REGISTER_RECONNECT_LOCK_TTL, gone after the call", $a === 'tried' && defined('CG_REGISTER_RECONNECT_LOCK') && CG_REGISTER_RECONNECT_LOCK === 'cg_register_reconnect_lock' && $GLOBALS['QA_LK'] !== false && $GLOBALS['QA_LK'] !== null && $want !== null && ($ttl === $want || $ttl === $want - 1) && $after === false, "a=$a lk=" . var_export($GLOBALS['QA_LK'], true) . " ttl=" . var_export($ttl, true) . " want=" . var_export($want, true) . " after=" . var_export($after, true));
 ok('L4b', 'the lock expires on its own: TTL constant and the measured TTL are both > 0', $want !== null && $want > 0 && is_int($ttl) && $ttl > 0, "want=" . var_export($want, true) . " ttl=" . var_export($ttl, true));
+// L4c: Reconnect and Sync Now share this lock; the agreed TTL is at least
+// 45 s so a slow HQ register call cannot outlive the lock.
+ok('L4c', 'CG_REGISTER_RECONNECT_LOCK_TTL is at least 45 s', $want !== null && $want >= 45, "want=" . var_export($want, true));
 
 // L5: the lock set directly by the test (no reliance on two clicks): while
 // 'cg_register_reconnect_lock' is held, Reconnect returns 'running' and sends
