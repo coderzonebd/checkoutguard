@@ -398,6 +398,7 @@ function cg_render_fraud_blocker_page()
                             <option value="identical" <?php selected($dup_mode, 'identical'); ?>><?php _e('Smart (Block identical cart products & quantities only)', 'checkoutguard'); ?></option>
                             <option value="any" <?php selected($dup_mode, 'any'); ?>><?php _e('Strict (Block any order from the same customer)', 'checkoutguard'); ?></option>
                         </select>
+                        <p class="description"><?php _e('Smart mode first matches the cart items; if they do not match, it matches by order total.', 'checkoutguard'); ?></p>
                     </td>
                 </tr>
                 <tr>
