@@ -342,6 +342,15 @@ function cg_perform_all_api_calls_uncached_request($phone_number, $order_id, $by
     $cache_source_from_response = $response['cache_source'] ?? null;
     $results = $response['result'];
 
+    // Couriers HQ actually answered for. Normalize fills a missing courier
+    // with a default (error=false) for display; that default is not data.
+    $answered_couriers = [];
+    foreach (array_keys(cg_get_supported_couriers()) as $courier_key) {
+        if (is_array($results) && isset($results[$courier_key]) && is_array($results[$courier_key])) {
+            $answered_couriers[$courier_key] = true;
+        }
+    }
+
     $results = cg_normalize_courier_results_shape($results);
 
     // Preserve cache_source from the backend ('server_cache' or 'fresh'), fallback for old server
@@ -353,8 +362,19 @@ function cg_perform_all_api_calls_uncached_request($phone_number, $order_id, $by
 
     $results['order_id'] = $order_id;
 
+    // When every courier returned an error (or was missing from the answer)
+    // there is no courier data at all: do not count it as a local usage and
+    // do not cache it for 6 hours.
+    $all_failed = true;
+    foreach (array_keys(cg_get_supported_couriers()) as $courier_key) {
+        if (isset($answered_couriers[$courier_key]) && empty($results[$courier_key]['error'])) {
+            $all_failed = false;
+            break;
+        }
+    }
+
     // Sync local usage count when HQ incremented (fresh data means HQ counted it)
-    if (isset($results['cache_source']) && $results['cache_source'] === 'fresh') {
+    if (!$all_failed && isset($results['cache_source']) && $results['cache_source'] === 'fresh') {
         $config = get_transient('cg_api_cache');
         if ($config && isset($config['limits']['courier_checks'])) {
             $config['usage']['courier_checks'] = ($config['usage']['courier_checks'] ?? 0) + 1;
@@ -366,7 +386,9 @@ function cg_perform_all_api_calls_uncached_request($phone_number, $order_id, $by
     delete_transient(CG_COURIER_TIMEOUT_WAIT_TRANSIENT);
 
     // Cache successful results for 6 hours
-    set_transient($cache_key, $results, 6 * HOUR_IN_SECONDS);
+    if (!$all_failed) {
+        set_transient($cache_key, $results, 6 * HOUR_IN_SECONDS);
+    }
 
     if ($order_id > 0) {
         cg_update_order_meta($order_id, '_cg_success_ratio_data', $results);
