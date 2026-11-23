@@ -57,6 +57,8 @@ function qa_reset() {
     }
     wp_cache_delete('notoptions', 'options'); wp_cache_delete('alloptions', 'options');
     wp_clear_scheduled_hook('cg_sitekey_request_event');
+    // The Reconnect double-click lock must not leak from one case into the next.
+    delete_transient(defined('CG_REGISTER_RECONNECT_LOCK') ? CG_REGISTER_RECONNECT_LOCK : 'cg_register_reconnect_lock');
     $o = is_array($GLOBALS['QA_ORIG']['cg_plugin_options']) ? $GLOBALS['QA_ORIG']['cg_plugin_options'] : [];
     unset($o['api_key']);
     cg_update_options_from_hq($o);
@@ -209,7 +211,7 @@ $GLOBALS['QA_IN'] = null;
 $GLOBALS['QA_ON_REGISTER'] = function () { list($GLOBALS['QA_IN']) = qa_notices(); };
 $a = cg_register_reconnect_attempt();
 $in = (string) $GLOBALS['QA_IN'];
-ok('L2', 'notice during the Reconnect call: shown, no Reconnect button', $a === 'tried' && strpos($in, $TITLE) !== false && strpos($in, 'action=cg_register_reconnect') === false, 'len=' . strlen($in));
+ok('L2', 'notice during the Reconnect call: shown, says Reconnect is running, no Reconnect button', $a === 'tried' && strpos($in, $TITLE) !== false && strpos($in, 'Reconnect is running') !== false && strpos($in, 'action=cg_register_reconnect') === false, 'len=' . strlen($in));
 
 // L3: lock and gate stay apart: a failed Reconnect at T leaves the register
 // gate at T + 60 s (lock deleted, gate kept), so the auto path sends no
