@@ -227,6 +227,32 @@ $e = mi_get($entry);
 mi_check('R7 failed recovered UPDATE: entry is kept, nothing deleted, no decrement',
     $e !== null && $e->status === 'incomplete' && mi_get($sib) !== null && mi_decrements() === $hq0,
     ($e ? $e->status : 'missing') . ' decrements=' . (mi_decrements() - $hq0));
+mi_clear_rows();
+
+// R8 two Recover clicks on the same entry at once: the other click marks
+// the entry recovered between our SELECT and our UPDATE. Our UPDATE must
+// match 0 rows (it is guarded by the status we read), so no second
+// decrement for the entry and the other click's order id stays.
+$entry = mi_row(['phone' => '01799000335', 'email' => 'cust6@cgmi.test', 'first_name' => 'Rec', 'cart_details' => $cart, 'country' => 'BD']);
+$sib = mi_row(['phone' => '01799000335', 'first_name' => 'Rec']);
+$race_done = false;
+$race = function ($q) use ($T, $entry, &$race_done, $wpdb) {
+    if (!$race_done && stripos($q, 'UPDATE') === 0 && strpos($q, $T) !== false && strpos($q, 'recovered') !== false) {
+        $race_done = true;
+        $wpdb->query($wpdb->prepare("UPDATE {$T} SET status = 'recovered', recovered_order_id = 999999 WHERE id = %d", $entry));
+    }
+    return $q;
+};
+add_filter('query', $race);
+$hq0 = mi_decrements();
+$res = mi_recover($entry);
+remove_filter('query', $race);
+$oid = (int) ($res['data']['order_id'] ?? 0);
+if ($oid) { $created_orders[] = $oid; }
+$e = mi_get($entry);
+mi_check('R8 concurrent Recover: entry keeps the other click\'s order id, one decrement (the deleted row only)',
+    $race_done && $e !== null && $e->status === 'recovered' && (int) $e->recovered_order_id === 999999 && mi_get($sib) === null && mi_decrements() - $hq0 === 1,
+    ($e ? $e->status . '/' . $e->recovered_order_id : 'missing') . ' decrements=' . (mi_decrements() - $hq0));
 remove_all_filters('wp_doing_ajax');
 remove_all_filters('wp_die_ajax_handler');
 mi_clear_rows();
@@ -292,6 +318,7 @@ cg_delete_incomplete_checkout_on_order_completion($ao->get_id());
 $an = mi_get($a_new);
 mi_check('A1 admin "Add order": newest row recovered with the order id and a note, older row deleted, 2 decrements',
     $an && $an->status === 'recovered' && (int) $an->recovered_order_id === $ao->get_id() && strpos((string) $an->admin_notes, '#' . $ao->get_id()) !== false
+    && strpos((string) $an->admin_notes, 'WooCommerce admin order') !== false
     && mi_get($a_old) === null && mi_decrements() - $hqa === 2,
     ($an ? $an->status . '/' . $an->recovered_order_id : 'missing') . ' old=' . (mi_get($a_old) ? 'kept' : 'gone') . ' decrements=' . (mi_decrements() - $hqa));
 if ($has_fp_col) {
