@@ -381,6 +381,34 @@ mi_check('R11 stale lock: Recover creates one order, entry recovered, lock relea
     wp_json_encode($res['data']['message'] ?? $res) . ' lock=' . var_export(mi_lock_raw($entry), true));
 mi_clear_rows();
 
+// R13 a slow Recover (WC hooks, email or SMS) may hold the lock for minutes;
+// a lock taken 290 seconds ago is still live and blocks a second click.
+$entry = mi_row(['phone' => '01799000340', 'email' => 'cust12@cgmi.test', 'first_name' => 'Rec', 'cart_details' => $cart, 'country' => 'BD']);
+$r13_lock = (time() - 290) . '-333333';
+mi_set_lock($entry, $r13_lock);
+$res = mi_recover($entry);
+$oid = (int) ($res['data']['order_id'] ?? 0);
+if ($oid) { $created_orders[] = $oid; }
+foreach (mi_orders_for_entry($entry) as $x) { if ($x !== $oid) { $created_orders[] = $x; } }
+$e = mi_get($entry);
+mi_check('R13 lock 290s old is still live: no order, entry still incomplete, lock untouched',
+    empty($res['success']) && $oid === 0 && count(mi_orders_for_entry($entry)) === 0 && $e && $e->status === 'incomplete' && mi_lock_raw($entry) === $r13_lock,
+    wp_json_encode($res['data']['message'] ?? $res) . ' orders=' . count(mi_orders_for_entry($entry)));
+$wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->options} WHERE option_name = %s", mi_lock_name($entry)));
+mi_clear_rows();
+
+// R14 a lock older than the stale window (310 seconds) is taken over.
+$entry = mi_row(['phone' => '01799000341', 'email' => 'cust13@cgmi.test', 'first_name' => 'Rec', 'cart_details' => $cart, 'country' => 'BD']);
+mi_set_lock($entry, (time() - 310) . '-444444');
+$res = mi_recover($entry);
+$oid = (int) ($res['data']['order_id'] ?? 0);
+if ($oid) { $created_orders[] = $oid; }
+$e = mi_get($entry);
+mi_check('R14 lock 310s old is stale: Recover creates one order, lock released',
+    !empty($res['success']) && $oid > 0 && count(mi_orders_for_entry($entry)) === 1 && $e && $e->status === 'recovered' && mi_lock_raw($entry) === null,
+    wp_json_encode($res['data']['message'] ?? $res) . ' lock=' . var_export(mi_lock_raw($entry), true));
+mi_clear_rows();
+
 // R12 Recover that fails (no cart items) releases the lock and leaves the
 // entry as it was.
 $entry = mi_row(['phone' => '01799000339', 'email' => 'cust11@cgmi.test', 'first_name' => 'Rec', 'cart_details' => '[]', 'country' => 'BD']);
