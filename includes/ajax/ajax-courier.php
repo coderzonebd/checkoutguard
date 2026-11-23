@@ -328,12 +328,19 @@ function cg_perform_all_api_calls_uncached_request($phone_number, $order_id, $by
         return cg_courier_error_results($error_message);
     }
 
-    // The backend nests the actual courier data under a "result" key
-    // (alongside the sibling "cache_source" key) rather than returning it
-    // flat — unwrap it before normalizing, but keep cache_source from the
+    // HQ answers a courier check with a JSON object that holds the courier
+    // data under "result" (next to "cache_source"). A 200 with any other
+    // body (not an object, no "result", or a "result" that is not an object)
+    // is an error: fail open and do NOT cache it, so the next checkout asks
+    // HQ again.
+    if (!is_array($response) || !isset($response['result']) || !is_array($response['result'])) {
+        return cg_courier_error_results(__('Courier check returned an unexpected answer.', 'checkoutguard'));
+    }
+
+    // Unwrap "result" before normalizing, but keep cache_source from the
     // outer envelope since it lives one level up from "result".
-    $cache_source_from_response = is_array($response) ? ($response['cache_source'] ?? null) : null;
-    $results = (is_array($response) && isset($response['result'])) ? $response['result'] : $response;
+    $cache_source_from_response = $response['cache_source'] ?? null;
+    $results = $response['result'];
 
     $results = cg_normalize_courier_results_shape($results);
 
