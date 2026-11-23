@@ -22,6 +22,9 @@ if (!defined('CG_USAGE_DECREMENT_HOOK')) {
 if (!defined('CG_USAGE_DECREMENT_MAX')) {
     define('CG_USAGE_DECREMENT_MAX', 20);
 }
+if (!defined('CG_USAGE_DECREMENT_TIMEOUT')) {
+    define('CG_USAGE_DECREMENT_TIMEOUT', 5);
+}
 global $wpdb;
 $GLOBALS['QA_ORIG'] = ['cg_plugin_options' => get_option('cg_plugin_options', null), 'cg_api_cache' => get_transient('cg_api_cache')];
 $GLOBALS['QA_LOG'] = [];
@@ -34,6 +37,15 @@ add_filter('pre_http_request', function ($pre, $args, $url) {
     }
     return ['headers' => new WpOrg\Requests\Utility\CaseInsensitiveDictionary([]), 'body' => '{"status":"success"}', 'response' => ['code' => 200, 'message' => ''], 'cookies' => [], 'filename' => null];
 }, PHP_INT_MAX, 3);
+// Seen by each decrement call: its HTTP timeout and how many queued events
+// already exist at that moment (Zahid H1 review N1).
+$GLOBALS['QA_CALLS'] = [];
+add_filter('pre_http_request', function ($pre, $args, $url) {
+    if (strpos((string) $url, '/sites/decrement-usage') !== false) {
+        $GLOBALS['QA_CALLS'][] = ['timeout' => (int) ($args['timeout'] ?? 0), 'events' => count(qa_events())];
+    }
+    return $pre;
+}, 1, 3);
 $GLOBALS['QA_WARN'] = [];
 set_error_handler(function ($no, $str, $file, $line) {
     if (strpos($file, 'checkoutguard') !== false) {
@@ -154,6 +166,45 @@ ok('D8', 'admin cg_decrement_usage_count: one direct HQ call, local -1, no event
 
 // D9: the cron hook is registered by the plugin
 ok('D9', 'hook has the handler', has_action(CG_USAGE_DECREMENT_HOOK, 'cg_send_queued_usage_decrements') !== false, var_export(has_action(CG_USAGE_DECREMENT_HOOK, 'cg_send_queued_usage_decrements'), true));
+
+// D10 (review N1): the rest event exists before the first HQ call, so a run
+// cut off by max_execution_time loses at most its own share
+qa_reset();
+$GLOBALS['QA_CALLS'] = [];
+do_action_ref_array(CG_USAGE_DECREMENT_HOOK, ['checkouts', CG_USAGE_DECREMENT_MAX + 3, 'order-r']);
+$first = $GLOBALS['QA_CALLS'][0] ?? null;
+ok('D10', 'over the cap: rest event already queued at the first HQ call', $first !== null && $first['events'] === 1, wp_json_encode($first));
+
+// D11 (review N1): each queued call uses the short timeout, override restored after
+$tos = array_unique(array_map(function ($c) { return $c['timeout']; }, $GLOBALS['QA_CALLS']));
+ok('D11', 'queued calls: timeout CG_USAGE_DECREMENT_TIMEOUT, override unset after the run', count($GLOBALS['QA_CALLS']) === CG_USAGE_DECREMENT_MAX && array_values($tos) === [(int) CG_USAGE_DECREMENT_TIMEOUT] && !isset($GLOBALS['cg_hq_timeout_override']), 'calls=' . count($GLOBALS['QA_CALLS']) . ' timeouts=' . implode(',', $tos) . ' override=' . var_export($GLOBALS['cg_hq_timeout_override'] ?? null, true));
+
+// D11b: an override set by the caller survives the run
+qa_reset();
+$GLOBALS['cg_hq_timeout_override'] = 3;
+do_action_ref_array(CG_USAGE_DECREMENT_HOOK, ['checkouts', 1, 'order-o']);
+$kept = $GLOBALS['cg_hq_timeout_override'] ?? null;
+unset($GLOBALS['cg_hq_timeout_override']);
+ok('D11b', 'caller override 3 is put back after the run', $kept === 3, var_export($kept, true));
+
+// D12 (review N2): uninstall clears the queued-decrement hook
+$un = (string) @file_get_contents(CG_PLUGIN_DIR . 'uninstall.php');
+ok('D12', "uninstall.php clears cg_send_usage_decrements", strpos($un, "wp_clear_scheduled_hook('cg_send_usage_decrements')") !== false, 'found=' . var_export(strpos($un, 'cg_send_usage_decrements') !== false, true));
+
+// D13 (review N3): only rows this request really deleted are queued
+qa_reset();
+list($o13, $e13) = qa_order_with_rows(3, 'd');
+$lim = function ($q) {
+    if (stripos($q, 'DELETE FROM') === 0 && strpos($q, 'cg_incomplete_checkouts') !== false && stripos($q, ' LIMIT ') === false) {
+        return $q . ' LIMIT 1';
+    }
+    return $q;
+};
+add_filter('query', $lim);
+cg_delete_incomplete_checkout_on_order_completion($o13);
+remove_filter('query', $lim);
+$ev13 = qa_events();
+ok('D13', '3 rows matched, 1 deleted: event count 1, local -1', count($ev13) === 1 && ($ev13[0]['args'][1] ?? null) === 1 && qa_usage('checkouts') === 9, wp_json_encode($ev13) . ' usage=' . qa_usage('checkouts'));
 
 // cleanup
 qa_reset();
