@@ -191,6 +191,37 @@ mi_check('M6 manual invoice without phone/email: no row deleted, no decrement, n
     'decrements=' . (mi_decrements() - $hq0));
 mi_clear_rows();
 
+// M9 the keep UPDATE to 'recovered' fails (Zahid N5): the newest row is
+// not deleted (it stays incomplete), older rows are deleted, and usage is
+// given back only for the deleted rows.
+mi_admin_context(true);
+$m9_keep = mi_row(['phone' => '01799000121', 'email' => 'cust9@cgmi.test', 'first_name' => 'Nine', 'created_at' => date('Y-m-d H:i:s', current_time('timestamp') - 60)]);
+$m9_old = mi_row(['phone' => '01799000121', 'first_name' => 'Nine', 'created_at' => date('Y-m-d H:i:s', current_time('timestamp') - 7200)]);
+$m9_fail = function ($q) use ($T) {
+    if (stripos($q, 'UPDATE') === 0 && strpos($q, $T) !== false && strpos($q, 'recovered') !== false) {
+        return 'SELECT cgmi_forced_failure FROM cgmi_no_such_table';
+    }
+    return $q;
+};
+add_filter('query', $m9_fail);
+$suppress = $wpdb->suppress_errors(true);
+$hq0 = mi_decrements();
+$o = cg_create_manual_invoice_order([
+    'customer_name' => 'Nine',
+    'phone' => '01799000121',
+    'email' => 'cust9@cgmi.test',
+    'items' => [['name' => 'Item', 'qty' => 1, 'price' => 100]],
+    'payment_method' => 'cod',
+]);
+$wpdb->suppress_errors($suppress);
+remove_filter('query', $m9_fail);
+if (!is_wp_error($o)) { $created_orders[] = $o->get_id(); }
+$k = mi_get($m9_keep);
+mi_check('M9 failed keep UPDATE: newest row stays incomplete, older row deleted, one decrement',
+    !is_wp_error($o) && $k !== null && $k->status === 'incomplete' && mi_get($m9_old) === null && mi_decrements() - $hq0 === 1,
+    ($k ? $k->status : 'missing') . ' decrements=' . (mi_decrements() - $hq0));
+mi_clear_rows();
+
 // ---------- Recover button ----------
 add_filter('wp_doing_ajax', '__return_true');
 add_filter('wp_die_ajax_handler', function () { return function () { throw new CgmiDie('die'); }; });
@@ -277,6 +308,94 @@ $e = mi_get($entry);
 mi_check('R8 concurrent Recover: entry keeps the other click\'s order id, one decrement (the deleted row only)',
     $race_done && $e !== null && $e->status === 'recovered' && (int) $e->recovered_order_id === 999999 && mi_get($sib) === null && mi_decrements() - $hq0 === 1,
     ($e ? $e->status . '/' . $e->recovered_order_id : 'missing') . ' decrements=' . (mi_decrements() - $hq0));
+// N11: two Recover clicks at once must not create two WooCommerce orders.
+// The handler takes a per-entry lock before it reads the entry and creates
+// the order; the click that does not get the lock creates nothing.
+function mi_lock_name($entry_id) {
+    return 'cg_recover_lock_' . (int) $entry_id;
+}
+function mi_lock_raw($entry_id) {
+    global $wpdb;
+    return $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", mi_lock_name($entry_id)));
+}
+function mi_set_lock($entry_id, $value) {
+    global $wpdb;
+    $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->options} WHERE option_name = %s", mi_lock_name($entry_id)));
+    $wpdb->query($wpdb->prepare("INSERT INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, 'no')", mi_lock_name($entry_id), $value));
+    wp_cache_delete(mi_lock_name($entry_id), 'options');
+}
+function mi_orders_for_entry($entry_id) {
+    return wc_get_orders(['limit' => -1, 'return' => 'ids', 'meta_key' => '_cg_recovered_from', 'meta_value' => (string) $entry_id]);
+}
+
+// R9 another click holds the lock: no order, entry unchanged, no decrement.
+$entry = mi_row(['phone' => '01799000336', 'email' => 'cust7@cgmi.test', 'first_name' => 'Rec', 'cart_details' => $cart, 'country' => 'BD']);
+$r9_lock = time() . '-111111';
+mi_set_lock($entry, $r9_lock);
+$hq0 = mi_decrements();
+$res = mi_recover($entry);
+$oid = (int) ($res['data']['order_id'] ?? 0);
+if ($oid) { $created_orders[] = $oid; }
+$e = mi_get($entry);
+mi_check('R9 lock held by another click: no order, entry still incomplete, no decrement, lock untouched',
+    empty($res['success']) && $oid === 0 && count(mi_orders_for_entry($entry)) === 0 && $e && $e->status === 'incomplete' && mi_decrements() === $hq0 && mi_lock_raw($entry) === $r9_lock,
+    wp_json_encode($res['data']['message'] ?? $res) . ' orders=' . count(mi_orders_for_entry($entry)));
+foreach (mi_orders_for_entry($entry) as $x) { $created_orders[] = $x; }
+$wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->options} WHERE option_name = %s", mi_lock_name($entry)));
+mi_clear_rows();
+
+// R10 the other click finishes while we wait for the lock: the entry is
+// read again under the lock, so it is already recovered and we stop.
+$entry = mi_row(['phone' => '01799000337', 'email' => 'cust8@cgmi.test', 'first_name' => 'Rec', 'cart_details' => $cart, 'country' => 'BD']);
+$r10_fired = false;
+$r10 = function ($q) use ($T, $entry, &$r10_fired, $wpdb) {
+    if (!$r10_fired && stripos($q, 'INSERT') === 0 && strpos($q, mi_lock_name($entry)) !== false) {
+        $r10_fired = true;
+        $wpdb->query($wpdb->prepare("UPDATE {$T} SET status = 'recovered', recovered_order_id = 999998 WHERE id = %d", $entry));
+    }
+    return $q;
+};
+add_filter('query', $r10);
+$hq0 = mi_decrements();
+$res = mi_recover($entry);
+remove_filter('query', $r10);
+$oid = (int) ($res['data']['order_id'] ?? 0);
+if ($oid) { $created_orders[] = $oid; }
+foreach (mi_orders_for_entry($entry) as $x) { if ($x !== $oid) { $created_orders[] = $x; } }
+$e = mi_get($entry);
+mi_check('R10 entry recovered by the other click before our lock: no second order, no decrement, lock released',
+    $r10_fired && empty($res['success']) && count(mi_orders_for_entry($entry)) === 0 && $e && (int) $e->recovered_order_id === 999998 && mi_decrements() === $hq0 && mi_lock_raw($entry) === null,
+    'fired=' . ($r10_fired ? 1 : 0) . ' orders=' . count(mi_orders_for_entry($entry)) . ' ' . wp_json_encode($res['data']['message'] ?? $res));
+mi_clear_rows();
+
+// R11 a stale lock (a request died) does not block Recover for ever; the
+// lock is released afterwards.
+$entry = mi_row(['phone' => '01799000338', 'email' => 'cust10@cgmi.test', 'first_name' => 'Rec', 'cart_details' => $cart, 'country' => 'BD']);
+mi_set_lock($entry, (time() - 600) . '-222222');
+$res = mi_recover($entry);
+$oid = (int) ($res['data']['order_id'] ?? 0);
+if ($oid) { $created_orders[] = $oid; }
+$e = mi_get($entry);
+mi_check('R11 stale lock: Recover creates one order, entry recovered, lock released',
+    !empty($res['success']) && $oid > 0 && count(mi_orders_for_entry($entry)) === 1 && $e && $e->status === 'recovered' && mi_lock_raw($entry) === null,
+    wp_json_encode($res['data']['message'] ?? $res) . ' lock=' . var_export(mi_lock_raw($entry), true));
+mi_clear_rows();
+
+// R12 Recover that fails (no cart items) releases the lock and leaves the
+// entry as it was.
+$entry = mi_row(['phone' => '01799000339', 'email' => 'cust11@cgmi.test', 'first_name' => 'Rec', 'cart_details' => '[]', 'country' => 'BD']);
+$r12_new = function ($id) use (&$created_orders) { $created_orders[] = (int) $id; };
+add_action('woocommerce_new_order', $r12_new);
+$res = mi_recover($entry);
+remove_action('woocommerce_new_order', $r12_new);
+$oid = (int) ($res['data']['order_id'] ?? 0);
+if ($oid) { $created_orders[] = $oid; }
+foreach (mi_orders_for_entry($entry) as $x) { if ($x !== $oid) { $created_orders[] = $x; } }
+$e = mi_get($entry);
+mi_check('R12 failed Recover: lock released, entry still incomplete',
+    empty($res['success']) && $e && $e->status === 'incomplete' && mi_lock_raw($entry) === null && !$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name = %s", mi_lock_name($entry))),
+    wp_json_encode($res['data']['message'] ?? $res));
+mi_clear_rows();
 remove_all_filters('wp_doing_ajax');
 remove_all_filters('wp_die_ajax_handler');
 mi_clear_rows();
