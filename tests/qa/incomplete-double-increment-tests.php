@@ -20,6 +20,9 @@ $GLOBALS['QA_LOG'] = [];
 add_filter('pre_http_request', function ($pre, $args, $url) {
     $body = json_decode((string) ($args['body'] ?? ''), true);
     $GLOBALS['QA_LOG'][] = preg_replace('#^.*?/api/v1#', '', (string) parse_url($url, PHP_URL_PATH)) . ':' . (is_array($body) ? (string) ($body['action_type'] ?? '') : '');
+    if (strpos((string) $url, '/sites/status') !== false && is_array($GLOBALS['QA_SLOW'] ?? null)) {
+        return qa_slow_status();
+    }
     return ['headers' => new WpOrg\Requests\Utility\CaseInsensitiveDictionary([]), 'body' => '{"status":"success"}', 'response' => ['code' => 200, 'message' => ''], 'cookies' => [], 'filename' => null];
 }, PHP_INT_MAX, 3);
 $GLOBALS['QA_WARN'] = [];
@@ -43,7 +46,15 @@ $GLOBALS['QA_TAG'] = 'qadi' . wp_rand(10000, 99999);
 // A second database connection plays the other tracker request.
 $GLOBALS['QA_DB2'] = new wpdb(DB_USER, DB_PASSWORD, DB_NAME, DB_HOST);
 $GLOBALS['QA_DB2']->suppress_errors(true);
+// The second tracker request's own connection (I8).
+$GLOBALS['QA_DB3'] = new wpdb(DB_USER, DB_PASSWORD, DB_NAME, DB_HOST);
+$GLOBALS['QA_DB3']->set_prefix($wpdb->prefix);
 $GLOBALS['QA_RACE'] = null;
+$GLOBALS['QA_SLOW'] = null;
+$GLOBALS['QA_ORDER_IDS'] = [];
+$GLOBALS['QA_MARK_KEYS'] = [];
+$GLOBALS['QA_ORIG']['cg_license_status'] = get_option('cg_license_status', null);
+$GLOBALS['QA_ORIG']['cg_last_synced'] = get_transient('cg_last_synced');
 
 function qa_reset($usage = 10, $limit = 100) {
     set_transient('cg_api_cache', ['usage' => ['checkouts' => $usage, 'contact_reveals' => 0], 'limits' => ['checkouts' => $limit, 'contact_reveals' => 0]], DAY_IN_SECONDS);
@@ -122,6 +133,31 @@ add_filter('query', function ($q) {
     $r['id'] = qa_other_insert($r['c']);
     return $q;
 }, PHP_INT_MAX);
+// Mahin's case: no cg_api_cache and a slow /sites/status. While the first
+// tracker request waits for HQ, the second one (tracker.js sends it a moment
+// later) runs on its own database connection. HQ's answer is played by
+// writing cg_api_cache before the status call returns; the call itself
+// returns an error, so no signed payload is needed.
+function qa_slow_status() {
+    $s = &$GLOBALS['QA_SLOW'];
+    $s['status_calls']++;
+    usleep(300000);
+    if (!$s['second_done']) {
+        $s['second_done'] = true;
+        $keep = $GLOBALS['wpdb'];
+        $GLOBALS['wpdb'] = $GLOBALS['QA_DB3'];
+        try {
+            $s['second'] = qa_save($s['c']);
+        } finally {
+            $GLOBALS['wpdb'] = $keep;
+        }
+    }
+    set_transient('cg_api_cache', ['usage' => ['checkouts' => 10, 'contact_reveals' => 0], 'limits' => ['checkouts' => 100, 'contact_reveals' => 0]], DAY_IN_SECONDS);
+    return new WP_Error('qa_slow_hq', 'status answered by the test');
+}
+function qa_decr_calls() {
+    return count(array_filter($GLOBALS['QA_LOG'], function ($p) { return $p === '/sites/decrement-usage:checkouts'; }));
+}
 function qa_lock_name() {
     return function_exists('cg_incomplete_insert_lock_name') ? cg_incomplete_insert_lock_name() : '';
 }
@@ -201,6 +237,40 @@ try {
         qa_check($R, 'I7', 'order just placed: skipped, no row, no increment, lock free after', !empty($res['success']) && ($res['data']['skipped'] ?? '') === 'order_placed' && qa_rows($c['fp']) === 0 && qa_incr_calls() === 0 && $free === true, 'res=' . wp_json_encode($res) . ' rows=' . qa_rows($c['fp']) . ' free=' . var_export($free, true));
     }
 
+    // I8 (Mahin's repro): no cg_api_cache, slow HQ status, a second tracker
+    // request while the first waits: 1 row and 1 increment. After the order
+    // the row is gone and the decrement evens it out: net 0.
+    $GLOBALS['QA_LOG'] = [];
+    delete_transient('cg_api_cache');
+    $c = qa_cust('i8');
+    $GLOBALS['QA_SLOW'] = ['c' => $c, 'status_calls' => 0, 'second_done' => false, 'second' => null];
+    $res = qa_save($c);
+    $slow = $GLOBALS['QA_SLOW'];
+    $GLOBALS['QA_SLOW'] = null;
+    $rows = qa_rows($c['fp']);
+    $incr = qa_incr_calls();
+    $free = qa_lock_free();
+    qa_check($R, 'I8', 'no cache, slow HQ, second request meanwhile: 1 row, 1 increment', $slow['second_done'] && !empty($res['success']) && $rows === 1 && $incr === 1 && $free === true, 'first=' . wp_json_encode($res) . ' second=' . wp_json_encode($slow['second']) . " status_calls={$slow['status_calls']} rows=$rows incr=$incr free=" . var_export($free, true));
+    qa_session($c);
+    $order = wc_create_order(['status' => 'pending']);
+    $order->set_billing_email($c['email']);
+    $order->set_billing_phone($c['phone']);
+    $order->update_meta_data('_cg_device_fingerprint', $c['fp']);
+    $order->save();
+    $GLOBALS['QA_ORDER_IDS'][] = $order->get_id();
+    $GLOBALS['QA_MARK_KEYS'] = array_merge($GLOBALS['QA_MARK_KEYS'], ['t_' . $c['fp'], $c['fp'], $c['email'], cg_normalize_phone_number($c['phone'])]);
+    cg_delete_incomplete_checkout_on_order_completion($order->get_id());
+    // With the async decrement (H1) the decrement is a WP-Cron event: run
+    // the events scheduled for it now and remove them.
+    foreach ((array) _get_cron_array() as $ts => $hooks) {
+        foreach ((array) ($hooks['cg_send_usage_decrements'] ?? []) as $ev) {
+            wp_unschedule_event($ts, 'cg_send_usage_decrements', $ev['args']);
+            do_action_ref_array('cg_send_usage_decrements', $ev['args']);
+        }
+    }
+    $decr = qa_decr_calls();
+    qa_check($R, 'I8b', 'after the order: 0 rows, increments - decrements = 0', qa_rows($c['fp']) === 0 && $incr - $decr === 0, 'rows=' . qa_rows($c['fp']) . " incr=$incr decr=$decr");
+
     // I6: the lock name fits GET_LOCK (64 chars) and differs per table
     // prefix, so two sites on one database do not wait for each other.
     $n = qa_lock_name();
@@ -218,6 +288,26 @@ try {
     $wpdb->query($wpdb->prepare("DELETE FROM {$GLOBALS['QA_T']} WHERE device_fingerprint LIKE %s OR session_id LIKE %s OR email LIKE %s", $GLOBALS['QA_TAG'] . '%', 't_' . $GLOBALS['QA_TAG'] . '%', $GLOBALS['QA_TAG'] . '%'));
     $wpdb->get_var('SELECT RELEASE_ALL_LOCKS()');
     $GLOBALS['QA_DB2']->close();
+    $GLOBALS['QA_DB3']->close();
+    foreach ($GLOBALS['QA_ORDER_IDS'] as $id) {
+        $o2 = wc_get_order($id);
+        if ($o2) {
+            $o2->delete(true);
+        }
+    }
+    foreach ($GLOBALS['QA_MARK_KEYS'] as $v) {
+        delete_transient('cg_ordered_' . md5(strtolower(trim((string) $v))));
+    }
+    if ($GLOBALS['QA_ORIG']['cg_license_status'] === null) {
+        delete_option('cg_license_status');
+    } else {
+        update_option('cg_license_status', $GLOBALS['QA_ORIG']['cg_license_status']);
+    }
+    if ($GLOBALS['QA_ORIG']['cg_last_synced'] === false) {
+        delete_transient('cg_last_synced');
+    } else {
+        set_transient('cg_last_synced', $GLOBALS['QA_ORIG']['cg_last_synced'], WEEK_IN_SECONDS);
+    }
     if ($GLOBALS['QA_ORIG']['cg_plugin_options'] === null) {
         delete_option('cg_plugin_options');
     } else {
