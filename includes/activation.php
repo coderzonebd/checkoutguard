@@ -29,6 +29,9 @@ function cg_plugin_activate()
     cg_create_database_tables();
     cg_create_blocked_orders_table();
     cg_upgrade_fraud_tables();
+    // A fresh install records cg_db_version right below, so the upgrade seed in
+    // cg_maybe_run_migrations() never runs for it: seed the defaults here too.
+    cg_seed_duplicate_blocker_defaults();
     // Only record the schema version once every 1.5.0 column really exists
     // (blocklist usage_counted, checkouts contact_revealed_until); otherwise cg_maybe_run_migrations() retries on a later load.
     if (cg_ensure_150_schema()) {
@@ -592,26 +595,7 @@ function cg_maybe_run_migrations()
         cg_upgrade_fraud_tables();
 
         // Seed default options if missing
-        $options = get_option('cg_plugin_options', []);
-        $updated = false;
-        $defaults = [
-            'duplicate_blocker_enabled'      => 1,
-            'duplicate_blocker_window'       => 10,
-            'duplicate_blocker_mode'         => 'identical',
-            'duplicate_blocker_match_phone'  => 1,
-            'duplicate_blocker_match_device' => 1,
-            'duplicate_blocker_match_ip'     => 1,
-            'duplicate_blocker_match_email'  => 1,
-        ];
-        foreach ($defaults as $k => $v) {
-            if (!isset($options[$k])) {
-                $options[$k] = $v;
-                $updated = true;
-            }
-        }
-        if ($updated) {
-            update_option('cg_plugin_options', $options);
-        }
+        cg_seed_duplicate_blocker_defaults();
 
         // Bump the version only when the 1.5.0 columns are really there. On
         // failure the next page load (after a short pause, so a host that

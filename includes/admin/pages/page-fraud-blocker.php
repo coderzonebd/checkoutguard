@@ -371,7 +371,7 @@ function cg_render_fraud_blocker_page()
                 <tr>
                     <th scope="row"><label for="cg_duplicate_blocker_enabled"><?php _e('Enable Duplicate Blocker', 'checkoutguard'); ?></label></th>
                     <td>
-                        <label><input type="checkbox" id="cg_duplicate_blocker_enabled" value="1" <?php checked(!empty($cg_options['duplicate_blocker_enabled'])); ?>>
+                        <label><input type="checkbox" id="cg_duplicate_blocker_enabled" value="1" <?php checked(cg_duplicate_blocker_switch($cg_options, 'duplicate_blocker_enabled')); ?>>
                         <?php _e('Block rapid duplicate checkout submissions.', 'checkoutguard'); ?></label>
                     </td>
                 </tr>
@@ -398,6 +398,7 @@ function cg_render_fraud_blocker_page()
                             <option value="identical" <?php selected($dup_mode, 'identical'); ?>><?php _e('Smart (Block identical cart products & quantities only)', 'checkoutguard'); ?></option>
                             <option value="any" <?php selected($dup_mode, 'any'); ?>><?php _e('Strict (Block any order from the same customer)', 'checkoutguard'); ?></option>
                         </select>
+                        <p class="description"><?php _e('Smart mode first matches the cart items; if they do not match, it matches by order total.', 'checkoutguard'); ?></p>
                     </td>
                 </tr>
                 <tr>
@@ -434,7 +435,7 @@ function cg_render_fraud_blocker_page()
                     </th>
                     <td>
                         <?php
-                        $default_dup_msg = __('You have already placed an order (#{order_id}) recently. Please wait a few moments before ordering again, or contact us if you need to modify your order.', 'checkoutguard');
+                        $default_dup_msg = __('You have already placed an order recently. Please wait a few moments before ordering again, or contact us if you need to modify your order.', 'checkoutguard');
                         $saved_dup_msg = $cg_options['duplicate_blocker_message'] ?? '';
                         $is_pro = cg_is_pro_plan();
                         ?>
@@ -449,9 +450,9 @@ function cg_render_fraud_blocker_page()
                             <textarea id="cg_duplicate_blocker_message" rows="3" class="large-text" <?php echo !$is_pro ? 'disabled' : ''; ?> placeholder="<?php echo esc_attr($default_dup_msg); ?>"><?php echo esc_textarea($saved_dup_msg); ?></textarea>
                             <p class="description">
                                 <?php if (!$is_pro): ?>
-                                    <strong><?php _e('Custom message requires a Pro plan.', 'checkoutguard'); ?></strong> <?php _e('Free plan uses the default notice above. Available placeholders: {order_id}, {time_window}, {phone}', 'checkoutguard'); ?>
+                                    <strong><?php _e('Custom message requires a Pro plan.', 'checkoutguard'); ?></strong> <?php _e('Free plan uses the default notice above. Available placeholders: {time_window}, {phone}. The order number is never shown to the customer.', 'checkoutguard'); ?>
                                 <?php else: ?>
-                                    <?php _e('Leave blank to use default. Available placeholders: {order_id}, {time_window}, {phone}', 'checkoutguard'); ?>
+                                    <?php _e('Leave blank to use default. Available placeholders: {time_window}, {phone}. The order number is never shown to the customer.', 'checkoutguard'); ?>
                                 <?php endif; ?>
                             </p>
                         </div>

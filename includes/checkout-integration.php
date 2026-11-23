@@ -445,10 +445,14 @@ class CG_Response_Adapter
         if (!$result->is_blocked) {
             return;
         }
+        // The note carries the block code and the time only. The block message
+        // is kept in _cg_block_reason; it is not copied into the note so the
+        // note never carries another customer's order details.
         $order->set_status('cancelled', sprintf(
-            __('[CheckoutGuard] Order automatically cancelled by Fraud/Duplicate Blocker: %s (Rule: %s)', 'checkoutguard'),
-            wp_strip_all_tags($result->block_message),
-            $result->rule_triggered ?: $result->block_code
+            __('[CheckoutGuard] Order automatically cancelled by Fraud/Duplicate Blocker. Code: %1$s. Rule: %2$s. Time: %3$s UTC.', 'checkoutguard'),
+            $result->block_code,
+            $result->rule_triggered ?: $result->block_code,
+            gmdate('Y-m-d H:i:s')
         ));
         $order->update_meta_data('_cg_blocked', '1');
         $order->update_meta_data('_cg_block_reason', $result->block_message);
@@ -693,6 +697,9 @@ function cg_get_recent_matching_orders_for_duplicate_check($customer_data, $wind
     $match_email  = !isset($options['duplicate_blocker_match_email']) || !empty($options['duplicate_blocker_match_email']);
     $match_device = !isset($options['duplicate_blocker_match_device']) || !empty($options['duplicate_blocker_match_device']);
     $match_ip     = !isset($options['duplicate_blocker_match_ip']) || !empty($options['duplicate_blocker_match_ip']);
+    // D2 pending founder decision: device, IP, phone and email are OR-matched
+    // below, so an IP-only or device-only hit blocks, and 'identical' mode
+    // also accepts an order-total-only match. Behaviour is unchanged here.
 
     $valid_statuses = apply_filters('cg_duplicate_blocker_order_statuses', ['processing', 'pending', 'on-hold', 'completed']);
     $exclude_id = ($current_order instanceof WC_Order) ? (int) $current_order->get_id() : 0;
@@ -928,6 +935,12 @@ function cg_get_recent_matching_orders_for_duplicate_check($customer_data, $wind
         }
     }
 
+    // A blocked Store API attempt can leave a draft/pending order behind; it is
+    // not a real earlier order and must not restart the duplicate window.
+    $matching_orders = array_values(array_filter($matching_orders, function ($o) {
+        return !($o instanceof WC_Order) || $o->get_meta('_cg_blocked', true) !== '1';
+    }));
+
     return $matching_orders;
 }
 
@@ -937,7 +950,7 @@ function cg_get_recent_matching_orders_for_duplicate_check($customer_data, $wind
 function cg_check_duplicate_order_core($customer_data, $order = null)
 {
     $options = get_option('cg_plugin_options', []);
-    $dup_enabled = isset($options['duplicate_blocker_enabled']) ? !empty($options['duplicate_blocker_enabled']) : true;
+    $dup_enabled = cg_duplicate_blocker_switch($options, 'duplicate_blocker_enabled');
     if (!$dup_enabled) {
         return null;
     }
@@ -1050,14 +1063,28 @@ function cg_check_duplicate_order_core($customer_data, $order = null)
         );
 
         $is_pro = function_exists('cg_is_pro_plan') && cg_is_pro_plan();
-        $default_msg = __('You have already placed an order (#{order_id}) recently. Please wait a few moments before ordering again, or contact us if you need to modify your order.', 'checkoutguard');
+        // The matched order can belong to someone else (same IP or device), so
+        // the default notice never names it.
+        $default_msg = __('You have already placed an order recently. Please wait a few moments before ordering again, or contact us if you need to modify your order.', 'checkoutguard');
         $raw_message = ($is_pro && !empty($options['duplicate_blocker_message'])) ? $options['duplicate_blocker_message'] : $default_msg;
 
-        return str_replace(
-            ['{order_id}', '{time_window}', '{phone}'],
-            [$order_number, $window_minutes, $customer_phone ?: ''],
+        // The order number is never shown, not even in a custom message and not
+        // even when email or phone match: typed contact details prove nothing.
+        // A legacy {order_id} placeholder (with or without a leading '#') is
+        // removed.
+        $message = str_replace(
+            ['{time_window}', '{phone}'],
+            [$window_minutes, $customer_phone ?: ''],
             $raw_message
         );
+        $message = preg_replace('/\(\s*#?\s*\{order_id\}\s*\)/', '', $message);
+        $message = preg_replace('/#?\s*\{order_id\}/', '', $message);
+        $message = preg_replace('/ {2,}/', ' ', preg_replace('/ +([.,;:!?])/', '$1', $message));
+
+        $message = trim((string) $message);
+
+        // A custom message that held only the placeholder must still block.
+        return $message !== '' ? $message : $default_msg;
     }
 
     return null;
@@ -1517,6 +1544,58 @@ function cg_universal_order_save_guard($order, $data_store)
 add_action('woocommerce_before_order_object_save', 'cg_universal_order_save_guard', 10, 2);
 
 /**
+ * Close a Store API checkout attempt that CheckoutGuard blocked.
+ *
+ * Without this the draft stays pending and shows up as a live order for the
+ * same customer. The cancel goes through CG_Response_Adapter::lifecycle(), so
+ * the order gets the same status, audit note (block code and time) and
+ * _cg_blocked / _cg_block_code meta as any other order CheckoutGuard blocks.
+ * Cancelled is outside the duplicate lookup statuses and the save guard skips
+ * it. Only the attempt itself is touched, and only while it is still a draft
+ * or pending; no other order is looked up or changed.
+ *
+ * WooCommerce sends the admin "Order cancelled" email on pending -> cancelled;
+ * a blocked attempt was never a real order, so the order is marked and
+ * cg_mute_closed_attempt_cancelled_email() keeps that email off. The customer
+ * cancelled email only fires from processing or on-hold, so it never fires
+ * here. Stock and coupon usage are not changed: the block throws before
+ * WooCommerce holds coupons or reserves stock for this request, and
+ * WooCommerce only gives back stock or coupon usage that an order recorded.
+ *
+ * @param WC_Order             $order  The blocked attempt.
+ * @param CG_Validation_Result $result The block result.
+ */
+function cg_close_blocked_store_api_attempt($order, $result)
+{
+    if (!($order instanceof WC_Order) || !$order->has_status(['checkout-draft', 'pending'])) {
+        return;
+    }
+    CG_Response_Adapter::lifecycle($result, $order);
+    $order->update_meta_data('_cg_attempt_closed', '1');
+    $order->save();
+}
+
+/**
+ * Keep the admin "Order cancelled" email off for a closed Store API attempt.
+ *
+ * The decision comes from the order meta, not from request timing, so it also
+ * holds when WooCommerce defers transactional emails to shutdown or to a later
+ * Action Scheduler run. Orders cancelled by any other path are not affected.
+ *
+ * @param bool          $enabled     Whether the email is enabled.
+ * @param WC_Order|null $email_order The order the email is about, if any.
+ * @return bool
+ */
+function cg_mute_closed_attempt_cancelled_email($enabled, $email_order = null)
+{
+    if ($email_order instanceof WC_Order && $email_order->get_meta('_cg_attempt_closed', true) === '1') {
+        return false;
+    }
+    return $enabled;
+}
+add_filter('woocommerce_email_enabled_cancelled_order', 'cg_mute_closed_attempt_cancelled_email', 10, 2);
+
+/**
  * 3. WooCommerce Store API Checkout Guard (Gutenberg Checkout Block / Twenty Twenty-Five Theme / FSE)
  */
 function cg_store_api_checkout_guard($order, $request)
@@ -1532,6 +1611,12 @@ function cg_store_api_checkout_guard($order, $request)
 
     $result = CG_Validation_Engine::validate($context);
     if ($result->is_blocked()) {
+        // Mark the attempt so the duplicate lookup never counts it as an earlier
+        // order, whatever its status (WooCommerce keeps the draft after the
+        // exception below). A draft or pending attempt is also cancelled.
+        $order->update_meta_data('_cg_blocked', '1');
+        $order->update_meta_data('_cg_block_code', $result->block_code);
+        cg_close_blocked_store_api_attempt($order, $result);
         CG_Response_Adapter::store_api($result);
     } else {
         $order->update_meta_data('_cg_validated', '1');
