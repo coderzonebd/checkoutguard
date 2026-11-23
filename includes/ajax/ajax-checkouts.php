@@ -10,6 +10,71 @@ if (!defined('ABSPATH')) {
 // CHECKOUT TRACKING
 // ====================================================================
 
+// Seconds a tracker request waits for another one to finish creating the
+// incomplete checkout record before it gives up and asks to retry.
+if (!defined('CG_INCOMPLETE_INSERT_LOCK_WAIT')) {
+    define('CG_INCOMPLETE_INSERT_LOCK_WAIT', 5);
+}
+
+/**
+ * Name of the database lock held while a new incomplete checkout record is
+ * looked up and inserted. One lock per site (table prefix); GET_LOCK names
+ * are limited to 64 characters.
+ *
+ * @return string
+ */
+function cg_incomplete_insert_lock_name()
+{
+    global $wpdb;
+    return 'cg_incomplete_insert_' . substr(md5(DB_NAME . '|' . $wpdb->prefix), 0, 16);
+}
+
+/**
+ * Takes the new-record lock. MySQL frees it when the connection closes; it is
+ * also released on shutdown in case the request ends early (wp_send_json).
+ *
+ * GET_LOCK returns 0 when another request still holds the lock after the
+ * wait, and NULL on a database error (or when the server does not allow
+ * named locks). The tracker must not stop saving checkouts because of a
+ * database error, so NULL fails open: the caller saves without the lock, as
+ * before the lock existed, and one line is logged.
+ *
+ * @return bool True when the lock is held or could not be used (NULL);
+ *              false when another request holds it.
+ */
+function cg_incomplete_insert_lock()
+{
+    global $wpdb;
+    $got = $wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s, %d)', cg_incomplete_insert_lock_name(), CG_INCOMPLETE_INSERT_LOCK_WAIT));
+    if ($got === null) {
+        error_log('[CheckoutGuard] incomplete checkout insert lock unavailable (GET_LOCK returned NULL); saving without it.');
+        return true;
+    }
+    if ((string) $got !== '1') {
+        return false;
+    }
+    $GLOBALS['cg_incomplete_insert_locked'] = true;
+    static $registered = false;
+    if (!$registered) {
+        $registered = true;
+        register_shutdown_function('cg_incomplete_insert_unlock');
+    }
+    return true;
+}
+
+/**
+ * Releases the new-record lock if this request holds it.
+ */
+function cg_incomplete_insert_unlock()
+{
+    if (empty($GLOBALS['cg_incomplete_insert_locked'])) {
+        return;
+    }
+    $GLOBALS['cg_incomplete_insert_locked'] = false;
+    global $wpdb;
+    $wpdb->get_var($wpdb->prepare('SELECT RELEASE_LOCK(%s)', cg_incomplete_insert_lock_name()));
+}
+
 function cg_handle_save_checkout_data()
 {
     check_ajax_referer('cg_save_checkout_data_nonce', 'nonce');
@@ -79,10 +144,35 @@ function cg_handle_save_checkout_data()
         $where_params[] = $phone;
     }
 
-    $existing_record_id = $wpdb->get_var($wpdb->prepare(
+    $lookup_sql = $wpdb->prepare(
         "SELECT id FROM {$table_name} WHERE (" . implode(' OR ', $where_clauses) . ") ORDER BY id DESC LIMIT 1",
         ...$where_params
-    ));
+    );
+    $existing_record_id = $wpdb->get_var($lookup_sql);
+
+    // Two tracker requests for a new customer can both find no record, both
+    // insert one and both count it. Hold a lock from here until the insert
+    // and look again once it is held: the other request's row is found then.
+    //
+    // The limit check and the contact reveal decision may ask HQ first (no
+    // cg_api_cache, or the reveal period is over): up to 15s. Do that before
+    // the lock is taken, so other new customers' requests do not wait for it.
+    $can_insert = true;
+    $reveal_decision = ['count' => false, 'until' => null];
+    if (!$existing_record_id) {
+        $can_insert = cg_can_perform_action('checkouts');
+        if ($can_insert && function_exists('cg_contact_reveal_decide')) {
+            $reveal_decision = cg_contact_reveal_decide();
+        }
+        if (!cg_incomplete_insert_lock()) {
+            wp_send_json_error(['message' => 'Checkout data is being saved, please retry.', 'retry' => true], 409);
+            return;
+        }
+        $existing_record_id = $wpdb->get_var($lookup_sql);
+        if ($existing_record_id) {
+            cg_incomplete_insert_unlock();
+        }
+    }
 
     // The customer placed an order a moment ago and the cleanup removed the
     // record: a late tracker request must not add it back or count it again.
@@ -92,13 +182,15 @@ function cg_handle_save_checkout_data()
             $mark_keys[] = $phone;
         }
         if (cg_recently_placed_order($mark_keys)) {
+            cg_incomplete_insert_unlock();
             wp_send_json_success(['message' => 'Order already placed.', 'skipped' => 'order_placed']);
             return;
         }
     }
 
-    // Tier limit check for NEW incomplete checkouts
-    if (!$existing_record_id && !cg_can_perform_action('checkouts')) {
+    // Tier limit check for NEW incomplete checkouts (checked before the lock)
+    if (!$existing_record_id && !$can_insert) {
+        cg_incomplete_insert_unlock();
         wp_send_json_error([
             'message'       => cg_get_limit_reached_message('checkouts'),
             'limit_reached' => true,
@@ -202,20 +294,20 @@ function cg_handle_save_checkout_data()
             $data_to_save['cart_value'] = 0.00;
         }
 
-        // Free contact reveals (1.5.0): decide before the insert, save the
-        // record no matter what, then count it. The record is revealed only
-        // after HQ confirmed the count; any failure leaves it masked.
-        $reveal_decision = function_exists('cg_contact_reveal_decide')
-            ? cg_contact_reveal_decide()
-            : ['count' => false, 'until' => null];
+        // Free contact reveals (1.5.0): decided before the insert lock (see
+        // above), save the record no matter what, then count it. The record
+        // is revealed only after HQ confirmed the count; any failure leaves
+        // it masked.
 
         $result = $wpdb->insert(
             $table_name,
             $data_to_save,
             cg_get_db_formats($data_to_save)
         );
+        // The row exists now (or the insert failed): the next request finds it.
+        $new_record_id = (int) $wpdb->insert_id;
+        cg_incomplete_insert_unlock();
         if ($result !== false) {
-            $new_record_id = (int) $wpdb->insert_id;
             cg_increment_usage_count('checkouts');
             if (function_exists('cg_contact_reveal_commit')) {
                 cg_contact_reveal_commit($new_record_id, $reveal_decision);
