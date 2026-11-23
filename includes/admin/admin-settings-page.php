@@ -119,6 +119,13 @@ function cg_sanitize_and_sync_settings($input)
     $new_options['ratio_blocker_threshold'] = isset($input['ratio_blocker_threshold']) ? absint($input['ratio_blocker_threshold']) : ($options['ratio_blocker_threshold'] ?? 20);
     $new_options['ratio_blocker_grace_period'] = isset($input['ratio_blocker_grace_period']) ? absint($input['ratio_blocker_grace_period']) : ($options['ratio_blocker_grace_period'] ?? 5);
     $new_options['ratio_blocker_message'] = isset($input['ratio_blocker_message']) ? sanitize_textarea_field($input['ratio_blocker_message']) : ($options['ratio_blocker_message'] ?? '');
+    // ratio_action is rebuilt here like every other key, otherwise each save of
+    // cg_plugin_options drops it. Only 'block' and 'hold' are stored; a missing
+    // key stays missing so cg_ratio_action() keeps its 'hold' default.
+    $ratio_action = $input['ratio_action'] ?? ($options['ratio_action'] ?? null);
+    if ($ratio_action !== null) {
+        $new_options['ratio_action'] = ($ratio_action === 'block') ? 'block' : 'hold';
+    }
 
     // Handle checkboxes correctly. They are only in $input if checked.
     $new_options['enable_checkout_tracking'] = !empty($input['enable_checkout_tracking']);
