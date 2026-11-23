@@ -248,12 +248,13 @@ $st_after = get_option('cg_license_status', null);
 $gate = (int) get_option('cg_register_next_allowed_at', 0) - $GLOBALS['QA_NOW'];
 ok('G13s', '409 already_registered: status unchanged, gate = MIN_GAP', qa_registers() === 1 && $st_after === $st_before && $gate === CG_REGISTER_MIN_GAP, 'register=' . qa_registers() . ' status_before=' . var_export($st_before, true) . ' status_after=' . var_export(substr((string) $st_after, 0, 40), true) . " gate=$gate");
 
-// G13m/G13c (review N1): HQ may send "message" next to "error", or the
+// G13s-m/G13s-c (review N1; were G13m/G13c, renamed so they do not clash
+// with G13c Sync Now and G13m force): HQ may send "message" next to "error", or the
 // reason in "code". The 409 is matched by status + reason field, not by the
 // shown message text, so both keep the status and write the gate.
 foreach ([
-    'G13m' => ['error' => 'already_registered', 'message' => 'This domain already has a key'],
-    'G13c' => ['code' => 'already_registered', 'message' => 'This domain already has a key'],
+    'G13s-m' => ['error' => 'already_registered', 'message' => 'This domain already has a key'],
+    'G13s-c' => ['code' => 'already_registered', 'message' => 'This domain already has a key'],
 ] as $qa_id => $qa_body) {
     qa_reset();
     $GLOBALS['QA_ROUTES'] = ['/sites/register' => ['code' => 409, 'body' => $qa_body]];
