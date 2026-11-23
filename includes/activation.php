@@ -22,9 +22,11 @@ define('CG_REGISTER_MIN_GAP', MINUTE_IN_SECONDS);
 define('CG_REGISTER_MAX_WAIT', 10 * MINUTE_IN_SECONDS);
 // Double-click lock for the manual Reconnect. Separate from the register
 // gate: the gate holds the automatic path, this lock only stops a second
-// Reconnect while one is still running.
+// Reconnect while one is still running. 45 s covers one register (15 s
+// timeout) plus the sync after it (15 s); the lock is removed as soon as
+// the call ends.
 define('CG_REGISTER_RECONNECT_LOCK', 'cg_register_reconnect_lock');
-define('CG_REGISTER_RECONNECT_LOCK_TTL', 10);
+define('CG_REGISTER_RECONNECT_LOCK_TTL', 45);
 
 function cg_plugin_activate()
 {
