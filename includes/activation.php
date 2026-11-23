@@ -173,7 +173,11 @@ function cg_register_site_with_hq($force = false)
         $is_already_taken = (
             $response->get_error_code() === 'api_error' &&
             (str_contains($response->get_error_message(), 'already taken')
-                || $response->get_error_message() === 'already_registered'
+                // The API layer turns a bare {"error":"already_registered"}
+                // into the message, so this form also needs the 409.
+                || ($response->get_error_message() === 'already_registered'
+                    && is_array($err_data)
+                    && (int) ($err_data['status'] ?? 0) === 409)
                 || $is_already_registered)
         );
         if (!$is_already_taken) {
