@@ -236,6 +236,38 @@ qa_checkout_save(300); qa_checkout_save(301);
 $b = qa_registers();
 ok('G17', 'already taken + Retry-After 300: saves for 300 s -> 1 register, +300 s -> exactly 1', $a === 1 && $b === 1, "first=$a at300=$b gate=" . (int) get_option('cg_register_next_allowed_at', 0));
 
+// S9: "already taken" as HTTP 422 (same text, another status): the gate holds
+// (one register in 0..13 s, none at +59 s, one more at +60 s) and the shown
+// license status is left as it was, like the 409 form.
+qa_reset();
+$GLOBALS['QA_ROUTES'] = ['/sites/register' => ['code' => 422, 'body' => ['error' => 'Domain already taken']]];
+for ($i = 0; $i < 6; $i++) { qa_checkout_save($i); $GLOBALS['QA_NOW'] += 2; }
+$a = qa_registers();
+$st = (string) get_option('cg_license_status', '');
+$GLOBALS['QA_NOW'] = 1800000000 + 59; $GLOBALS['QA_LOG'] = [];
+qa_checkout_save(30); qa_checkout_save(31);
+$b = qa_registers();
+$GLOBALS['QA_NOW'] = 1800000000 + 60; $GLOBALS['QA_LOG'] = [];
+qa_checkout_save(40); qa_checkout_save(41);
+$c = qa_registers();
+ok('S9', 'already taken (422): 1 register, +59 s -> 0, +60 s -> 1, status unchanged', $a === 1 && $b === 0 && $c === 1 && $st === 'active', "first=$a at59=$b at60=$c status=" . substr($st, 0, 40));
+
+// S10: 2xx without a key writes the gate at exactly first try + 60 s and the
+// server-side setup message: +59 s -> 0 register, +60 s -> exactly 1.
+qa_reset();
+$GLOBALS['QA_ROUTES'] = ['/sites/register' => ['code' => 200, 'body' => ['api_key' => '']]];
+qa_checkout_save(1);
+$a = qa_registers();
+$gate = (int) get_option('cg_register_next_allowed_at', 0);
+$st = (string) get_option('cg_license_status', '');
+$GLOBALS['QA_NOW'] = 1800000000 + 59; $GLOBALS['QA_LOG'] = [];
+qa_checkout_save(2);
+$b = qa_registers();
+$GLOBALS['QA_NOW'] = 1800000000 + 60; $GLOBALS['QA_LOG'] = [];
+qa_checkout_save(3); qa_checkout_save(4);
+$c = qa_registers();
+ok('S10', '2xx without a key: gate = first + 60 s, +59 s -> 0, +60 s -> 1, setup message', $a === 1 && $b === 0 && $c === 1 && $gate === 1800000000 + 60 && strpos($st, 'failed: Headquarters accepted registration') === 0, "first=$a at59=$b at60=$c gate=$gate status=" . substr($st, 0, 40));
+
 $out = ob_get_clean();
 // restore
 qa_reset();
