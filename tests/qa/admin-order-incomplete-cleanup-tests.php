@@ -202,6 +202,30 @@ if ($has_fp_col) {
 $ro = $oid ? wc_get_order($oid) : null;
 mi_check('R6 recovered order does not get the admin\'s device fingerprint', $ro && $ro->get_meta('_cg_device_fingerprint') === '');
 mi_check('R5 one HQ decrement for the one deleted row', mi_decrements() - $hq0 === 1, 'decrements=' . (mi_decrements() - $hq0));
+mi_clear_rows();
+
+// R7 the UPDATE to 'recovered' fails: the entry itself must not be
+// deleted by the cleanup and no usage is given back for it.
+$entry = mi_row(['phone' => '01799000334', 'email' => 'cust4@cgmi.test', 'first_name' => 'Rec', 'cart_details' => $cart, 'country' => 'BD']);
+$sib = mi_row(['phone' => '01799000334', 'first_name' => 'Rec']);
+$fail_update = function ($q) use ($T) {
+    if (stripos($q, 'UPDATE') === 0 && strpos($q, $T) !== false && strpos($q, 'recovered') !== false) {
+        return 'SELECT cgmi_forced_failure FROM cgmi_no_such_table';
+    }
+    return $q;
+};
+add_filter('query', $fail_update);
+$suppress = $wpdb->suppress_errors(true);
+$hq0 = mi_decrements();
+$res = mi_recover($entry);
+$wpdb->suppress_errors($suppress);
+remove_filter('query', $fail_update);
+$oid = (int) ($res['data']['order_id'] ?? 0);
+if ($oid) { $created_orders[] = $oid; }
+$e = mi_get($entry);
+mi_check('R7 failed recovered UPDATE: entry is kept, nothing deleted, no decrement',
+    $e !== null && $e->status === 'incomplete' && mi_get($sib) !== null && mi_decrements() === $hq0,
+    ($e ? $e->status : 'missing') . ' decrements=' . (mi_decrements() - $hq0));
 remove_all_filters('wp_doing_ajax');
 remove_all_filters('wp_die_ajax_handler');
 mi_clear_rows();
