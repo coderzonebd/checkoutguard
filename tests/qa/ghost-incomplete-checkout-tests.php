@@ -290,6 +290,17 @@ try {
     $u61 = qa_usage();
     qa_check($R, 'G12', 'mark blocks at +59 s and is gone at +61 s', !$ext && $t0 > 0 && $n59 === 0 && $u59 === 10 && $n61 === 1 && $u61 === 11, "ext=" . ($ext ? 1 : 0) . " t0_left=" . ($t0 - time()) . " +59 rows=$n59 usage=$u59 +61 rows=$n61 usage=$u61");
 
+    // G12c: the mark length is the CG_ORDER_PLACED_MARK_TTL constant, which
+    // is 60, and a fresh mark is written with that length.
+    qa_reset();
+    $c = qa_cust('g12c');
+    $oid = qa_order($c);
+    $before = time();
+    cg_delete_incomplete_checkout_on_order_completion($oid);
+    $left = (int) get_option('_transient_timeout_cg_ordered_' . md5($c['fp'])) - $before;
+    $ttl = defined('CG_ORDER_PLACED_MARK_TTL') ? CG_ORDER_PLACED_MARK_TTL : null;
+    qa_check($R, 'G12c', 'mark TTL is the CG_ORDER_PLACED_MARK_TTL constant (60) and is used for the mark', $ttl === 60 && $left >= $ttl - 1 && $left <= $ttl + 1, 'const=' . var_export($ttl, true) . " left=$left");
+
     qa_check($R, 'G9', 'no PHP warnings from the plugin', empty($GLOBALS['QA_WARN']), implode(' ; ', array_slice($GLOBALS['QA_WARN'], 0, 3)));
 } catch (Throwable $e) {
     qa_check($R, 'GX', 'fatal', false, get_class($e) . ': ' . $e->getMessage() . ' @ ' . basename($e->getFile()) . ':' . $e->getLine());
