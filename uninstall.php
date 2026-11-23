@@ -86,4 +86,6 @@ if (!empty($options['delete_on_uninstall'])) {
     wp_clear_scheduled_hook('cg_sitekey_request_event');
     wp_clear_scheduled_hook('cg_sitekey_claim_event');
     wp_clear_scheduled_hook('cg_sitekey_retry_event');
+    // Queued HQ usage decrements (CG_USAGE_DECREMENT_HOOK).
+    wp_clear_scheduled_hook('cg_send_usage_decrements');
 }

@@ -64,27 +64,106 @@ function cg_increment_usage_count($action_type)
 
 
 /**
- * Decrements the usage count for a specific action via API call to HQ.
+ * Lowers the local usage copy (cg_api_cache) by one, for a faster UI
+ * response. Does not call HQ.
  *
  * @param string $action_type 'checkouts', 'fraud_blocks', etc.
+ * @return bool False for contact_reveals, which is never decremented.
  */
-function cg_decrement_usage_count($action_type)
+function cg_decrement_usage_local($action_type)
 {
     // contact_reveals only ever goes up (HQ answers 400 to a decrement):
     // deleting a record or an order must not give a reveal back.
     if ($action_type === 'contact_reveals') {
-        return;
+        return false;
     }
-
-    // Immediately update the local transient for a faster UI response.
     $config = get_transient('cg_api_cache');
     if ($config && isset($config['usage'][$action_type]) && $config['usage'][$action_type] > 0) {
         $config['usage'][$action_type]--;
         set_transient('cg_api_cache', $config, DAY_IN_SECONDS);
     }
+    return true;
+}
 
-    // Send the decrement request to the HQ server.
+/**
+ * Decrements the usage count for a specific action via API call to HQ.
+ * Waits for HQ (up to the 15 s API timeout): use it only on admin paths.
+ * Customer-facing code uses cg_queue_usage_decrement().
+ *
+ * @param string $action_type 'checkouts', 'fraud_blocks', etc.
+ */
+function cg_decrement_usage_count($action_type)
+{
+    if (!cg_decrement_usage_local($action_type)) {
+        return;
+    }
     cg_call_hq_api('/sites/decrement-usage', ['action_type' => $action_type]);
+}
+
+/**
+ * Lowers the local usage copy now and sends the HQ decrements later, from
+ * WP-Cron, so a customer request (order placed, thank-you page) never waits
+ * for HQ. One single event per call; $ref (e.g. the order id) keeps two
+ * events with the same count apart, since WP drops a duplicate single event
+ * with identical args within 10 minutes.
+ *
+ * @param string     $action_type 'checkouts', 'fraud_blocks', etc.
+ * @param int        $count       Number of decrements.
+ * @param string|int $ref         Caller reference, part of the event args.
+ * @return bool True when an event was scheduled.
+ */
+function cg_queue_usage_decrement($action_type, $count, $ref = '')
+{
+    $count = (int) $count;
+    if ($count < 1 || $action_type === 'contact_reveals') {
+        return false;
+    }
+    for ($i = 0; $i < $count; $i++) {
+        cg_decrement_usage_local($action_type);
+    }
+    return wp_schedule_single_event(time(), CG_USAGE_DECREMENT_HOOK, [(string) $action_type, $count, (string) $ref]) === true;
+}
+
+/**
+ * WP-Cron handler for cg_queue_usage_decrement(): sends $count decrements to
+ * HQ, one request each (HQ lowers by one per call), at most
+ * CG_USAGE_DECREMENT_MAX per run. The local copy was
+ * already lowered when the event was queued. Like the old direct call, a
+ * failed request is not retried: a timeout may still have reached HQ, and a
+ * second decrement would give usage back twice.
+ *
+ * @param string     $action_type
+ * @param int        $count
+ * @param string|int $ref Keeps events apart; passed on to the rest event.
+ */
+function cg_send_queued_usage_decrements($action_type, $count, $ref = '')
+{
+    $count = (int) $count;
+    if ($count < 1 || $action_type === 'contact_reveals') {
+        return;
+    }
+    $now = min($count, CG_USAGE_DECREMENT_MAX);
+    // More than one run's share: the rest goes in a new event a minute
+    // later, so one cron request stays short. Scheduled before the calls,
+    // so a run cut off by max_execution_time loses at most its own share.
+    if ($count > $now) {
+        wp_schedule_single_event(time() + MINUTE_IN_SECONDS, CG_USAGE_DECREMENT_HOOK, [(string) $action_type, $count - $now, (string) $ref]);
+    }
+    // Short timeout per call: a full share against a slow HQ takes at most
+    // CG_USAGE_DECREMENT_MAX x CG_USAGE_DECREMENT_TIMEOUT seconds.
+    $previous = $GLOBALS['cg_hq_timeout_override'] ?? null;
+    $GLOBALS['cg_hq_timeout_override'] = max(1, (int) CG_USAGE_DECREMENT_TIMEOUT);
+    try {
+        for ($i = 0; $i < $now; $i++) {
+            cg_call_hq_api('/sites/decrement-usage', ['action_type' => (string) $action_type]);
+        }
+    } finally {
+        if ($previous === null) {
+            unset($GLOBALS['cg_hq_timeout_override']);
+        } else {
+            $GLOBALS['cg_hq_timeout_override'] = $previous;
+        }
+    }
 }
 
 

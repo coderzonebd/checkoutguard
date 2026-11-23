@@ -48,6 +48,12 @@ define('CG_WHATSAPP_CONTACT1', 'https://wa.me/8801885660190');
 define('CG_WHATSAPP_CONTACT2', 'https://wa.me/8801751126322');
 define('CG_WHATSAPP_CONTACT3', 'https://wa.me/8801410323121');
 define('CG_PRICING_URL', 'https://coderzonebd.com/products/checkoutguard');
+// Usage decrements queued on customer paths, sent to HQ from WP-Cron.
+define('CG_USAGE_DECREMENT_HOOK', 'cg_send_usage_decrements');
+// HQ calls one queued-decrement run sends; the rest goes to a new event.
+define('CG_USAGE_DECREMENT_MAX', 20);
+// HTTP timeout (seconds) of each queued decrement call.
+define('CG_USAGE_DECREMENT_TIMEOUT', 5);
 
 require_once CG_INC_DIR . 'utils.php';
 require_once CG_INC_DIR . 'analytics.php';
@@ -183,6 +189,7 @@ function cg_init_plugin()
     add_action('woocommerce_thankyou', 'cg_delete_incomplete_checkout_on_order_completion', 10, 1);
     add_action('woocommerce_checkout_order_processed', 'cg_delete_incomplete_checkout_on_order_completion', 10, 1);
     add_action('woocommerce_new_order', 'cg_delete_incomplete_checkout_on_order_completion', 10, 1);
+    add_action(CG_USAGE_DECREMENT_HOOK, 'cg_send_queued_usage_decrements', 10, 3);
     add_action('woocommerce_checkout_process', 'cg_check_customer_against_blocklists', 20);
 
     // Site-wide device blocking (must run on every page load for blocked devices)
