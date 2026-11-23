@@ -206,6 +206,14 @@ remove_filter('query', $lim);
 $ev13 = qa_events();
 ok('D13', '3 rows matched, 1 deleted: event count 1, local -1', count($ev13) === 1 && ($ev13[0]['args'][1] ?? null) === 1 && qa_usage('checkouts') === 9, wp_json_encode($ev13) . ' usage=' . qa_usage('checkouts'));
 
+// D14 (review N5): the Store API hook passes a WC_Order object, not an id;
+// the ref must still be the order id (not "order-1").
+qa_reset();
+list($o14, $e14) = qa_order_with_rows(2, 'e');
+cg_delete_incomplete_checkout_on_order_completion(wc_get_order($o14));
+$ev14 = qa_events();
+ok('D14', 'cleanup called with the order object: ref order-<id>', count($ev14) === 1 && ($ev14[0]['args'] ?? null) === ['checkouts', 2, 'order-' . $o14], wp_json_encode($ev14));
+
 // cleanup
 qa_reset();
 wp_clear_scheduled_hook(CG_USAGE_DECREMENT_HOOK);
