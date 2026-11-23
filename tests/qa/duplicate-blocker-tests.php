@@ -16,7 +16,8 @@
  *      from a new cart session. A blocked attempt must not count as an earlier
  *      order: once the real order is outside the window, the next attempt goes
  *      through (F4a at t+80, F4b at t+100 after two blocked attempts). F4-ctl
- *      checks that attempts inside the window are still blocked.
+ *      checks that attempts inside the window are still blocked, with
+ *      the blocked_duplicate error code (not just any 400).
  *      F4 runs last because it defines REST_REQUEST for the rest of the process.
  *      F4c: a blocked attempt leaves no pending order or draft; if WC made one
  *      it is cancelled or in the trash. The one live order left must be the
@@ -450,7 +451,7 @@ $r0 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
 $id0 = qa_dup_single_order_id($F4[2]);
 qa_dup_age_orders(qa_dup_orders_by_email($F4[2]), 40);
 $r40 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
-qa_dup_check('F4-ctl [a] t+40 inside the window is blocked', $r0[0] === 200 && $r40[0] === 400, 't+0 ' . implode('/', $r0) . ', t+40 ' . implode('/', $r40));
+qa_dup_check('F4-ctl [a] t+40 inside the window is blocked (blocked_duplicate)', $r0[0] === 200 && $r40[0] === 400 && $r40[1] === 'blocked_duplicate', 't+0 ' . implode('/', $r0) . ', t+40 ' . implode('/', $r40));
 // F4c: the blocked attempt leaves no pending order or draft behind; if WC
 // created one it is cancelled or in the trash. Only the t+0 order is live,
 // and it is the same order: a fix that cancels the real order and keeps the
@@ -469,7 +470,7 @@ qa_dup_age_orders(qa_dup_orders_by_email($F4[2]), 40);
 $r40 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
 qa_dup_age_orders(qa_dup_orders_by_email($F4[2]), 10);
 $r50 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
-qa_dup_check('F4-ctl [b] t+40 and t+50 inside the window are blocked', $r0[0] === 200 && $r40[0] === 400 && $r50[0] === 400, 't+0 ' . implode('/', $r0) . ', t+40 ' . implode('/', $r40) . ', t+50 ' . implode('/', $r50));
+qa_dup_check('F4-ctl [b] t+40 and t+50 inside the window are blocked (blocked_duplicate)', $r0[0] === 200 && $r40[0] === 400 && $r40[1] === 'blocked_duplicate' && $r50[0] === 400 && $r50[1] === 'blocked_duplicate', 't+0 ' . implode('/', $r0) . ', t+40 ' . implode('/', $r40) . ', t+50 ' . implode('/', $r50));
 $live = qa_dup_live_orders($F4[2]);
 qa_dup_check('F4c [b] two blocked attempts leave no live order (only the t+0 order)', $r40[0] === 400 && $r50[0] === 400 && $id0 > 0 && array_keys($live) === [$id0], 't+0 id ' . $id0 . ', ' . qa_dup_fmt_live($live));
 qa_dup_age_orders(qa_dup_orders_by_email($F4[2]), 50);
