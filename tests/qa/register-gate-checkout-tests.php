@@ -462,6 +462,19 @@ cg_sync_with_hq();
 $plain = qa_registers();
 ok('G13c-ctl', 'inside the gate: cron sync and plain sync -> 0 register', $cron === 0 && $plain === 0, "cron=$cron plain=$plain");
 
+// G13m: only a real boolean true forces. A truthy non-boolean value (a hook
+// that passes an argument, '1', 1) must not send the register past the gate.
+qa_reset();
+cg_register_site_with_hq();
+$GLOBALS['QA_NOW'] += 10; $GLOBALS['QA_LOG'] = [];
+do_action('cg_daily_sync_hook', '1');
+$hook = qa_registers(); $GLOBALS['QA_LOG'] = [];
+cg_sync_with_hq('1');
+$str = qa_registers(); $GLOBALS['QA_LOG'] = [];
+cg_sync_with_hq(1);
+$int = qa_registers();
+ok('G13m', "inside the gate: hook arg '1', cg_sync_with_hq('1') and (1) -> 0 register", $hook === 0 && $str === 0 && $int === 0, "hook=$hook str=$str int=$int");
+
 // G13j: the forced register runs under the Reconnect lock. The register
 // request itself sees the lock held, so a Reconnect or a second Sync Now in
 // another tab started at that moment sends nothing.
