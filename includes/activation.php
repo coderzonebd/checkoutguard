@@ -27,6 +27,9 @@ define('CG_REGISTER_MAX_WAIT', 10 * MINUTE_IN_SECONDS);
 // the call ends.
 define('CG_REGISTER_RECONNECT_LOCK', 'cg_register_reconnect_lock');
 define('CG_REGISTER_RECONNECT_LOCK_TTL', 45);
+// Time HQ last answered register with "already registered" / "already taken"
+// while this site had no key. Kept until a key is stored.
+define('CG_REGISTER_ALREADY_REGISTERED_OPTION', 'cg_register_already_registered_at');
 
 function cg_plugin_activate()
 {
@@ -140,6 +143,7 @@ function cg_register_site_with_hq($force = false)
         $options['api_key'] = sanitize_text_field($response['api_key']);
         cg_update_options_from_hq($options);
         delete_option(CG_REGISTER_GATE_OPTION);
+        delete_option(CG_REGISTER_ALREADY_REGISTERED_OPTION);
         return;
     }
 
@@ -149,6 +153,8 @@ function cg_register_site_with_hq($force = false)
     // problem, so nothing this site can retry will fix it on its own.
     if (!is_wp_error($response) && is_array($response) && empty($response['api_key'])) {
         update_option('cg_license_status', 'failed: Headquarters accepted registration but returned no API key. This is a server-side configuration issue — please contact support.');
+        // A different answer now: the old already-registered note no longer applies.
+        delete_option(CG_REGISTER_ALREADY_REGISTERED_OPTION);
         // A retry right away gets the same answer; wait like any failure.
         update_option(CG_REGISTER_GATE_OPTION, cg_register_now() + CG_REGISTER_MIN_GAP, false);
         return;
@@ -156,12 +162,29 @@ function cg_register_site_with_hq($force = false)
 
     // Handle WP_Error responses
     if (is_wp_error($response)) {
+        // HQ answers 409 {"error":"already_registered"} when the domain already
+        // has a key; older HQ builds said "already taken". Both keep the status.
+        // The 409 is matched on status + reason field ("error" or "code"), so a
+        // "message" sent next to it does not hide it.
+        $err_data = $response->get_error_data();
+        $is_already_registered = is_array($err_data)
+            && (int) ($err_data['status'] ?? 0) === 409
+            && (($err_data['code'] ?? '') === 'already_registered' || ($err_data['error'] ?? '') === 'already_registered');
         $is_already_taken = (
             $response->get_error_code() === 'api_error' &&
-            str_contains($response->get_error_message(), 'already taken')
+            (str_contains($response->get_error_message(), 'already taken')
+                || $response->get_error_message() === 'already_registered'
+                || $is_already_registered)
         );
         if (!$is_already_taken) {
             update_option('cg_license_status', 'failed: ' . $response->get_error_message());
+            // HQ down, 5xx or another refusal: drop the old already-registered
+            // note so the notice matches the latest answer.
+            delete_option(CG_REGISTER_ALREADY_REGISTERED_OPTION);
+        } else {
+            // The status stays as it was, so the plain failed notice does not
+            // show; remember the answer for the already-registered notice.
+            update_option(CG_REGISTER_ALREADY_REGISTERED_OPTION, cg_register_now(), false);
         }
         // "Already taken" keeps the current status, but it is still a
         // refused register: gate it like every other failure so checkout
@@ -217,7 +240,8 @@ function cg_register_failed()
  */
 function cg_render_register_failed_notice()
 {
-    if (!current_user_can('manage_options') || !cg_register_failed()) {
+    // One notice at a time: the already-registered notice wins.
+    if (!current_user_can('manage_options') || !cg_register_failed() || cg_register_already_registered()) {
         return;
     }
     $page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : '';
@@ -249,6 +273,77 @@ function cg_render_register_failed_notice()
 add_action('admin_notices', 'cg_render_register_failed_notice');
 
 /**
+ * True while HQ said this domain is already registered and the site still
+ * has no key of its own (the status is left as it was, so
+ * cg_register_failed() does not see it).
+ */
+function cg_register_already_registered()
+{
+    $options = get_option('cg_plugin_options', []);
+    if (is_array($options) && !empty($options['api_key'])) {
+        return false;
+    }
+    return (int) get_option(CG_REGISTER_ALREADY_REGISTERED_OPTION, 0) > 0;
+}
+
+/**
+ * Admin notice for the already-registered case: checks are off, say so in
+ * plain words (never the word "key"), with the same gated Reconnect.
+ */
+function cg_render_register_already_registered_notice()
+{
+    if (!current_user_can('manage_options') || !cg_register_already_registered()) {
+        return;
+    }
+    $page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : '';
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    $on_dashboard = $screen && $screen->id === 'dashboard';
+    if (!$on_dashboard && strpos($page, 'cg-') !== 0) {
+        return;
+    }
+    $gate = (int) get_option(CG_REGISTER_GATE_OPTION, 0);
+    $running = get_transient(CG_REGISTER_RECONNECT_LOCK) !== false;
+    echo '<div class="notice notice-error"><p><strong>' . esc_html__('CheckoutGuard is not protecting checkouts right now.', 'checkoutguard') . '</strong> ';
+    echo esc_html__('This site is already registered with CheckoutGuard, but this copy of the plugin is not connected to it. Orders still go through, but without the fraud check.', 'checkoutguard') . ' ';
+    // Same three states as the failed notice: Reconnect running, inside the
+    // (capped) gate, or the Reconnect button.
+    if ($running) {
+        echo esc_html__('Reconnect is running. Reload this page in a few seconds.', 'checkoutguard');
+    } elseif (cg_register_gate_left() > 0) {
+        echo esc_html(sprintf(
+            /* translators: %s: time after which the admin may try again */
+            __('You can try again after %s.', 'checkoutguard'),
+            wp_date(get_option('date_format') . ' ' . get_option('time_format'), $gate)
+        )) . ' ';
+        echo esc_html__('If it keeps failing, contact CheckoutGuard support.', 'checkoutguard');
+    } else {
+        $url = wp_nonce_url(admin_url('admin-post.php?action=cg_register_reconnect'), 'cg_register_reconnect');
+        echo '<a class="button button-secondary" href="' . esc_url($url) . '">' . esc_html__('Reconnect now', 'checkoutguard') . '</a> ';
+        echo esc_html__('If it keeps failing, contact CheckoutGuard support.', 'checkoutguard');
+    }
+    echo '</p></div>';
+}
+add_action('admin_notices', 'cg_render_register_already_registered_notice');
+
+/**
+ * A key saved any other way (settings, HQ sync) ends the already-registered
+ * state.
+ *
+ * @param mixed $old_value Previous cg_plugin_options value.
+ * @param mixed $value     New cg_plugin_options value.
+ */
+function cg_register_already_registered_clear($old_value, $value)
+{
+    if (is_array($value) && !empty($value['api_key'])) {
+        delete_option(CG_REGISTER_ALREADY_REGISTERED_OPTION);
+    }
+}
+add_action('update_option_cg_plugin_options', 'cg_register_already_registered_clear', 10, 2);
+add_action('add_option_cg_plugin_options', function ($option, $value) {
+    cg_register_already_registered_clear(null, $value);
+}, 10, 2);
+
+/**
  * One manual registration attempt. An admin click is not held by the gate:
  * it always sends one register and moves the gate first, so the automatic
  * path (checkout saves, cron) stays gated after it.
@@ -261,7 +356,7 @@ add_action('admin_notices', 'cg_render_register_failed_notice');
  */
 function cg_register_reconnect_attempt()
 {
-    if (!cg_register_failed()) {
+    if (!cg_register_failed() && !cg_register_already_registered()) {
         return 'not_needed';
     }
     if (get_transient(CG_REGISTER_RECONNECT_LOCK) !== false) {

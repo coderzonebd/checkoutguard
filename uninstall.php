@@ -42,6 +42,7 @@ if (!empty($options['delete_on_uninstall'])) {
     delete_option('cg_api_log');
     delete_option('cg_sitekey_next_allowed_at');
     delete_option('cg_register_next_allowed_at');
+    delete_option('cg_register_already_registered_at');
     delete_option('cg_sitekey_backoff_step');
     delete_option('cg_sitekey_recent_calls');
     delete_option('cg_sitekey_retry_lock');
@@ -78,6 +79,7 @@ if (!empty($options['delete_on_uninstall'])) {
     delete_option('cg_sitekey_state');
     delete_option('cg_sitekey_next_allowed_at');
     delete_option('cg_register_next_allowed_at');
+    delete_option('cg_register_already_registered_at');
     delete_option('cg_sitekey_lock');
     delete_option('cg_sitekey_last_drop');
 
