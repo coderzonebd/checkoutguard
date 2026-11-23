@@ -185,6 +185,20 @@ foreach ([['C16c-null', 'HQ 200 with {"result": null}', ['cache_source' => 'fres
     $n = count($GLOBALS['QA_CALLS']);
     ok($c[0], $c[1] . ': not cached, the next request calls HQ again (2 calls)', $tc === 'no' && $n === 2, "cached=$tc calls=$n src=" . (is_array($r1) ? ($r1['cache_source'] ?? '') : gettype($r1)));
 }
+// C16d: HQ answers 200 with "result" set to a scalar (a string, a number,
+// true). Not a courier result either: it must not be cached, so the next
+// request asks HQ again. Without the is_array() check on "result" this
+// would be normalized to an empty result and cached for 6 hours.
+foreach ([['C16d-str', 'HQ 200 with {"result": "ok"}', 'ok', '01711222333'], ['C16d-int', 'HQ 200 with {"result": 1}', 1, '01721222333'], ['C16d-true', 'HQ 200 with {"result": true}', true, '01731222333']] as $c) {
+    $GLOBALS['QA_HTTP'] = ['code' => 200, 'body' => ['cache_source' => 'fresh', 'result' => $c[2]]];
+    qa_reset([$c[3]]);
+    $r1 = cg_perform_all_api_calls($c[3], 0);
+    $tc = get_transient('cg_courier_cache_' . md5($c[3])) !== false ? 'yes' : 'no';
+    if (function_exists('cg_courier_request_memo_reset')) { cg_courier_request_memo_reset(); }
+    cg_perform_all_api_calls($c[3], 0);
+    $n = count($GLOBALS['QA_CALLS']);
+    ok($c[0], $c[1] . ': not cached, the next request calls HQ again (2 calls)', $tc === 'no' && $n === 2, "cached=$tc calls=$n src=" . (is_array($r1) ? ($r1['cache_source'] ?? '') : gettype($r1)));
+}
 // C16-ctl: a real 200 courier result is cached, so the next request makes no
 // call (C16 is not passing because nothing is ever cached). The answer has
 // one courier with data: a summary alone counts as an all-failed answer,
