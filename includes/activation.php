@@ -15,6 +15,11 @@ define('CG_MIGRATION_NOTICE_AFTER', 3);
 // failed registration (at least a minute, longer when HQ sent Retry-After).
 define('CG_REGISTER_GATE_OPTION', 'cg_register_next_allowed_at');
 define('CG_REGISTER_MIN_GAP', MINUTE_IN_SECONDS);
+// Double-click lock for the manual Reconnect. Separate from the register
+// gate: the gate holds the automatic path, this lock only stops a second
+// Reconnect while one is still running.
+define('CG_REGISTER_RECONNECT_LOCK', 'cg_register_reconnect_lock');
+define('CG_REGISTER_RECONNECT_LOCK_TTL', 10);
 
 function cg_plugin_activate()
 {
@@ -196,9 +201,12 @@ function cg_render_register_failed_notice()
         return;
     }
     $gate = (int) get_option(CG_REGISTER_GATE_OPTION, 0);
+    $running = get_transient(CG_REGISTER_RECONNECT_LOCK) !== false;
     echo '<div class="notice notice-error"><p><strong>' . esc_html__('CheckoutGuard is not protecting checkouts right now.', 'checkoutguard') . '</strong> ';
     echo esc_html__('This site could not connect to CheckoutGuard yet. Orders still go through, but without the fraud check.', 'checkoutguard') . ' ';
-    if ($gate > cg_register_now()) {
+    if ($running) {
+        echo esc_html__('Reconnect is running. Reload this page in a few seconds.', 'checkoutguard');
+    } elseif ($gate > cg_register_now()) {
         echo esc_html(sprintf(
             /* translators: %s: time after which the admin may try again */
             __('You can try again after %s.', 'checkoutguard'),
@@ -219,22 +227,34 @@ add_action('admin_notices', 'cg_render_register_failed_notice');
  * it always sends one register and moves the gate first, so the automatic
  * path (checkout saves, cron) stays gated after it.
  *
- * @return string 'not_needed' or 'tried'.
+ * A short lock (CG_REGISTER_RECONNECT_LOCK, CG_REGISTER_RECONNECT_LOCK_TTL
+ * seconds) is set before the call and removed when it ends, success or not.
+ * While it is set a second click sends nothing.
+ *
+ * @return string 'not_needed', 'running' or 'tried'.
  */
 function cg_register_reconnect_attempt()
 {
     if (!cg_register_failed()) {
         return 'not_needed';
     }
-    $now = cg_register_now();
-    update_option(CG_REGISTER_GATE_OPTION, $now + CG_REGISTER_MIN_GAP, false);
-    if (!function_exists('cg_sync_with_hq')) {
-        require_once CG_ADMIN_DIR . 'admin-settings-page.php';
+    if (get_transient(CG_REGISTER_RECONNECT_LOCK) !== false) {
+        return 'running';
     }
-    // The one register this attempt allows. If it fails it sets the gate
-    // again, so the register inside the sync below stays gated.
-    cg_register_site_with_hq(true);
-    cg_sync_with_hq();
+    set_transient(CG_REGISTER_RECONNECT_LOCK, 1, CG_REGISTER_RECONNECT_LOCK_TTL);
+    try {
+        $now = cg_register_now();
+        update_option(CG_REGISTER_GATE_OPTION, $now + CG_REGISTER_MIN_GAP, false);
+        if (!function_exists('cg_sync_with_hq')) {
+            require_once CG_ADMIN_DIR . 'admin-settings-page.php';
+        }
+        // The one register this attempt allows. If it fails it sets the gate
+        // again, so the register inside the sync below stays gated.
+        cg_register_site_with_hq(true);
+        cg_sync_with_hq();
+    } finally {
+        delete_transient(CG_REGISTER_RECONNECT_LOCK);
+    }
     return 'tried';
 }
 
