@@ -259,6 +259,37 @@ try {
         qa_check($R, $gid, "$meta attempt: row kept, no decrement, no mark", $n === 1 && qa_usage() === 10 && !$mark && $guard === '', "rows=$n usage=" . qa_usage() . ' mark=' . ($mark ? 1 : 0) . " guard='$guard'");
     }
 
+    // G12: the mark lasts 60 seconds. Its timeout is moved back as if the
+    // order was placed 59 s ago (still blocked) and then 61 s ago (released).
+    // WordPress option transients expire when timeout < time(), so the
+    // second at +60 itself still counts as inside the mark.
+    qa_reset();
+    $c = qa_cust('g12');
+    $oid = qa_order($c);
+    cg_delete_incomplete_checkout_on_order_completion($oid);
+    $ext = wp_using_ext_object_cache();
+    $tkey = '_transient_timeout_cg_ordered_' . md5($c['fp']);
+    $t0 = (int) get_option($tkey);
+    $shift = function ($elapsed) use ($t0) {
+        foreach (array_unique($GLOBALS['QA_MARKS']) as $v) {
+            $k = '_transient_timeout_cg_ordered_' . md5(strtolower(trim((string) $v)));
+            if (get_option($k) !== false) {
+                update_option($k, $t0 - $elapsed, false);
+            }
+        }
+    };
+    $shift(59);
+    qa_reset();
+    qa_save($c);
+    $n59 = qa_rows('device_fingerprint', $c['fp']);
+    $u59 = qa_usage();
+    $shift(61);
+    qa_reset();
+    qa_save($c);
+    $n61 = qa_rows('device_fingerprint', $c['fp']);
+    $u61 = qa_usage();
+    qa_check($R, 'G12', 'mark blocks at +59 s and is gone at +61 s', !$ext && $t0 > 0 && $n59 === 0 && $u59 === 10 && $n61 === 1 && $u61 === 11, "ext=" . ($ext ? 1 : 0) . " t0_left=" . ($t0 - time()) . " +59 rows=$n59 usage=$u59 +61 rows=$n61 usage=$u61");
+
     qa_check($R, 'G9', 'no PHP warnings from the plugin', empty($GLOBALS['QA_WARN']), implode(' ; ', array_slice($GLOBALS['QA_WARN'], 0, 3)));
 } catch (Throwable $e) {
     qa_check($R, 'GX', 'fatal', false, get_class($e) . ': ' . $e->getMessage() . ' @ ' . basename($e->getFile()) . ':' . $e->getLine());
