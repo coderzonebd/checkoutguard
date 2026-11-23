@@ -171,6 +171,20 @@ foreach ([['C16a', 'HQ 200 with an HTML body', '<html><body>502 Bad Gateway</bod
     $n = count($GLOBALS['QA_CALLS']);
     ok($c[0], $c[1] . ': not cached, the next request calls HQ again (2 calls)', $tc === 'no' && $n === 2, "cached=$tc calls=$n src=" . (is_array($r1) ? ($r1['cache_source'] ?? '') : gettype($r1)));
 }
+// C16c: HQ answers 200 with a JSON object that has no courier result in it:
+// "result" is null, or the "result" key is missing. That is the same empty
+// answer as C16a/b: it must not be cached for 6 hours, so the next request
+// asks HQ again.
+foreach ([['C16c-null', 'HQ 200 with {"result": null}', ['cache_source' => 'fresh', 'result' => null], '01681222333'], ['C16c-nokey', 'HQ 200 with no "result" key', ['cache_source' => 'fresh'], '01691222333']] as $c) {
+    $GLOBALS['QA_HTTP'] = ['code' => 200, 'body' => $c[2]];
+    qa_reset([$c[3]]);
+    $r1 = cg_perform_all_api_calls($c[3], 0);
+    $tc = get_transient('cg_courier_cache_' . md5($c[3])) !== false ? 'yes' : 'no';
+    if (function_exists('cg_courier_request_memo_reset')) { cg_courier_request_memo_reset(); }
+    cg_perform_all_api_calls($c[3], 0);
+    $n = count($GLOBALS['QA_CALLS']);
+    ok($c[0], $c[1] . ': not cached, the next request calls HQ again (2 calls)', $tc === 'no' && $n === 2, "cached=$tc calls=$n src=" . (is_array($r1) ? ($r1['cache_source'] ?? '') : gettype($r1)));
+}
 // C16-ctl: a real 200 courier result is cached, so the next request makes no
 // call (C16 is not passing because nothing is ever cached).
 $GLOBALS['QA_HTTP'] = ['code' => 200, 'body' => ['cache_source' => 'fresh', 'result' => ['summary' => ['success_rate' => 90, 'total_deliveries' => 10, 'successful_deliveries' => 9, 'cancelled_deliveries' => 1]]]];
@@ -189,7 +203,7 @@ cg_perform_all_api_calls('01511222333', 0); cg_perform_all_api_calls('0151122233
 $n = count($GLOBALS['QA_CALLS']);
 ok('C8', 'bypass_cache sends a new call', $n === 2, "calls=$n");
 
-foreach (['01781222333', '01791222333', '01701222333', '01751222333', '01761222333', '01771222333', '01731222333', '01741222333', '01721222333', '01711222333', '+880 1711-222333', '8801711222333', '01811222333', '+8801811222333', '01911222333', '01611222333', '01511222333'] as $p) { delete_transient('cg_courier_cache_' . md5($p)); }
+foreach (['01781222333', '01791222333', '01681222333', '01691222333', '01701222333', '01751222333', '01761222333', '01771222333', '01731222333', '01741222333', '01721222333', '01711222333', '+880 1711-222333', '8801711222333', '01811222333', '+8801811222333', '01911222333', '01611222333', '01511222333'] as $p) { delete_transient('cg_courier_cache_' . md5($p)); }
 delete_transient(CG_COURIER_AUTH_REJECT_TRANSIENT);
 if (defined('CG_COURIER_TIMEOUT_WAIT_TRANSIENT')) { delete_transient(CG_COURIER_TIMEOUT_WAIT_TRANSIENT); }
 cg_update_options_from_hq(is_array($GLOBALS['QA_OPTS_ORIG']) ? $GLOBALS['QA_OPTS_ORIG'] : []);
