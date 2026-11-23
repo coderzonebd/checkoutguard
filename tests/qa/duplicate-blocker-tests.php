@@ -38,6 +38,11 @@
  *      F4f: with 'cancelled' added through cg_duplicate_blocker_order_statuses,
  *      the duplicate lookup still leaves out the cancelled attempt (by its
  *      _cg_blocked meta); a plain cancelled order of the customer is found.
+ *      F4g: a blocked Store API order that is not a draft or pending (built in
+ *      memory, on-hold) is not cancelled but still gets _cg_blocked and
+ *      _cg_block_code.
+ *      F4-end (deferred mode only): what F4e-F4g queued is sent before their
+ *      orders are deleted, so no queued email action is left for a later run.
  *
  * Pending founder decision (skipped unless QA_DUP_PENDING=1 is set):
  * P-off  default OFF: with no options, a different customer who only shares the
@@ -648,6 +653,38 @@ remove_filter('cg_duplicate_blocker_order_statuses', $f_add_cancelled);
 $f_att_id = $att ? (int) $att->get_id() : 0;
 qa_dup_check('F4f-ctl with cancelled added by filter, a plain cancelled order of the customer is found (and not without it)', $f_att_id > 0 && in_array($f_ctl_id, $f_wide, true) && !in_array($f_ctl_id, $f_plain, true), 'plain ' . wp_json_encode($f_plain) . ', with filter ' . wp_json_encode($f_wide) . ', ctl ' . $f_ctl_id);
 qa_dup_check('F4f [lookup] with cancelled added by filter, the blocked cancelled attempt is still not an earlier order', $f_att_id > 0 && !in_array($f_att_id, $f_wide, true) && !in_array($f_att_id, $f_plain, true), 'attempt ' . $f_att_id . ', plain ' . wp_json_encode($f_plain) . ', with filter ' . wp_json_encode($f_wide));
+// F4g: a blocked Store API order that is not a draft or pending is not
+// cancelled, but it still carries _cg_blocked / _cg_block_code so the
+// duplicate lookup never counts it. The order is built in memory only
+// (calculate_totals() would save it), with the earlier order's total.
+$g_o = new WC_Order();
+$g_o->set_billing_first_name('Echo');
+$g_o->set_billing_last_name('QA');
+$g_o->add_product(wc_get_product($e_prod->get_id()), 1);
+$g_o->set_billing_phone('01600000505');
+$g_o->set_billing_email($e_email);
+$g_o->set_total($o0 ? $o0->get_total() : 0);
+$g_o->set_status('on-hold');
+$g_thrown = false;
+try {
+    cg_store_api_checkout_guard($g_o, null);
+} catch (Exception $g_e) {
+    $g_thrown = true;
+}
+qa_dup_check('F4g [meta] a blocked on-hold Store API order keeps its status and is still flagged _cg_blocked / _cg_block_code', $g_thrown && $g_o->get_status() === 'on-hold' && $g_o->get_meta('_cg_blocked', true) === '1' && $g_o->get_meta('_cg_block_code', true) !== '' && (int) $g_o->get_id() === 0, 'thrown ' . var_export($g_thrown, true) . ', status ' . $g_o->get_status() . ', blocked ' . $g_o->get_meta('_cg_blocked', true) . ', code ' . $g_o->get_meta('_cg_block_code', true) . ', id ' . $g_o->get_id());
+// Deferred mode: send what F4e/F4f queued while their orders still exist, so
+// no queued email action is left for a later run (it would skew F4d [b]).
+add_filter('pre_wp_mail', $qa_f4d_cap, 10, 2);
+$qa_f4d_flush();
+remove_filter('pre_wp_mail', $qa_f4d_cap, 10);
+if ($qa_f4d_deferred) {
+    // Hand over anything still held in memory first; it would otherwise be
+    // queued at shutdown, after this check.
+    wc_get_container()->get(\Automattic\WooCommerce\Internal\Email\DeferredEmailQueue::class)->dispatch();
+    wp_cache_flush();
+    $f_left = as_get_scheduled_actions(['hook' => 'woocommerce_send_queued_transactional_email', 'status' => ActionScheduler_Store::STATUS_PENDING, 'per_page' => -1], 'ids');
+    qa_dup_check('F4-end [queue] (deferred) no queued transactional email action is left pending', count($f_left) === 0, 'pending ' . count($f_left));
+}
 qa_dup_delete_orders(qa_dup_orders_by_email($e_email));
 $e_cpn->delete(true);
 $e_prod->delete(true);
