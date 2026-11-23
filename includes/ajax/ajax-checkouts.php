@@ -670,7 +670,8 @@ function cg_get_incomplete_checkout_details_ajax_handler()
 
 if (!defined('CG_RECOVER_LOCK_STALE_AFTER')) {
     // A Recover request that died keeps its lock this many seconds at most.
-    define('CG_RECOVER_LOCK_STALE_AFTER', 120);
+    // Long enough for slow WC hooks, email and SMS on a live Recover.
+    define('CG_RECOVER_LOCK_STALE_AFTER', 300);
 }
 
 function cg_recover_lock_name($entry_id)
