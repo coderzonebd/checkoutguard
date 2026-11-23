@@ -33,12 +33,23 @@ function cg_incomplete_insert_lock_name()
  * Takes the new-record lock. MySQL frees it when the connection closes; it is
  * also released on shutdown in case the request ends early (wp_send_json).
  *
- * @return bool True when the lock is held.
+ * GET_LOCK returns 0 when another request still holds the lock after the
+ * wait, and NULL on a database error (or when the server does not allow
+ * named locks). The tracker must not stop saving checkouts because of a
+ * database error, so NULL fails open: the caller saves without the lock, as
+ * before the lock existed, and one line is logged.
+ *
+ * @return bool True when the lock is held or could not be used (NULL);
+ *              false when another request holds it.
  */
 function cg_incomplete_insert_lock()
 {
     global $wpdb;
     $got = $wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s, %d)', cg_incomplete_insert_lock_name(), CG_INCOMPLETE_INSERT_LOCK_WAIT));
+    if ($got === null) {
+        error_log('[CheckoutGuard] incomplete checkout insert lock unavailable (GET_LOCK returned NULL); saving without it.');
+        return true;
+    }
     if ((string) $got !== '1') {
         return false;
     }
