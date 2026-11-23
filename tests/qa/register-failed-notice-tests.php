@@ -25,6 +25,11 @@ $GLOBALS['QA_LOG'] = []; $GLOBALS['QA_ROUTES'] = [];
 add_filter('pre_http_request', function ($pre, $args, $url) {
     $path = preg_replace('#^.*?/api/v1#', '', (string) parse_url($url, PHP_URL_PATH));
     $GLOBALS['QA_LOG'][] = $path;
+    if ($path === '/sites/register' && !empty($GLOBALS['QA_ON_REGISTER'])) {
+        $cb = $GLOBALS['QA_ON_REGISTER'];
+        $GLOBALS['QA_ON_REGISTER'] = null;
+        $cb();
+    }
     $r = $GLOBALS['QA_ROUTES'][$path] ?? ['code' => 'down'];
     if ($r['code'] === 'down') {
         return new WP_Error('http_request_failed', 'cURL error 7: Failed to connect to 127.0.0.1 port 8099');
@@ -57,6 +62,7 @@ function qa_reset() {
     cg_update_options_from_hq($o);
     update_option('cg_license_status', 'active');
     $GLOBALS['QA_LOG'] = []; $GLOBALS['QA_ROUTES'] = []; $GLOBALS['QA_NOW'] = 1800000000;
+    $GLOBALS['QA_ON_REGISTER'] = null;
     wp_set_current_user($GLOBALS['QA_ADMIN']);
     $_GET = [];
     set_current_screen('dashboard');
@@ -69,6 +75,17 @@ function qa_notices() {
     cg_render_sitekey_notice();
     $sk = ob_get_clean();
     return [$reg, $sk];
+}
+function qa_regs() {
+    return count(array_filter($GLOBALS['QA_LOG'], function ($p) { return $p === '/sites/register'; }));
+}
+// A second Reconnect click that arrives while the first one is still
+// waiting for HQ (the real double click): it runs inside the first
+// register call. Returns a reference to its result.
+function &qa_second_click_during_register() {
+    $GLOBALS['QA_SECOND'] = null;
+    $GLOBALS['QA_ON_REGISTER'] = function () { $GLOBALS['QA_SECOND'] = cg_register_reconnect_attempt(); };
+    return $GLOBALS['QA_SECOND'];
 }
 $GLOBALS['R'] = [];
 function ok($id, $name, $pass, $detail) { $GLOBALS['R'][] = [$id, $name, $pass ? 'PASS' : 'FAIL', $detail]; }
@@ -106,12 +123,16 @@ $o = get_option('cg_plugin_options', []);
 list($reg) = qa_notices();
 ok('N4', 'Reconnect inside the gate: one register, key stored, notice gone', $gate_left > 0 && $g1 === 'tried' && $reg_calls === 1 && ($o['api_key'] ?? '') === 'qa-shared-key-not-real' && $reg === '' && get_option('cg_register_next_allowed_at', null) === null, "gate_left=$gate_left g1=$g1 register_calls=$reg_calls");
 
-// N5: double click: the second attempt within the minute sends nothing
+// N5: double click: the second click arrives while the first is still
+// calling HQ (Reconnect lock held, Tanvir R2 = 2) and sends nothing. The
+// lock is not the register gate, so this holds with no gate at all.
 qa_reset();
 cg_register_site_with_hq();
 $GLOBALS['QA_NOW'] += 61; $GLOBALS['QA_LOG'] = [];
-$a = cg_register_reconnect_attempt(); $b = cg_register_reconnect_attempt();
-ok('N5', 'double click: one register only', $a === 'tried' && $b === 'gated' && count(array_filter($GLOBALS['QA_LOG'], function ($p) { return $p === '/sites/register'; })) === 1, "a=$a b=$b log=" . json_encode($GLOBALS['QA_LOG']));
+$b = &qa_second_click_during_register();
+$a = cg_register_reconnect_attempt();
+ok('N5', 'double click: one register only', $a === 'tried' && $b !== null && $b !== 'tried' && qa_regs() === 1, "a=$a b=" . var_export($b, true) . " log=" . json_encode($GLOBALS['QA_LOG']));
+unset($b);
 
 // N6: 409 claim_required -> only the SiteKey notice
 qa_reset();
@@ -150,18 +171,61 @@ qa_reset();
 cg_register_site_with_hq();
 $GLOBALS['QA_NOW'] += 61; $GLOBALS['QA_LOG'] = [];
 $GLOBALS['QA_ROUTES'] = ['/sites/register' => ['code' => 201, 'body' => ['site' => ['domain' => 'qa.test']]], '/sites/status' => ['code' => 'down']];
-$a = cg_register_reconnect_attempt(); $b = cg_register_reconnect_attempt();
-$n = count(array_filter($GLOBALS['QA_LOG'], function ($p) { return $p === '/sites/register'; }));
-ok('N10', '2xx without key: second reconnect gated, one register', $a === 'tried' && $b === 'gated' && $n === 1 && cg_register_failed(), "a=$a b=$b register_calls=$n");
+$b = &qa_second_click_during_register();
+$a = cg_register_reconnect_attempt();
+$n = qa_regs();
+ok('N10', '2xx without key: second click during the first sends nothing, one register', $a === 'tried' && $b !== null && $b !== 'tried' && $n === 1 && cg_register_failed(), "a=$a b=" . var_export($b, true) . " register_calls=$n");
+unset($b);
 
 // N11: same for "already taken" (register sets no gate on that path)
 qa_reset();
 cg_register_site_with_hq();
 $GLOBALS['QA_NOW'] += 61; $GLOBALS['QA_LOG'] = [];
 $GLOBALS['QA_ROUTES'] = ['/sites/register' => ['code' => 409, 'body' => ['error' => 'Domain already taken']], '/sites/status' => ['code' => 'down']];
-$a = cg_register_reconnect_attempt(); $b = cg_register_reconnect_attempt();
-$n = count(array_filter($GLOBALS['QA_LOG'], function ($p) { return $p === '/sites/register'; }));
-ok('N11', 'already taken: second reconnect gated, one register', $a === 'tried' && $b === 'gated' && $n === 1, "a=$a b=$b register_calls=$n");
+$b = &qa_second_click_during_register();
+$a = cg_register_reconnect_attempt();
+$n = qa_regs();
+ok('N11', 'already taken: second click during the first sends nothing, one register', $a === 'tried' && $b !== null && $b !== 'tried' && $n === 1, "a=$a b=" . var_export($b, true) . " register_calls=$n");
+unset($b);
+
+// L1: the lock is released when the call ends (failed here): a new
+// Reconnect right after (same second, well inside the 10 s TTL) sends
+// exactly one more register. Catches a lock that is never deleted.
+qa_reset();
+cg_register_site_with_hq();
+$GLOBALS['QA_NOW'] += 61; $GLOBALS['QA_LOG'] = [];
+$a = cg_register_reconnect_attempt();
+$n1 = qa_regs(); $GLOBALS['QA_LOG'] = [];
+$b = cg_register_reconnect_attempt();
+$n2 = qa_regs();
+ok('L1', 'after a failed Reconnect the lock is gone: next Reconnect -> exactly 1 register', $a === 'tried' && $n1 === 1 && $b === 'tried' && $n2 === 1, "a=$a n1=$n1 b=$b n2=$n2");
+
+// L2: while the lock is held (notice rendered during the register call):
+// the notice is still there and shows no Reconnect button.
+qa_reset();
+cg_register_site_with_hq();
+$GLOBALS['QA_NOW'] += 61; $GLOBALS['QA_LOG'] = [];
+$GLOBALS['QA_IN'] = null;
+$GLOBALS['QA_ON_REGISTER'] = function () { list($GLOBALS['QA_IN']) = qa_notices(); };
+$a = cg_register_reconnect_attempt();
+$in = (string) $GLOBALS['QA_IN'];
+ok('L2', 'notice during the Reconnect call: shown, no Reconnect button', $a === 'tried' && strpos($in, $TITLE) !== false && strpos($in, 'action=cg_register_reconnect') === false, 'len=' . strlen($in));
+
+// L3: lock and gate stay apart: a failed Reconnect at T leaves the register
+// gate at T + 60 s (lock deleted, gate kept), so the auto path sends no
+// register at T + 59 s and one at T + 60 s.
+qa_reset();
+cg_register_site_with_hq();
+$GLOBALS['QA_NOW'] += 61; $T = $GLOBALS['QA_NOW']; $GLOBALS['QA_LOG'] = [];
+$a = cg_register_reconnect_attempt();
+$gate = (int) get_option('cg_register_next_allowed_at', 0) - $T;
+$GLOBALS['QA_NOW'] = $T + 59; $GLOBALS['QA_LOG'] = [];
+cg_register_site_with_hq();
+$at59 = qa_regs();
+$GLOBALS['QA_NOW'] = $T + 60; $GLOBALS['QA_LOG'] = [];
+cg_register_site_with_hq();
+$at60 = qa_regs();
+ok('L3', 'failed Reconnect keeps the 60 s gate for the auto path: +59 s -> 0, +60 s -> 1', $a === 'tried' && $gate === 60 && $at59 === 0 && $at60 === 1, "a=$a gate=$gate at59=$at59 at60=$at60");
 
 // restore
 qa_reset();
