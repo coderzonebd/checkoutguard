@@ -269,6 +269,39 @@ $c = qa_registers();
 ok('S10', '2xx without a key: gate = first + 60 s, +59 s -> 0, +60 s -> 1, setup message', $a === 1 && $b === 0 && $c === 1 && $gate === 1800000000 + 60 && strpos($st, 'failed: Headquarters accepted registration') === 0, "first=$a at59=$b at60=$c gate=$gate status=" . substr($st, 0, 40));
 
 $out = ob_get_clean();
+// U1-U3: the register gate has an upper bound of 600 s (10 min), the same
+// cap the status wait uses. A stored gate further ahead than that (a clock
+// that jumped back, a bad Retry-After, a stale row) is ignored, so the site
+// can never be locked out of registering for hours.
+// U1: gate exactly at now + 600 s is still honoured: 2 saves -> 0 register.
+qa_reset();
+update_option('cg_register_next_allowed_at', 1800000000 + 600, false);
+qa_checkout_save(1); qa_checkout_save(2);
+ok('U1', 'gate at exactly now + 600 s is honoured: 2 saves -> 0 register', qa_registers() === 0, 'register=' . qa_registers());
+
+// U2: gate at now + 601 s is past the bound and ignored: 2 saves -> exactly
+// 1 register (the failed register then writes a normal 60 s gate).
+qa_reset();
+update_option('cg_register_next_allowed_at', 1800000000 + 601, false);
+qa_checkout_save(1); qa_checkout_save(2);
+$gate = (int) get_option('cg_register_next_allowed_at', 0);
+ok('U2', 'gate at now + 601 s is ignored: 2 saves -> 1 register, new gate = now + 60 s', qa_registers() === 1 && $gate === 1800000000 + 60, 'register=' . qa_registers() . " gate=$gate");
+
+// U3: a Retry-After above the bound is clamped when written: Retry-After
+// 3600 stores now + 600 s; +599 s -> 0 register, +600 s -> exactly 1.
+qa_reset();
+$GLOBALS['QA_ROUTES'] = ['/sites/register' => ['code' => 429, 'ra' => '3600', 'body' => ['error' => 'Too many requests']]];
+qa_checkout_save(1);
+$a = qa_registers();
+$gate = (int) get_option('cg_register_next_allowed_at', 0);
+$GLOBALS['QA_NOW'] = 1800000000 + 599; $GLOBALS['QA_LOG'] = [];
+qa_checkout_save(2);
+$b = qa_registers();
+$GLOBALS['QA_NOW'] = 1800000000 + 600; $GLOBALS['QA_LOG'] = [];
+qa_checkout_save(3); qa_checkout_save(4);
+$c = qa_registers();
+ok('U3', 'Retry-After 3600 is clamped: gate = now + 600 s, +599 s -> 0, +600 s -> 1', $a === 1 && $gate === 1800000000 + 600 && $b === 0 && $c === 1, "first=$a gate=$gate at599=$b at600=$c");
+
 // restore
 qa_reset();
 foreach ($GLOBALS['QA_ORIG'] as $name => $val) {

@@ -104,16 +104,17 @@ $GLOBALS['QA_NOW'] += 61;
 list($reg) = qa_notices();
 ok('N2', 'after a minute: Reconnect button', strpos($reg, 'action=cg_register_reconnect') !== false && strpos($reg, '_wpnonce=') !== false, '');
 
-// N3: 429 with Retry-After 3600 -> gate one hour, no button, try-again time
+// N3: 429 with Retry-After 3600 -> gate clamped to the 600 s upper bound
+// (CG_REGISTER_MAX_WAIT), no button, try-again time
 qa_reset();
 $GLOBALS['QA_ROUTES'] = ['/sites/register' => ['code' => 429, 'ra' => '3600', 'body' => ['error' => 'Too Many Requests']]];
 cg_register_site_with_hq();
 $gate = (int) get_option('cg_register_next_allowed_at') - $GLOBALS['QA_NOW'];
 $GLOBALS['QA_NOW'] += 120;
 list($reg) = qa_notices();
-ok('N3', '429 Retry-After 3600: gated an hour, no button', $gate === 3600 && strpos($reg, $TITLE) !== false && strpos($reg, 'action=cg_register_reconnect') === false && strpos($reg, 'try again after') !== false, "gate=$gate");
+ok('N3', '429 Retry-After 3600: gate clamped to 600 s, no button', $gate === 600 && strpos($reg, $TITLE) !== false && strpos($reg, 'action=cg_register_reconnect') === false && strpos($reg, 'try again after') !== false, "gate=$gate");
 
-// N4: Reconnect ignores the gate (Tanvir, 22 Nov): still inside the 1 h
+// N4: Reconnect ignores the gate (Tanvir, 22 Nov): still inside the 600 s
 // gate from N3, Reconnect sends one register, stores the key, clears the
 // gate; notice gone
 $GLOBALS['QA_LOG'] = [];
