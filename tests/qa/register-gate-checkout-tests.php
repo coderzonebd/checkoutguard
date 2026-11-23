@@ -319,6 +319,17 @@ $s = qa_sync_now();
 $n = qa_registers();
 ok('G13b-ctl', 'Sync Now, no Reconnect running, gate over: exactly 1 register', $s === 'error' && $n === 1, "sync=$s register=$n");
 
+// G13d: Sync Now with force while the Reconnect lock is held (lock set
+// directly by the test): no HQ call at all. The gate is over (+61 s), so
+// only the lock can stop it.
+qa_reset();
+cg_register_site_with_hq();
+$GLOBALS['QA_NOW'] += 61; $GLOBALS['QA_LOG'] = [];
+set_transient('cg_register_reconnect_lock', 1, 10);
+$s = qa_sync_now();
+$n = count($GLOBALS['QA_LOG']);
+ok('G13d', 'Sync Now (force) with the Reconnect lock held: 0 HQ calls', $n === 0, "sync=" . var_export($s, true) . " hq_calls=$n log=" . json_encode($GLOBALS['QA_LOG']));
+
 // G13a: activation passes force: re-activating the plugin
 // inside the 60 s gate of a failed register still sends one register. The
 // sync that activation runs after it stays gated (the forced try wrote a new
@@ -354,6 +365,17 @@ $GLOBALS['QA_ON_REGISTER'] = function () { $GLOBALS['QA_SYNC2'] = qa_sync_now();
 $s = qa_sync_now();
 $n = qa_registers();
 ok('G13c-lock', 'second Sync Now during the first: no register of its own, 1 in total', $GLOBALS['QA_SYNC2'] !== null && $n === 1, "sync=$s sync2=" . var_export($GLOBALS['QA_SYNC2'], true) . " register=$n calls=" . json_encode($GLOBALS['QA_LOG']));
+
+// G13c-lock2: same double Sync Now, but the gate is over (+61 s), so only
+// the lock can hold the second click: still exactly one register.
+qa_reset();
+cg_register_site_with_hq();
+$GLOBALS['QA_NOW'] += 61; $GLOBALS['QA_LOG'] = [];
+$GLOBALS['QA_SYNC2'] = null;
+$GLOBALS['QA_ON_REGISTER'] = function () { $GLOBALS['QA_ON_REGISTER'] = null; $GLOBALS['QA_SYNC2'] = qa_sync_now(); };
+$s = qa_sync_now();
+$n = qa_registers();
+ok('G13c-lock2', 'gate over: second Sync Now during the first sends no register, 1 in total', $GLOBALS['QA_SYNC2'] !== null && $n === 1, "sync=$s sync2=" . var_export($GLOBALS['QA_SYNC2'], true) . " register=$n calls=" . json_encode($GLOBALS['QA_LOG']));
 
 // G13c-ctl: the automatic paths stay gated. Inside the same gate the daily
 // cron sync (cg_daily_sync_hook) and a plain cg_sync_with_hq() (what the
