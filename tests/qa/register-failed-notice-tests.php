@@ -272,6 +272,15 @@ $a = cg_register_reconnect_attempt();
 $n = qa_regs();
 ok('L5-ctl', 'no lock: Reconnect -> tried, exactly 1 register', $a === 'tried' && $n === 1, "a=" . var_export($a, true) . " register_calls=$n");
 
+// N12: a stored gate further ahead than CG_REGISTER_MAX_WAIT (clock moved
+// back, old Retry-After) is not trusted: the notice shows the Reconnect
+// button and no try-again time.
+qa_reset();
+cg_register_site_with_hq();
+update_option('cg_register_next_allowed_at', $GLOBALS['QA_NOW'] + 3600, false);
+list($reg) = qa_notices();
+ok('N12', 'gate 3600 s ahead (over the 600 s cap): Reconnect button, no try-again time', strpos($reg, $TITLE) !== false && strpos($reg, 'action=cg_register_reconnect') !== false && strpos($reg, 'try again after') === false, 'len=' . strlen($reg));
+
 // restore
 qa_reset();
 foreach ($GLOBALS['QA_ORIG'] as $name => $val) {
