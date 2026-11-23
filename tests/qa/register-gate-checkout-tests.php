@@ -88,7 +88,9 @@ function qa_sync_now() {
         cg_handle_force_sync_ajax();
     } catch (QA_Ajax_Done $e) {
     }
-    $j = json_decode((string) ob_get_clean(), true);
+    $raw = (string) ob_get_clean();
+    $GLOBALS['QA_SYNC_RAW'] = $raw;
+    $j = json_decode($raw, true);
     $_POST = $_REQUEST = [];
     wp_set_current_user($u);
     return is_array($j) ? (!empty($j['success']) ? 'ok' : 'error') : 'none';
@@ -329,6 +331,41 @@ set_transient('cg_register_reconnect_lock', 1, 10);
 $s = qa_sync_now();
 $n = count($GLOBALS['QA_LOG']);
 ok('G13d', 'Sync Now (force) with the Reconnect lock held: 0 HQ calls', $n === 0, "sync=" . var_export($s, true) . " hq_calls=$n log=" . json_encode($GLOBALS['QA_LOG']));
+
+// G13e: Sync Now with no key and no Reconnect lock (the case the force fix
+// is for). Inside the 60 s gate it sets the Reconnect lock before the
+// register (TTL CG_REGISTER_RECONNECT_LOCK_TTL = 45 s), forces exactly one
+// register, and the lock is gone again when the click ends (finally).
+qa_reset();
+cg_register_site_with_hq();
+$GLOBALS['QA_NOW'] += 10; $GLOBALS['QA_LOG'] = [];
+$qa_lk = defined('CG_REGISTER_RECONNECT_LOCK') ? CG_REGISTER_RECONNECT_LOCK : 'cg_register_reconnect_lock';
+$gate_open = (int) get_option('cg_register_next_allowed_at', 0) > $GLOBALS['QA_NOW'];
+$lock_before = get_transient($qa_lk) !== false;
+$GLOBALS['QA_E_LOCK'] = null; $GLOBALS['QA_E_TTL'] = null;
+$GLOBALS['QA_ON_REGISTER'] = function () use ($qa_lk) {
+    $GLOBALS['QA_E_LOCK'] = get_transient($qa_lk) !== false;
+    $GLOBALS['QA_E_TTL'] = (int) get_option('_transient_timeout_' . $qa_lk, 0) - time();
+};
+$s = qa_sync_now();
+$n = qa_registers();
+$lock_after = get_transient($qa_lk) !== false;
+$ttl_const = defined('CG_REGISTER_RECONNECT_LOCK_TTL') ? (int) CG_REGISTER_RECONNECT_LOCK_TTL : 0;
+ok('G13e', 'Sync Now, no key, no lock, inside the gate: lock set during the register, exactly 1 register, lock gone after', $gate_open && !$lock_before && $GLOBALS['QA_E_LOCK'] === true && $n === 1 && !$lock_after, 'gate_open=' . var_export($gate_open, true) . ' lock_before=' . var_export($lock_before, true) . ' lock_during=' . var_export($GLOBALS['QA_E_LOCK'], true) . " register=$n lock_after=" . var_export($lock_after, true) . " sync=$s");
+ok('G13e-ttl', 'the Reconnect lock TTL is 45 s (constant and the stored transient)', $ttl_const === 45 && $GLOBALS['QA_E_TTL'] !== null && $GLOBALS['QA_E_TTL'] >= 44 && $GLOBALS['QA_E_TTL'] <= 45, "const=$ttl_const measured=" . var_export($GLOBALS['QA_E_TTL'], true));
+
+// G13d-run: with the Reconnect lock held, Sync Now answers 'running' (not
+// success, not a generic error) and sends no HQ call.
+qa_reset();
+cg_register_site_with_hq();
+$GLOBALS['QA_NOW'] += 61; $GLOBALS['QA_LOG'] = [];
+set_transient($qa_lk, 1, 45);
+$s = qa_sync_now();
+$n = count($GLOBALS['QA_LOG']);
+$j = json_decode((string) $GLOBALS['QA_SYNC_RAW'], true);
+$d = is_array($j) && isset($j['data']) && is_array($j['data']) ? $j['data'] : [];
+$running = (isset($d['status']) && $d['status'] === 'running') || (isset($d['code']) && $d['code'] === 'running') || (isset($d['result']) && $d['result'] === 'running');
+ok('G13d-run', "Sync Now with the Reconnect lock held: result 'running', 0 HQ calls", $s === 'error' && $running && $n === 0, "sync=$s hq_calls=$n raw=" . substr((string) $GLOBALS['QA_SYNC_RAW'], 0, 160));
 
 // G13a: activation passes force: re-activating the plugin
 // inside the 60 s gate of a failed register still sends one register. The
