@@ -252,6 +252,14 @@ try {
         $order->update_meta_data($meta, '1');
         $order->set_status('cancelled');
         $order->save();
+        // Hook path: run woocommerce_new_order as WooCommerce does, so the
+        // plugin's own add_action() wiring is tested, not only the function.
+        $hooked = has_action('woocommerce_new_order', 'cg_delete_incomplete_checkout_on_order_completion');
+        do_action('woocommerce_new_order', $oid, wc_get_order($oid));
+        $nh = qa_rows('device_fingerprint', $c['fp']);
+        $guard_h = (string) wc_get_order($oid)->get_meta('_cg_incomplete_cleaned');
+        $mark_h = (bool) get_transient('cg_ordered_' . md5($c['fp']));
+        qa_check($R, $gid . 'h', "$meta attempt via woocommerce_new_order: row kept, no decrement, no mark", $hooked !== false && $nh === 1 && qa_usage() === 10 && !$mark_h && $guard_h === '', 'hooked=' . var_export($hooked, true) . " rows=$nh usage=" . qa_usage() . ' mark=' . ($mark_h ? 1 : 0) . " guard='$guard_h'");
         cg_delete_incomplete_checkout_on_order_completion($oid);
         $n = qa_rows('device_fingerprint', $c['fp']);
         $guard = (string) wc_get_order($oid)->get_meta('_cg_incomplete_cleaned');
