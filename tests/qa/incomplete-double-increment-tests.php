@@ -305,6 +305,31 @@ try {
     $at = $slow['free_at_status'];
     qa_check($R, 'I10b', 'reveal period sync runs with the insert lock free; 1 row, 1 increment', $slow['status_calls'] >= 1 && $at === array_fill(0, count($at), true) && !empty($res['success']) && $rows === 1 && $incr === 1 && qa_lock_free() === true, 'res=' . wp_json_encode($res) . " status_calls={$slow['status_calls']} free_at_status=" . wp_json_encode($at) . " rows=$rows incr=$incr");
 
+    // I11: GET_LOCK returns NULL (a database error, not a timeout): the
+    // request does not fail closed. It saves without the lock as before the
+    // lock existed (1 row, 1 increment), writes one log line and releases
+    // nothing it does not hold.
+    qa_reset();
+    $c = qa_cust('i11');
+    $GLOBALS['QA_NULL_LOCK'] = 0;
+    $null_lock = function ($q) {
+        if (stripos($q, 'SELECT GET_LOCK(') === 0) {
+            $GLOBALS['QA_NULL_LOCK']++;
+            return 'SELECT NULL';
+        }
+        return $q;
+    };
+    add_filter('query', $null_lock, PHP_INT_MAX - 1);
+    $log = wp_tempnam('qadi-log');
+    $old_log = ini_set('error_log', $log);
+    $res = qa_save($c);
+    ini_set('error_log', (string) $old_log);
+    remove_filter('query', $null_lock, PHP_INT_MAX - 1);
+    $lines = array_values(array_filter(array_map('trim', (array) @file($log)), function ($l) { return stripos($l, 'CheckoutGuard') !== false && stripos($l, 'lock') !== false; }));
+    @unlink($log);
+    $free = qa_lock_free();
+    qa_check($R, 'I11', 'GET_LOCK returns NULL: saved without the lock (1 row, 1 increment), one log line', $GLOBALS['QA_NULL_LOCK'] === 1 && !empty($res['success']) && qa_rows($c['fp']) === 1 && qa_incr_calls() === 1 && qa_usage() === 11 && count($lines) === 1 && $free === true && empty($GLOBALS['cg_incomplete_insert_locked']), 'res=' . wp_json_encode($res) . ' get_lock_calls=' . $GLOBALS['QA_NULL_LOCK'] . ' rows=' . qa_rows($c['fp']) . ' incr=' . qa_incr_calls() . ' log_lines=' . count($lines) . ' free=' . var_export($free, true));
+
     // I6: the lock name fits GET_LOCK (64 chars) and differs per table
     // prefix, so two sites on one database do not wait for each other.
     $n = qa_lock_name();
