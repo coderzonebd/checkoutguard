@@ -237,6 +237,28 @@ try {
     $fn = (string) $wpdb->get_var($wpdb->prepare("SELECT first_name FROM {$GLOBALS['QA_T']} WHERE device_fingerprint = %s", $c['fp']));
     qa_check($R, 'G8', 'existing row of a marked customer is updated, not counted', qa_rows('device_fingerprint', $c['fp']) === 1 && $fn === 'QA' && qa_incr_calls() === 0, "first_name=$fn incr=" . qa_incr_calls());
 
+    // G10/G11: a blocked attempt (PR #17 close, lifecycle cancel) moves the
+    // draft to cancelled, which fires woocommerce_new_order. The customer has
+    // not ordered: the row stays, usage is not lowered, no mark, no guard.
+    foreach (['G10' => '_cg_blocked', 'G11' => '_cg_attempt_closed'] as $gid => $meta) {
+        qa_reset();
+        $c = qa_cust(strtolower($gid));
+        qa_save($c);
+        qa_reset();
+        // As in PR #17: the draft gets the meta first, then draft -> cancelled
+        // fires woocommerce_new_order (WC 11.3.1 data store update()).
+        $oid = qa_order($c, 'checkout-draft');
+        $order = wc_get_order($oid);
+        $order->update_meta_data($meta, '1');
+        $order->set_status('cancelled');
+        $order->save();
+        cg_delete_incomplete_checkout_on_order_completion($oid);
+        $n = qa_rows('device_fingerprint', $c['fp']);
+        $guard = (string) wc_get_order($oid)->get_meta('_cg_incomplete_cleaned');
+        $mark = (bool) get_transient('cg_ordered_' . md5($c['fp']));
+        qa_check($R, $gid, "$meta attempt: row kept, no decrement, no mark", $n === 1 && qa_usage() === 10 && !$mark && $guard === '', "rows=$n usage=" . qa_usage() . ' mark=' . ($mark ? 1 : 0) . " guard='$guard'");
+    }
+
     qa_check($R, 'G9', 'no PHP warnings from the plugin', empty($GLOBALS['QA_WARN']), implode(' ; ', array_slice($GLOBALS['QA_WARN'], 0, 3)));
 } catch (Throwable $e) {
     qa_check($R, 'GX', 'fatal', false, get_class($e) . ': ' . $e->getMessage() . ' @ ' . basename($e->getFile()) . ':' . $e->getLine());
