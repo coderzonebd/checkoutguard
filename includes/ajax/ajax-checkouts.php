@@ -668,6 +668,75 @@ function cg_get_incomplete_checkout_details_ajax_handler()
 
 
 
+if (!defined('CG_RECOVER_LOCK_STALE_AFTER')) {
+    // A Recover request that died keeps its lock this many seconds at most.
+    define('CG_RECOVER_LOCK_STALE_AFTER', 120);
+}
+
+function cg_recover_lock_name($entry_id)
+{
+    return 'cg_recover_lock_' . (int) $entry_id;
+}
+
+/**
+ * Per-entry Recover lock. INSERT IGNORE succeeds for exactly one request
+ * (add_option() checks in PHP first, so it is not atomic). Same pattern as
+ * cg_period_sync_acquire_lock().
+ *
+ * @return string|false The lock token, or false when another request holds it.
+ */
+function cg_recover_acquire_lock($entry_id, $now)
+{
+    global $wpdb;
+    $name = cg_recover_lock_name($entry_id);
+    $token = (int) $now . '-' . wp_rand(100000, 999999);
+    $autoload = function_exists('wp_determine_option_autoload_value') ? 'off' : 'no';
+    $insert = function () use ($wpdb, $name, $token, $autoload) {
+        $n = $wpdb->query($wpdb->prepare(
+            "INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, %s)",
+            $name,
+            $token,
+            $autoload
+        ));
+        wp_cache_delete($name, 'options');
+        wp_cache_delete('notoptions', 'options');
+        return $n === 1;
+    };
+    if ($insert()) {
+        return $token;
+    }
+    $held = $wpdb->get_var($wpdb->prepare(
+        "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s LIMIT 1",
+        $name
+    ));
+    if ($held === null) {
+        return $insert() ? $token : false;
+    }
+    $held_at = (int) strtok((string) $held, '-');
+    if ($held_at > 0 && ($now - $held_at) < CG_RECOVER_LOCK_STALE_AFTER) {
+        return false;
+    }
+    // Stale (a request died while recovering): remove exactly that value, then race again.
+    $wpdb->query($wpdb->prepare(
+        "DELETE FROM {$wpdb->options} WHERE option_name = %s AND option_value = %s",
+        $name,
+        (string) $held
+    ));
+    return $insert() ? $token : false;
+}
+
+function cg_recover_release_lock($entry_id, $token)
+{
+    global $wpdb;
+    $name = cg_recover_lock_name($entry_id);
+    $wpdb->query($wpdb->prepare(
+        "DELETE FROM {$wpdb->options} WHERE option_name = %s AND option_value = %s",
+        $name,
+        (string) $token
+    ));
+    wp_cache_delete($name, 'options');
+}
+
 /**
  * Handles the AJAX request to recover an incomplete checkout as a WooCommerce order.
  */
@@ -689,18 +758,47 @@ function cg_recover_order_ajax_handler()
     }
     $entry_id = intval($_POST['entry_id']);
 
+    // Two Recover clicks on the same entry at once would each create a
+    // WooCommerce order. Only the request that holds the entry's lock reads
+    // the entry and creates the order; the other one creates nothing.
+    $lock = cg_recover_acquire_lock($entry_id, time());
+    if ($lock === false) {
+        wp_send_json_error(array('message' => __('This entry is being recovered by another request. Reload the page to see the result.', 'checkoutguard')));
+        return;
+    }
+    try {
+        $result = cg_recover_order_from_entry($entry_id);
+    } finally {
+        cg_recover_release_lock($entry_id, $lock);
+    }
+    if ($result['success']) {
+        wp_send_json_success($result['data']);
+    } else {
+        wp_send_json_error($result['data']);
+    }
+    wp_die();
+}
+
+/**
+ * Reads the entry and creates the order from it. Call it only while holding
+ * the entry's Recover lock: the entry is read here, under the lock, so a
+ * click that got the lock after another click finished sees the entry
+ * already recovered and stops.
+ *
+ * @return array{success: bool, data: array}
+ */
+function cg_recover_order_from_entry($entry_id)
+{
     global $wpdb;
     $table_name = $wpdb->prefix . 'cg_incomplete_checkouts';
     $entry = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table_name} WHERE id = %d", $entry_id));
 
     if (!$entry) {
-        wp_send_json_error(array('message' => __('Incomplete checkout entry not found.', 'checkoutguard')));
-        return;
+        return array('success' => false, 'data' => array('message' => __('Incomplete checkout entry not found.', 'checkoutguard')));
     }
 
     if (!in_array($entry->status, array('incomplete', 'hold'))) {
-        wp_send_json_error(array('message' => __('This entry cannot be recovered. Current status: ', 'checkoutguard') . $entry->status));
-        return;
+        return array('success' => false, 'data' => array('message' => __('This entry cannot be recovered. Current status: ', 'checkoutguard') . $entry->status));
     }
 
     try {
@@ -784,16 +882,15 @@ function cg_recover_order_ajax_handler()
             cg_delete_incomplete_checkout_on_order_completion($order_id);
         }
 
-        wp_send_json_success(array(
+        return array('success' => true, 'data' => array(
             'message' => sprintf(__('Order #%s created successfully from incomplete checkout ID %d and set to Processing.', 'checkoutguard'), $order_id, $entry_id),
             'order_id' => $order_id,
             'edit_order_url' => admin_url('post.php?post=' . $order_id . '&action=edit')
         ));
 
     } catch (Exception $e) {
-        wp_send_json_error(array('message' => $e->getMessage()));
+        return array('success' => false, 'data' => array('message' => $e->getMessage()));
     }
-    wp_die();
 }
 
 
