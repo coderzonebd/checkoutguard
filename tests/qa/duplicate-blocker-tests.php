@@ -35,9 +35,6 @@
  *      block code and a UTC time and without the earlier order's number. The
  *      earlier (real) order is not touched. Stock, held stock and coupon usage
  *      are the same before and after the blocked attempt.
- *      F4f: with 'cancelled' added through cg_duplicate_blocker_order_statuses,
- *      the duplicate lookup still leaves out the cancelled attempt (by its
- *      _cg_blocked meta); a plain cancelled order of the customer is found.
  *      F4g: a blocked Store API order that is not a draft or pending (built in
  *      memory, on-hold) is not cancelled but still gets _cg_blocked and
  *      _cg_block_code.
@@ -611,6 +608,26 @@ $e_bc = $att ? (string) $att->get_meta('_cg_block_code', true) : '';
 $note_ok = $note !== '' && $e_bc !== '' && strpos($note, 'Code: ' . $e_bc . '.') !== false && $note_time_ok
     && ($num0 === '' || !preg_match('/(?<!\d)' . preg_quote($num0, '/') . '(?!\d)/', $note));
 qa_dup_check('F4e [note] one CheckoutGuard note with the block code and a UTC time, without the earlier order number', $note_ok, 'notes ' . wp_json_encode($cg_notes) . ', earlier #' . $num0);
+// mF45 (Zahid): a merchant adds 'cancelled' to the lookup statuses; the blocked,
+// now-cancelled attempt must still not be counted (excluded by _cg_blocked meta),
+// while a plain cancelled order for the same customer is (filter control).
+$f45_add = function ($s) { $s[] = 'cancelled'; return $s; };
+add_filter('cg_duplicate_blocker_order_statuses', $f45_add);
+$f45_ctl = wc_create_order();
+$f45_ctl->set_billing_email($e_email);
+$f45_ctl->set_billing_phone('01600000505');
+$f45_ctl->set_status('cancelled');
+$f45_ctl->save();
+// wc_create_order() saves it pending first, so the save guard blocks it; clear the flag so it is a plain cancelled order.
+$f45_ctl->delete_meta_data('_cg_blocked');
+$f45_ctl->save();
+wp_cache_flush();
+$f45_rows = cg_get_recent_matching_orders_for_duplicate_check(['phone' => '01600000505', 'email' => $e_email, 'ip' => '', 'device_fp' => ''], 120, get_option('cg_plugin_options', []));
+$f45_ids = array_map(function ($o) { return (int) $o->get_id(); }, $f45_rows);
+remove_filter('cg_duplicate_blocker_order_statuses', $f45_add);
+qa_dup_check('mF45-ctl filter adds cancelled: a plain cancelled order is counted', in_array((int) $f45_ctl->get_id(), $f45_ids, true), 'ids ' . wp_json_encode($f45_ids));
+qa_dup_check('mF45 filter adds cancelled: the blocked cancelled attempt is still not counted', $att && !in_array((int) $att->get_id(), $f45_ids, true), 'att ' . ($att ? $att->get_id() : 0) . ' ids ' . wp_json_encode($f45_ids));
+$f45_ctl->delete(true);
 wp_cache_flush();
 $o0b = $id0 ? wc_get_order($id0) : null;
 $o0_cg_notes = 0;
@@ -621,38 +638,6 @@ if ($o0b) {
 }
 qa_dup_check('F4e [other order] the earlier order keeps its status and gets no CheckoutGuard note', $o0b && $o0b->get_status() === $st0 && $st0 !== 'cancelled' && $o0b->get_meta('_cg_blocked', true) !== '1' && $o0_cg_notes === 0, 'id ' . $id0 . ' ' . $st0 . ' -> ' . ($o0b ? $o0b->get_status() : 'gone') . ', cg notes ' . $o0_cg_notes);
 qa_dup_check('F4e [stock/coupon] stock, held stock and coupon usage are the same before and after the blocked attempt', $before === $after, 'before ' . wp_json_encode($before) . ', after ' . wp_json_encode($after));
-
-// F4f: the duplicate lookup leaves out a blocked attempt by its _cg_blocked
-// meta, not by its status: a merchant filter that adds 'cancelled' to the
-// statuses must not bring the cancelled attempt back as an earlier order. A
-// plain cancelled order of the same customer shows the filter took effect.
-$f_ctl = qa_dup_order($e_prod, 'Echo', '01600000505', $e_email, '', '');
-$f_ctl->set_status('cancelled');
-$f_ctl->save();
-$f_ctl_id = (int) $f_ctl->get_id();
-// The plugin's own order save guard flags this order too (same customer as
-// the earlier order); make it a plain cancelled order.
-$f_ctl = wc_get_order($f_ctl_id);
-$f_ctl->delete_meta_data('_cg_blocked');
-$f_ctl->delete_meta_data('_cg_block_code');
-$f_ctl->save_meta_data();
-$f_cust = ['phone' => '01600000505', 'email' => $e_email, 'ip' => '', 'device_fp' => ''];
-$f_opts = (array) get_option('cg_plugin_options', []);
-$f_ids = function () use ($f_cust, $f_opts, $o0b) {
-    wp_cache_flush();
-    return array_map(function ($o) { return (int) $o->get_id(); }, cg_get_recent_matching_orders_for_duplicate_check($f_cust, 60, $f_opts, $o0b));
-};
-$f_add_cancelled = function ($st) {
-    $st[] = 'cancelled';
-    return $st;
-};
-$f_plain = $f_ids();
-add_filter('cg_duplicate_blocker_order_statuses', $f_add_cancelled);
-$f_wide = $f_ids();
-remove_filter('cg_duplicate_blocker_order_statuses', $f_add_cancelled);
-$f_att_id = $att ? (int) $att->get_id() : 0;
-qa_dup_check('F4f-ctl with cancelled added by filter, a plain cancelled order of the customer is found (and not without it)', $f_att_id > 0 && in_array($f_ctl_id, $f_wide, true) && !in_array($f_ctl_id, $f_plain, true), 'plain ' . wp_json_encode($f_plain) . ', with filter ' . wp_json_encode($f_wide) . ', ctl ' . $f_ctl_id);
-qa_dup_check('F4f [lookup] with cancelled added by filter, the blocked cancelled attempt is still not an earlier order', $f_att_id > 0 && !in_array($f_att_id, $f_wide, true) && !in_array($f_att_id, $f_plain, true), 'attempt ' . $f_att_id . ', plain ' . wp_json_encode($f_plain) . ', with filter ' . wp_json_encode($f_wide));
 // F4g: a blocked Store API order that is not a draft or pending is not
 // cancelled, but it still carries _cg_blocked / _cg_block_code so the
 // duplicate lookup never counts it. The order is built in memory only
@@ -672,7 +657,7 @@ try {
     $g_thrown = true;
 }
 qa_dup_check('F4g [meta] a blocked on-hold Store API order keeps its status and is still flagged _cg_blocked / _cg_block_code', $g_thrown && $g_o->get_status() === 'on-hold' && $g_o->get_meta('_cg_blocked', true) === '1' && $g_o->get_meta('_cg_block_code', true) !== '' && (int) $g_o->get_id() === 0, 'thrown ' . var_export($g_thrown, true) . ', status ' . $g_o->get_status() . ', blocked ' . $g_o->get_meta('_cg_blocked', true) . ', code ' . $g_o->get_meta('_cg_block_code', true) . ', id ' . $g_o->get_id());
-// Deferred mode: send what F4e/F4f queued while their orders still exist, so
+// Deferred mode: send what F4e and mF45 queued while their orders still exist, so
 // no queued email action is left for a later run (it would skew F4d [b]).
 add_filter('pre_wp_mail', $qa_f4d_cap, 10, 2);
 $qa_f4d_flush();
