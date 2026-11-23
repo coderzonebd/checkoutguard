@@ -3,13 +3,17 @@
  * Local courier usage when every courier failed (1.5.0, ajax-courier.php
  * cg_perform_all_api_calls): HQ answers 200 "fresh" but every courier in the
  * result has error=true. No courier data came back, so the local
- * courier_checks counter in cg_api_cache must not go up.
+ * courier_checks counter in cg_api_cache must not go up, and the answer
+ * must not be cached for 6 hours.
  *
  * U1  all five couriers error, cache_source fresh: local usage unchanged.
  * U2  control: all couriers ok, fresh: local usage +1.
  * U2b control: one courier error, the others ok, fresh: local usage +1
  *     (only an all-failed answer is skipped).
  * U3  control: all couriers error, server_cache: local usage unchanged.
+ * U4  all couriers error, fresh: the result is not kept in the 6 h
+ *     courier cache (the next check asks HQ again).
+ * U4-ctl control: all couriers ok, fresh: the result is cached.
  *
  * Run on a local test site only (never production):
  *   wp eval-file tests/qa/courier-all-fail-usage-tests.php
@@ -66,6 +70,7 @@ function qa_usage_delta($http) {
     $r = cg_perform_all_api_calls($phone, 0);
     $c = get_transient('cg_api_cache');
     $u = is_array($c) ? (int) ($c['usage']['courier_checks'] ?? -1) : -1;
+    $GLOBALS['QA_CACHED'] = get_transient('cg_courier_cache_' . md5($phone)) !== false;
     delete_transient('cg_courier_cache_' . md5($phone));
     return [$u - 5, is_array($r) ? ($r['cache_source'] ?? '') : 'not-array'];
 }
@@ -79,6 +84,13 @@ ok('U2', 'control: all couriers ok, fresh: local courier usage +1', $d === 1, "d
 ok('U2b', 'control: one courier error, others ok, fresh: local courier usage +1', $d === 1, "delta=$d source=$src");
 [$d, $src] = qa_usage_delta(qa_courier_result($all, 'server_cache'));
 ok('U3', 'control: all couriers error, server_cache: local courier usage unchanged', $d === 0, "delta=$d source=$src");
+
+[$d, $src] = qa_usage_delta(qa_courier_result($all, 'fresh'));
+$cached = $GLOBALS['QA_CACHED'];
+ok('U4', 'all couriers error, fresh: not cached in the courier transient', !$cached, 'cached=' . ($cached ? 'yes' : 'no') . " source=$src");
+[$d, $src] = qa_usage_delta(qa_courier_result([], 'fresh'));
+$cached = $GLOBALS['QA_CACHED'];
+ok('U4-ctl', 'control: all couriers ok, fresh: cached in the courier transient', $cached, 'cached=' . ($cached ? 'yes' : 'no') . " source=$src");
 
 // restore
 delete_transient('cg_api_cache');
