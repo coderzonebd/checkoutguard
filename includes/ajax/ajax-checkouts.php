@@ -615,6 +615,7 @@ function cg_recover_order_ajax_handler()
         $order_data = array(
             'status' => 'wc-processing',
             'customer_id' => $entry->user_id ? $entry->user_id : 0,
+            'created_via' => 'cg-recover',
         );
         $order = wc_create_order($order_data);
 
@@ -675,6 +676,11 @@ function cg_recover_order_ajax_handler()
             cg_get_db_formats($update_data),
             array('%d')
         );
+
+        // The entry is 'recovered' now and is kept; other incomplete rows of
+        // the same customer are cleaned up (woocommerce_new_order ran before
+        // the billing address was set).
+        cg_delete_incomplete_checkout_on_order_completion($order_id);
 
         wp_send_json_success(array(
             'message' => sprintf(__('Order #%s created successfully from incomplete checkout ID %d and set to Processing.', 'checkoutguard'), $order_id, $entry_id),

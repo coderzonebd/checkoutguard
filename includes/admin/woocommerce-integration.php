@@ -244,6 +244,10 @@ function cg_save_device_fingerprint_to_order($order_id)
     if (!$order) {
         return;
     }
+    // The device cookie and IP of an admin request are the shop manager's.
+    if (cg_order_is_admin_created($order)) {
+        return;
+    }
 
     $needs_save = false;
 

@@ -32,10 +32,6 @@ function cg_delete_incomplete_checkout_on_order_completion($order_id)
     if ($order->get_meta('_cg_incomplete_cleaned')) {
         return;
     }
-    $order->update_meta_data('_cg_incomplete_cleaned', '1');
-    if (method_exists($order, 'save')) {
-        $order->save();
-    }
 
     global $wpdb;
     $table_name = $wpdb->prefix . 'cg_incomplete_checkouts';
@@ -43,15 +39,20 @@ function cg_delete_incomplete_checkout_on_order_completion($order_id)
     $where_clauses = [];
     $where_params = [];
 
+    // On orders created in wp-admin (manual invoice, Recover button, WC
+    // "Add order") the WC session and the device cookie of the request
+    // belong to the shop manager, not the customer: do not use them.
+    $from_request = !cg_order_is_admin_created($order);
+
     // 1. Match by WooCommerce session ID if present
-    if (function_exists('WC') && WC()->session && WC()->session->get_customer_id()) {
+    if ($from_request && function_exists('WC') && WC()->session && WC()->session->get_customer_id()) {
         $where_clauses[] = 'session_id = %s';
         $where_params[] = WC()->session->get_customer_id();
     }
 
     // 2. Match by Device Fingerprint
     $device_fp = $order->get_meta('_cg_device_fingerprint');
-    if (empty($device_fp) && !empty($_COOKIE['cg_device_fp'])) {
+    if ($from_request && empty($device_fp) && !empty($_COOKIE['cg_device_fp'])) {
         $device_fp = sanitize_text_field(wp_unslash($_COOKIE['cg_device_fp']));
     }
     if (!empty($device_fp)) {
@@ -76,6 +77,8 @@ function cg_delete_incomplete_checkout_on_order_completion($order_id)
         $where_params[] = $email;
     }
 
+    // No identifier yet (for example wc_create_order() before the billing
+    // fields are set): do not mark the order, so a later call can clean up.
     if (empty($where_clauses)) {
         return;
     }
@@ -86,8 +89,15 @@ function cg_delete_incomplete_checkout_on_order_completion($order_id)
     // again as incomplete and count it again.
     cg_mark_order_placed($where_params);
 
+    $order->update_meta_data('_cg_incomplete_cleaned', '1');
+    if (method_exists($order, 'save')) {
+        $order->save();
+    }
+
+    // Recovered rows are the record of a recovery, not an abandoned
+    // checkout: keep them.
     $records = $wpdb->get_col($wpdb->prepare(
-        "SELECT id FROM {$table_name} WHERE (" . implode(' OR ', $where_clauses) . ")",
+        "SELECT id FROM {$table_name} WHERE status <> 'recovered' AND (" . implode(' OR ', $where_clauses) . ")",
         ...$where_params
     ));
 
@@ -140,6 +150,19 @@ function cg_recently_placed_order(array $values)
         }
     }
     return false;
+}
+
+/**
+ * True when the order was created by a shop manager in wp-admin: the CG
+ * manual invoice, the CG Recover button, or WooCommerce "Add order".
+ * The request's WC session, device cookie and IP are then the manager's.
+ *
+ * @param WC_Order $order
+ * @return bool
+ */
+function cg_order_is_admin_created($order)
+{
+    return in_array($order->get_created_via(), ['admin', 'cg-manual-invoice', 'cg-recover'], true);
 }
 
 // ====================================================================

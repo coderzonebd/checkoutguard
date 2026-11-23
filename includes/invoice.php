@@ -754,7 +754,7 @@ function cg_create_manual_invoice_order($data)
     }
 
     $order = cg_with_manual_invoice_status_registered(function () {
-        return wc_create_order(['status' => CG_MANUAL_INVOICE_STATUS]);
+        return wc_create_order(['status' => CG_MANUAL_INVOICE_STATUS, 'created_via' => 'cg-manual-invoice']);
     });
     if (is_wp_error($order)) {
         return $order;
@@ -845,6 +845,10 @@ function cg_create_manual_invoice_order($data)
 
     $order->calculate_totals(false);
     $order->save();
+
+    // woocommerce_new_order ran inside wc_create_order(), before the billing
+    // fields were set: clean up now that phone and email are known.
+    cg_delete_incomplete_checkout_on_order_completion($order->get_id());
 
     return $order;
 }
