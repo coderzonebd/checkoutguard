@@ -39,6 +39,9 @@
  *      F4g: a blocked Store API order that is not a draft or pending (built in
  *      memory, on-hold) is not cancelled but still gets _cg_blocked and
  *      _cg_block_code.
+ *      F4s: the cg_duplicate_blocker_order_statuses filter itself, end to end
+ *      through the Store API: a real order cancelled by the shop 30 s ago does
+ *      not block by default, and does block once a filter adds 'cancelled'.
  *      F4-end (deferred mode only): what F4e-F4g queued is sent before their
  *      orders are deleted, so no queued email action is left for a later run.
  *
@@ -477,6 +480,36 @@ qa_dup_age_orders(qa_dup_orders_by_email($F4[2]), 50);
 $r100 = qa_dup_store_checkout($pid, $F4[0], $F4[1], $F4[2]);
 qa_dup_check('F4b t+100: two blocked attempts do not renew the window', $r100[0] === 200, 't+100 ' . implode('/', $r100));
 qa_dup_delete_orders(qa_dup_orders_by_email($F4[2]));
+
+// F4s: the status filter on its own. A real order (no _cg_blocked) cancelled
+// by the shop, 30 s old: not in the default statuses, so the next checkout goes
+// through; with 'cancelled' added by the filter it is blocked.
+$qa_f4s_cancelled = function ($wt) {
+    $r0 = qa_dup_store_checkout($wt[0], $wt[1], $wt[2], $wt[3]);
+    $o = wc_get_order(qa_dup_single_order_id($wt[3]));
+    if ($o) {
+        $o->set_status('cancelled', 'QA F4s');
+        $o->save();
+        // Only a plain shop cancel here: clear any block flag the save guard set.
+        $o->delete_meta_data('_cg_blocked');
+        $o->delete_meta_data('_cg_block_code');
+        $o->save();
+    }
+    wp_cache_flush();
+    qa_dup_age_orders(qa_dup_orders_by_email($wt[3]), 30);
+    $r30 = qa_dup_store_checkout($wt[0], $wt[1], $wt[2], $wt[3]);
+    $st = $o ? wc_get_order($o->get_id()) : null;
+    $info = 't+0 ' . implode('/', $r0) . ', t+30 ' . implode('/', $r30) . ', first ' . ($st ? $st->get_status() . ' blocked=' . $st->get_meta('_cg_blocked', true) : 'none');
+    qa_dup_delete_orders(qa_dup_orders_by_email($wt[3]));
+    return [$r0[0] === 200 && $st && $st->get_status() === 'cancelled' && $st->get_meta('_cg_blocked', true) === '', $r30, $info];
+};
+$s_off = $qa_f4s_cancelled([$pid, $F4[0], $F4[1], $F4[2]]);
+qa_dup_check('F4s [default] a real cancelled order 30 s old does not block (cancelled is not a default status)', $s_off[0] && $s_off[1][0] === 200, $s_off[2]);
+$qa_f4s_add = function ($st) { $st[] = 'cancelled'; return array_values(array_unique($st)); };
+add_filter('cg_duplicate_blocker_order_statuses', $qa_f4s_add);
+$s_on = $qa_f4s_cancelled([$pid, $F4[0], $F4[1], $F4[2]]);
+remove_filter('cg_duplicate_blocker_order_statuses', $qa_f4s_add);
+qa_dup_check('F4s [filter] with cancelled added by the filter, the same order blocks (blocked_duplicate)', $s_on[0] && $s_on[1][0] === 400 && $s_on[1][1] === 'blocked_duplicate', $s_on[2]);
 
 // F4d: closing a blocked Store API attempt (pending -> cancelled) must not send
 // the admin "Order cancelled" email; a normal cancel right after still does,
