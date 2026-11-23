@@ -33,7 +33,7 @@ define('CG_COURIER_AUTH_REJECT_TRANSIENT', 'cg_courier_auth_reject');
 define('CG_COURIER_AUTH_REJECT_TTL', 5 * 60);
 // Seconds after an order during which a late tracker request for the same
 // customer is not saved as a new incomplete checkout.
-define('CG_ORDER_PLACED_MARK_TTL', 120);
+define('CG_ORDER_PLACED_MARK_TTL', 60);
 // Ed25519 public key used to verify the signature on GET /sites/status
 // responses (see cg_verify_signed_payload() in includes/utils.php) — public
 // keys are meant to ship embedded in the client, there's no API endpoint
