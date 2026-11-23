@@ -445,10 +445,14 @@ class CG_Response_Adapter
         if (!$result->is_blocked) {
             return;
         }
+        // The note carries the block code and the time only. The block message
+        // is kept in _cg_block_reason; it is not copied into the note so the
+        // note never carries another customer's order details.
         $order->set_status('cancelled', sprintf(
-            __('[CheckoutGuard] Order automatically cancelled by Fraud/Duplicate Blocker: %s (Rule: %s)', 'checkoutguard'),
-            wp_strip_all_tags($result->block_message),
-            $result->rule_triggered ?: $result->block_code
+            __('[CheckoutGuard] Order automatically cancelled by Fraud/Duplicate Blocker. Code: %1$s. Rule: %2$s. Time: %3$s UTC.', 'checkoutguard'),
+            $result->block_code,
+            $result->rule_triggered ?: $result->block_code,
+            gmdate('Y-m-d H:i:s')
         ));
         $order->update_meta_data('_cg_blocked', '1');
         $order->update_meta_data('_cg_block_reason', $result->block_message);
@@ -1532,18 +1536,31 @@ add_action('woocommerce_before_order_object_save', 'cg_universal_order_save_guar
  * Close a Store API checkout attempt that CheckoutGuard blocked.
  *
  * Without this the draft stays pending and shows up as a live order for the
- * same customer. Cancelled is outside the duplicate lookup statuses and the
- * save guard skips it. WooCommerce sends the admin "Order cancelled" email on
- * pending -> cancelled; a blocked attempt was never a real order, so the order
- * is marked and cg_mute_closed_attempt_cancelled_email() keeps that email off.
- * Stock is not touched: a draft never reduced it.
+ * same customer. The cancel goes through CG_Response_Adapter::lifecycle(), so
+ * the order gets the same status, audit note (block code and time) and
+ * _cg_blocked / _cg_block_code meta as any other order CheckoutGuard blocks.
+ * Cancelled is outside the duplicate lookup statuses and the save guard skips
+ * it. Only the attempt itself is touched, and only while it is still a draft
+ * or pending; no other order is looked up or changed.
  *
- * @param WC_Order $order The blocked attempt.
+ * WooCommerce sends the admin "Order cancelled" email on pending -> cancelled;
+ * a blocked attempt was never a real order, so the order is marked and
+ * cg_mute_closed_attempt_cancelled_email() keeps that email off. The customer
+ * cancelled email only fires from processing or on-hold, so it never fires
+ * here. Stock and coupon usage are not changed: the block throws before
+ * WooCommerce holds coupons or reserves stock for this request, and
+ * WooCommerce only gives back stock or coupon usage that an order recorded.
+ *
+ * @param WC_Order             $order  The blocked attempt.
+ * @param CG_Validation_Result $result The block result.
  */
-function cg_close_blocked_store_api_attempt($order)
+function cg_close_blocked_store_api_attempt($order, $result)
 {
+    if (!($order instanceof WC_Order) || !$order->has_status(['checkout-draft', 'pending'])) {
+        return;
+    }
+    CG_Response_Adapter::lifecycle($result, $order);
     $order->update_meta_data('_cg_attempt_closed', '1');
-    $order->set_status('cancelled', __('CheckoutGuard blocked this checkout attempt.', 'checkoutguard'));
     $order->save();
 }
 
@@ -1583,11 +1600,9 @@ function cg_store_api_checkout_guard($order, $request)
 
     $result = CG_Validation_Engine::validate($context);
     if ($result->is_blocked()) {
-        // Mark the attempt so the duplicate lookup never counts it as an earlier
-        // order (WooCommerce may keep the draft after the exception below).
-        $order->update_meta_data('_cg_blocked', '1');
-        $order->update_meta_data('_cg_block_code', $result->block_code);
-        cg_close_blocked_store_api_attempt($order);
+        // Mark and cancel the attempt so the duplicate lookup never counts it as
+        // an earlier order (WooCommerce keeps the draft after the exception below).
+        cg_close_blocked_store_api_attempt($order, $result);
         CG_Response_Adapter::store_api($result);
     } else {
         $order->update_meta_data('_cg_validated', '1');
