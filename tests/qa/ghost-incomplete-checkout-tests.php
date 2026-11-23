@@ -195,6 +195,9 @@ try {
     $oid = qa_order($c);
     cg_delete_incomplete_checkout_on_order_completion($oid);
     $marked = (bool) get_transient('cg_ordered_' . md5($c['fp']));
+    // TTL check (no persistent object cache on the QA site: the timeout is an option row).
+    $ttl_left = wp_using_ext_object_cache() ? CG_ORDER_PLACED_MARK_TTL : ((int) get_option('_transient_timeout_cg_ordered_' . md5($c['fp'])) - time());
+    $marked = $marked && $ttl_left > CG_ORDER_PLACED_MARK_TTL - 10 && $ttl_left <= CG_ORDER_PLACED_MARK_TTL;
     qa_clear_marks();
     qa_reset();
     $r = qa_save($c);
