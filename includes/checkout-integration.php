@@ -79,10 +79,10 @@ function cg_delete_incomplete_checkout_on_order_completion($order_id)
             ...$records
         ));
 
+        // HQ is told later from WP-Cron: this runs while the customer places
+        // the order, and each HQ call may wait up to 15 s.
         if ($deleted) {
-            for ($i = 0; $i < $count; $i++) {
-                cg_decrement_usage_count('checkouts');
-            }
+            cg_queue_usage_decrement('checkouts', $count, 'order-' . (int) $order_id);
         }
     }
 }
