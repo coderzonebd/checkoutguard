@@ -201,6 +201,18 @@ try {
     $free = qa_lock_free();
     qa_check($R, 'I3', 'insert between lookup and insert: 1 row, 0 increment, updates the other row', $race['done'] && $race['id'] > 0 && !empty($res['success']) && (int) ($res['data']['record_id'] ?? 0) === $race['id'] && qa_rows($c['fp']) === 1 && qa_incr_calls() === 0 && qa_usage() === 10 && $free === true, 'race=' . wp_json_encode($race) . ' res=' . wp_json_encode($res) . ' rows=' . qa_rows($c['fp']) . ' incr=' . qa_incr_calls() . ' usage=' . qa_usage() . ' free=' . var_export($free, true));
 
+    // I12: limit reached, but the other request inserts the row before this
+    // request's lookup under the lock: that row is updated (success, 0
+    // increment), not refused with 403.
+    qa_reset(100, 100);
+    $c = qa_cust('i12');
+    $GLOBALS['QA_RACE'] = ['c' => $c, 'seen' => false, 'done' => false, 'id' => 0];
+    $res = qa_save($c);
+    $race = $GLOBALS['QA_RACE'];
+    $GLOBALS['QA_RACE'] = null;
+    $free = qa_lock_free();
+    qa_check($R, 'I12', 'limit reached, other row found under the lock: update it, 0 increment, no 403', $race['done'] && $race['id'] > 0 && !empty($res['success']) && empty($res['data']['limit_reached']) && (int) ($res['data']['record_id'] ?? 0) === $race['id'] && qa_rows($c['fp']) === 1 && qa_incr_calls() === 0 && qa_usage() === 100 && $free === true, 'race=' . wp_json_encode($race) . ' res=' . wp_json_encode($res) . ' rows=' . qa_rows($c['fp']) . ' incr=' . qa_incr_calls() . ' usage=' . qa_usage() . ' free=' . var_export($free, true));
+
     // I4: the lock is held by the other request: nothing is written or
     // counted, the answer says retry; once it is released, one row.
     qa_reset();
