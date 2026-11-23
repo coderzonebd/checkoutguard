@@ -30,7 +30,7 @@ add_filter('pre_http_request', function ($pre, $args, $url) {
     if ($r['code'] === 'refused') {
         return new WP_Error('http_request_failed', 'cURL error 7: Failed to connect to hq.invalid port 443: Connection refused');
     }
-    return ['headers' => new WpOrg\Requests\Utility\CaseInsensitiveDictionary([]), 'body' => json_encode($r['body'] ?? []), 'response' => ['code' => $r['code'], 'message' => ''], 'cookies' => [], 'filename' => null];
+    return ['headers' => new WpOrg\Requests\Utility\CaseInsensitiveDictionary([]), 'body' => array_key_exists('raw', $r) ? (string) $r['raw'] : json_encode($r['body'] ?? []), 'response' => ['code' => $r['code'], 'message' => ''], 'cookies' => [], 'filename' => null];
 }, PHP_INT_MAX, 3);
 $GLOBALS['QA_WARN'] = [];
 set_error_handler(function ($no, $str, $file, $line) {
@@ -157,13 +157,39 @@ ok('C11-ctl', 'success memo hit with an order id writes the courier meta (this o
 wc_get_order($oid)->delete(true);
 $GLOBALS['QA_HTTP'] = ['code' => 'timeout'];
 
+// C16: HQ answers 200 but the body is not a JSON object (a proxy error page,
+// or a bare JSON string). That is not a courier result: it must not be
+// cached for 6 hours, so the next request asks HQ again. Each "request" is
+// simulated by clearing the request memo between the two checks.
+foreach ([['C16a', 'HQ 200 with an HTML body', '<html><body>502 Bad Gateway</body></html>', '01781222333'], ['C16b', 'HQ 200 with a bare JSON string', '"ok"', '01791222333']] as $c) {
+    $GLOBALS['QA_HTTP'] = ['code' => 200, 'raw' => $c[2]];
+    qa_reset([$c[3]]);
+    $r1 = cg_perform_all_api_calls($c[3], 0);
+    $tc = get_transient('cg_courier_cache_' . md5($c[3])) !== false ? 'yes' : 'no';
+    if (function_exists('cg_courier_request_memo_reset')) { cg_courier_request_memo_reset(); }
+    cg_perform_all_api_calls($c[3], 0);
+    $n = count($GLOBALS['QA_CALLS']);
+    ok($c[0], $c[1] . ': not cached, the next request calls HQ again (2 calls)', $tc === 'no' && $n === 2, "cached=$tc calls=$n src=" . (is_array($r1) ? ($r1['cache_source'] ?? '') : gettype($r1)));
+}
+// C16-ctl: a real 200 courier result is cached, so the next request makes no
+// call (C16 is not passing because nothing is ever cached).
+$GLOBALS['QA_HTTP'] = ['code' => 200, 'body' => ['cache_source' => 'fresh', 'result' => ['summary' => ['success_rate' => 90, 'total_deliveries' => 10, 'successful_deliveries' => 9, 'cancelled_deliveries' => 1]]]];
+qa_reset(['01701222333']);
+cg_perform_all_api_calls('01701222333', 0);
+$tc = get_transient('cg_courier_cache_' . md5('01701222333')) !== false ? 'yes' : 'no';
+if (function_exists('cg_courier_request_memo_reset')) { cg_courier_request_memo_reset(); }
+cg_perform_all_api_calls('01701222333', 0);
+$n = count($GLOBALS['QA_CALLS']);
+ok('C16-ctl', 'HQ 200 with a courier result: cached, the next request makes no call (1 call)', $tc === 'yes' && $n === 1, "cached=$tc calls=$n");
+$GLOBALS['QA_HTTP'] = ['code' => 'timeout'];
+
 // C8: a forced refresh (admin "Refresh") bypasses the request memo.
 qa_reset(['01511222333']);
 cg_perform_all_api_calls('01511222333', 0); cg_perform_all_api_calls('01511222333', 0, true);
 $n = count($GLOBALS['QA_CALLS']);
 ok('C8', 'bypass_cache sends a new call', $n === 2, "calls=$n");
 
-foreach (['01751222333', '01761222333', '01771222333', '01731222333', '01741222333', '01721222333', '01711222333', '+880 1711-222333', '8801711222333', '01811222333', '+8801811222333', '01911222333', '01611222333', '01511222333'] as $p) { delete_transient('cg_courier_cache_' . md5($p)); }
+foreach (['01781222333', '01791222333', '01701222333', '01751222333', '01761222333', '01771222333', '01731222333', '01741222333', '01721222333', '01711222333', '+880 1711-222333', '8801711222333', '01811222333', '+8801811222333', '01911222333', '01611222333', '01511222333'] as $p) { delete_transient('cg_courier_cache_' . md5($p)); }
 delete_transient(CG_COURIER_AUTH_REJECT_TRANSIENT);
 if (defined('CG_COURIER_TIMEOUT_WAIT_TRANSIENT')) { delete_transient(CG_COURIER_TIMEOUT_WAIT_TRANSIENT); }
 cg_update_options_from_hq(is_array($GLOBALS['QA_OPTS_ORIG']) ? $GLOBALS['QA_OPTS_ORIG'] : []);
