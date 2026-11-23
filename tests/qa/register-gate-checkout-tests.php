@@ -6,8 +6,10 @@
  * cg_sync_with_hq() -> cg_register_site_with_hq(), and the register gate
  * (cg_register_next_allowed_at) was written but never read, so one checkout
  * sent several POST /sites/register. Rule: at most one register per gate
- * (60 s, or Retry-After) on this path. The admin's Reconnect ignores the
- * gate (like Sync now); a failed Reconnect writes a new gate, a good one clears it.
+ * (60 s, or Retry-After) on this path. The admin's Reconnect and Sync Now
+ * pass the gate (one register each, never two at once: Reconnect lock); a
+ * failed try writes a new gate, a good one clears it. Cron and page-load
+ * syncs stay gated.
  * The same holds when HQ answers 2xx without a key and for "already taken".
  *
  * Run on a local test site with WooCommerce only (never production):
@@ -329,6 +331,41 @@ $gate_open = (int) get_option('cg_register_next_allowed_at', 0) > $GLOBALS['QA_N
 cg_plugin_activate();
 $b = qa_registers();
 ok('G13a', 'HQ down: activate again at +10 s (gate open) -> exactly 1 register', $a === 1 && $gate_open && $b === 1, "first=$a gate_open=" . var_export($gate_open, true) . " on_activate=$b calls=" . json_encode($GLOBALS['QA_LOG']));
+
+// G13c: Sync Now is an explicit admin action and passes the
+// register gate like Reconnect. No key, a failed register 10 s ago (gate
+// open until +60 s): one Sync Now click sends exactly one register.
+qa_reset();
+cg_register_site_with_hq();
+$GLOBALS['QA_NOW'] += 10; $GLOBALS['QA_LOG'] = [];
+$gate_open = (int) get_option('cg_register_next_allowed_at', 0) > $GLOBALS['QA_NOW'];
+$s = qa_sync_now();
+$n = qa_registers();
+ok('G13c', 'Sync Now inside the gate (no key): exactly 1 register', $gate_open && $n === 1, 'gate_open=' . var_export($gate_open, true) . " sync=$s register=$n calls=" . json_encode($GLOBALS['QA_LOG']));
+
+// G13c-lock: a second Sync Now click while the first one's register is still
+// waiting for HQ sends no register of its own (Reconnect lock), so the pair
+// sends exactly one. Without a lock it would be two.
+qa_reset();
+cg_register_site_with_hq();
+$GLOBALS['QA_NOW'] += 10; $GLOBALS['QA_LOG'] = [];
+$GLOBALS['QA_SYNC2'] = null;
+$GLOBALS['QA_ON_REGISTER'] = function () { $GLOBALS['QA_SYNC2'] = qa_sync_now(); };
+$s = qa_sync_now();
+$n = qa_registers();
+ok('G13c-lock', 'second Sync Now during the first: no register of its own, 1 in total', $GLOBALS['QA_SYNC2'] !== null && $n === 1, "sync=$s sync2=" . var_export($GLOBALS['QA_SYNC2'], true) . " register=$n calls=" . json_encode($GLOBALS['QA_LOG']));
+
+// G13c-ctl: the automatic paths stay gated. Inside the same gate the daily
+// cron sync (cg_daily_sync_hook) and a plain cg_sync_with_hq() (what the
+// stale-cache page-load sync at admin-settings-page.php:963 calls) send 0.
+qa_reset();
+cg_register_site_with_hq();
+$GLOBALS['QA_NOW'] += 10; $GLOBALS['QA_LOG'] = [];
+do_action('cg_daily_sync_hook');
+$cron = qa_registers(); $GLOBALS['QA_LOG'] = [];
+cg_sync_with_hq();
+$plain = qa_registers();
+ok('G13c-ctl', 'inside the gate: cron sync and plain sync -> 0 register', $cron === 0 && $plain === 0, "cron=$cron plain=$plain");
 
 $out = ob_get_clean();
 // U1-U3: the register gate has an upper bound of 600 s (10 min), the same
