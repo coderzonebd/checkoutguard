@@ -26,7 +26,31 @@ add_filter('pre_http_request', function ($pre, $args, $url) {
     $GLOBALS['MI_HQ'][] = $url;
     return ['headers' => [], 'body' => '{}', 'response' => ['code' => 200, 'message' => 'OK'], 'cookies' => [], 'filename' => null];
 }, 10, 3);
+// Deleted rows give usage back through WP-Cron (cg_queue_usage_decrement).
+// Run every queued decrement event first, so the HQ calls it sends are
+// counted like the direct ones.
+function mi_drain_queued_decrements() {
+    if (!defined('CG_USAGE_DECREMENT_HOOK')) {
+        return;
+    }
+    for ($guard = 0; $guard < 50; $guard++) {
+        $events = [];
+        foreach ((array) _get_cron_array() as $ts => $hooks) {
+            foreach ((array) ($hooks[CG_USAGE_DECREMENT_HOOK] ?? []) as $ev) {
+                $events[] = [$ts, $ev['args']];
+            }
+        }
+        if (!$events) {
+            return;
+        }
+        foreach ($events as $e) {
+            wp_unschedule_event($e[0], CG_USAGE_DECREMENT_HOOK, $e[1]);
+            do_action_ref_array(CG_USAGE_DECREMENT_HOOK, $e[1]);
+        }
+    }
+}
 function mi_decrements() {
+    mi_drain_queued_decrements();
     return count(array_filter($GLOBALS['MI_HQ'], function ($u) { return strpos($u, 'decrement-usage') !== false; }));
 }
 
