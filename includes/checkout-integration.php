@@ -14,6 +14,13 @@ function cg_delete_incomplete_checkout_on_order_completion($order_id)
         return;
     }
 
+    // A Store API (block checkout) draft is made when the cart loads, before
+    // the customer has typed anything. Cleaning up now would set the guard
+    // below and the real order would later skip the cleanup.
+    if (method_exists($order, 'get_status') && $order->get_status() === 'checkout-draft') {
+        return;
+    }
+
     // Prevent duplicate cleanup execution for the same order
     if ($order->get_meta('_cg_incomplete_cleaned')) {
         return;
@@ -66,6 +73,12 @@ function cg_delete_incomplete_checkout_on_order_completion($order_id)
         return;
     }
 
+    // A tracker request sent just before the order (debounced field change,
+    // blur on the place-order click) can arrive after this cleanup. Mark the
+    // customer for a short time so that request does not add the checkout
+    // again as incomplete and count it again.
+    cg_mark_order_placed($where_params);
+
     $records = $wpdb->get_col($wpdb->prepare(
         "SELECT id FROM {$table_name} WHERE (" . implode(' OR ', $where_clauses) . ")",
         ...$where_params
@@ -87,6 +100,39 @@ function cg_delete_incomplete_checkout_on_order_completion($order_id)
             cg_queue_usage_decrement('checkouts', min($count, (int) $deleted), 'order-' . (int) $order->get_id());
         }
     }
+}
+
+/**
+ * Transient key for one customer key (session id, device fingerprint,
+ * normalized phone or email) that just placed an order.
+ */
+function cg_order_placed_mark_key($value)
+{
+    return 'cg_ordered_' . md5(strtolower(trim((string) $value)));
+}
+
+/**
+ * Marks the given customer keys as having just placed an order.
+ */
+function cg_mark_order_placed(array $values)
+{
+    foreach (array_unique(array_filter(array_map('strval', $values), 'strlen')) as $value) {
+        set_transient(cg_order_placed_mark_key($value), 1, CG_ORDER_PLACED_MARK_TTL);
+    }
+}
+
+/**
+ * True when any of the given customer keys placed an order within
+ * CG_ORDER_PLACED_MARK_TTL seconds.
+ */
+function cg_recently_placed_order(array $values)
+{
+    foreach (array_filter(array_map('strval', $values), 'strlen') as $value) {
+        if (get_transient(cg_order_placed_mark_key($value))) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // ====================================================================

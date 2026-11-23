@@ -84,6 +84,19 @@ function cg_handle_save_checkout_data()
         ...$where_params
     ));
 
+    // The customer placed an order a moment ago and the cleanup removed the
+    // record: a late tracker request must not add it back or count it again.
+    if (!$existing_record_id && function_exists('cg_recently_placed_order')) {
+        $mark_keys = [$session_id, $raw_device_fp, $email];
+        if (!empty($phone) && strlen($phone) >= 7) {
+            $mark_keys[] = $phone;
+        }
+        if (cg_recently_placed_order($mark_keys)) {
+            wp_send_json_success(['message' => 'Order already placed.', 'skipped' => 'order_placed']);
+            return;
+        }
+    }
+
     // Tier limit check for NEW incomplete checkouts
     if (!$existing_record_id && !cg_can_perform_action('checkouts')) {
         wp_send_json_error([
