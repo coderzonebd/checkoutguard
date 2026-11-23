@@ -40,6 +40,8 @@
  *     (no option, no already-registered notice, failed notice); the same
  *     body with 409 is already registered (A13c); 422 after an
  *     already-registered answer deletes the option (A13d).
+ * A13e/A13f the same as A13a/A13b with a bare body {"error":"already_registered"}
+ *     (no "message", so the error message is the reason itself).
  *
  * Run on a local test site only (never production):
  *   wp eval-file tests/qa/register-already-registered-notice-tests.php
@@ -317,6 +319,21 @@ foreach ([['A13a', 422], ['A13b', 400]] as $c) {
     $errs = qa_a13_errs();
     $failed_notice = count($errs) === 1 && stripos($errs[0]['text'], 'could not connect') !== false;
     ok($c[0], 'HTTP ' . $c[1] . ' with error already_registered: no option, no already-registered notice, status failed, failed notice', $row === null && $b === null && strpos($status, 'failed') === 0 && cg_register_failed() && $failed_notice, 'status=' . substr($status, 0, 7) . ' ' . qa_opt_fmt($row) . ' ' . qa_ar_fmt($b) . ' error_notices=' . count($errs) . ' failed_notice=' . ($failed_notice ? 'yes' : 'no'));
+}
+// A13e/A13f: the same with a bare body (no "message"): the client then uses
+// "already_registered" as the error message, and that alone must not count
+// without HTTP 409 either.
+foreach ([['A13e', 422], ['A13f', 400]] as $c) {
+    qa_reset();
+    $GLOBALS['QA_ROUTES'] = ['/sites/register' => ['code' => $c[1], 'body' => ['error' => 'already_registered']], '/sites/status' => ['code' => 'down']];
+    cg_register_site_with_hq();
+    $status = (string) get_option('cg_license_status');
+    $row = qa_opt_row();
+    $GLOBALS['QA_NOW'] += 61;
+    $b = qa_ar_notice();
+    $errs = qa_a13_errs();
+    $failed_notice = count($errs) === 1 && stripos($errs[0]['text'], 'could not connect') !== false;
+    ok($c[0], 'HTTP ' . $c[1] . ' with a bare {"error":"already_registered"}: no option, no already-registered notice, status failed, failed notice', $row === null && $b === null && strpos($status, 'failed') === 0 && cg_register_failed() && $failed_notice, 'status=' . substr($status, 0, 7) . ' ' . qa_opt_fmt($row) . ' ' . qa_ar_fmt($b) . ' error_notices=' . count($errs) . ' failed_notice=' . ($failed_notice ? 'yes' : 'no'));
 }
 qa_reset();
 $GLOBALS['QA_ROUTES'] = qa_a13_route(409);
