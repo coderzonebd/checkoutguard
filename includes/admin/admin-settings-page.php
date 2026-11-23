@@ -30,7 +30,9 @@ function cg_fetch_hq_configuration()
  * @param bool $force Passed to the register call when the site has no key:
  *                    true sends it past the register gate. Only the admin's
  *                    Sync Now button passes true; cron and every automatic
- *                    caller use the default and stay gated.
+ *                    caller use the default and stay gated. Only a real
+ *                    boolean true forces: a hook that passes an argument
+ *                    (do_action with '1') must stay gated.
  */
 function cg_sync_with_hq($force = false)
 {
@@ -38,7 +40,7 @@ function cg_sync_with_hq($force = false)
     $options = get_option('cg_plugin_options', []);
     if (empty($options['api_key'])) {
         if (function_exists('cg_register_site_with_hq')) {
-            cg_register_site_with_hq((bool) $force);
+            cg_register_site_with_hq($force === true);
         }
         // Re-check — if registration didn't yield a key, we can't sync
         $options = get_option('cg_plugin_options', []);
