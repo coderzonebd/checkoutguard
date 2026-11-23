@@ -95,14 +95,46 @@ function cg_delete_incomplete_checkout_on_order_completion($order_id)
     }
 
     // Recovered rows are the record of a recovery, not an abandoned
-    // checkout: keep them.
+    // checkout: keep them. Newest first, so a manual invoice can keep it.
     $records = $wpdb->get_col($wpdb->prepare(
-        "SELECT id FROM {$table_name} WHERE status <> 'recovered' AND (" . implode(' OR ', $where_clauses) . ")",
+        "SELECT id FROM {$table_name} WHERE status <> 'recovered' AND (" . implode(' OR ', $where_clauses) . ") ORDER BY created_at DESC, id DESC",
         ...$where_params
     ));
 
     if (!empty($records)) {
         $count = count($records);
+
+        // Manual invoice: the newest matching row becomes the recovery
+        // record (like the Recover button); the rest are deleted below.
+        // Usage is still given back for every matching row.
+        if ($order->get_created_via() === 'cg-manual-invoice') {
+            $keep_id = (int) array_shift($records);
+            $notes = (string) $wpdb->get_var($wpdb->prepare(
+                "SELECT admin_notes FROM {$table_name} WHERE id = %d",
+                $keep_id
+            ));
+            $now = current_time('mysql');
+            $updated = $wpdb->update(
+                $table_name,
+                [
+                    'status' => 'recovered',
+                    'recovered_order_id' => (int) $order_id,
+                    'updated_at' => $now,
+                    'admin_notes' => trim($notes . "\n" . sprintf(__('Recovered by manual invoice as WC Order #%d on %s.', 'checkoutguard'), $order_id, $now)),
+                ],
+                ['id' => $keep_id],
+                ['%s', '%d', '%s', '%s'],
+                ['%d']
+            );
+            if ($updated) {
+                cg_decrement_usage_count('checkouts');
+            }
+            if (empty($records)) {
+                return;
+            }
+            $count = count($records);
+        }
+
         $placeholders = implode(',', array_fill(0, $count, '%d'));
         $deleted = $wpdb->query($wpdb->prepare(
             "DELETE FROM {$table_name} WHERE id IN ($placeholders)",
