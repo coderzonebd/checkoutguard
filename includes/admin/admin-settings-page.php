@@ -26,14 +26,19 @@ function cg_fetch_hq_configuration()
 
 /**
  * Fetches data from HQ, updates local settings, and caches the result.
+ *
+ * @param bool $force Passed to the register call when the site has no key:
+ *                    true sends it past the register gate. Only the admin's
+ *                    Sync Now button passes true; cron and every automatic
+ *                    caller use the default and stay gated.
  */
-function cg_sync_with_hq()
+function cg_sync_with_hq($force = false)
 {
     // If no API key is stored, try to register the site first
     $options = get_option('cg_plugin_options', []);
     if (empty($options['api_key'])) {
         if (function_exists('cg_register_site_with_hq')) {
-            cg_register_site_with_hq();
+            cg_register_site_with_hq((bool) $force);
         }
         // Re-check — if registration didn't yield a key, we can't sync
         $options = get_option('cg_plugin_options', []);
@@ -75,7 +80,30 @@ function cg_handle_force_sync_ajax()
         return;
     }
 
-    if (cg_sync_with_hq()) {
+    // No key yet: Sync Now forces one register past the gate, under the same
+    // short lock as Reconnect so a second click (or a Reconnect in another
+    // tab) cannot send a second register while this one runs.
+    $options = get_option('cg_plugin_options', []);
+    $no_key = empty($options['api_key']) && defined('CG_REGISTER_RECONNECT_LOCK');
+    if ($no_key && get_transient(CG_REGISTER_RECONNECT_LOCK) !== false) {
+        wp_send_json_error([
+            'code' => 'running',
+            'message' => __('Reconnect is running. Reload this page in a few seconds.', 'checkoutguard'),
+        ]);
+        return;
+    }
+    if ($no_key) {
+        set_transient(CG_REGISTER_RECONNECT_LOCK, 1, CG_REGISTER_RECONNECT_LOCK_TTL);
+        try {
+            $synced = cg_sync_with_hq(true);
+        } finally {
+            delete_transient(CG_REGISTER_RECONNECT_LOCK);
+        }
+    } else {
+        $synced = cg_sync_with_hq();
+    }
+
+    if ($synced) {
         $cache = get_transient('cg_api_cache');
         wp_send_json_success([
             'message' => __('Successfully synced with Headquarters.', 'checkoutguard'),

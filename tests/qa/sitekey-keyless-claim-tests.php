@@ -42,7 +42,7 @@ set_error_handler(function ($no, $str, $file, $line) {
 
 function qa_reset() {
     global $wpdb;
-    foreach (['cg_sitekey_state', 'cg_sitekey_next_allowed_at', 'cg_sitekey_lock', 'cg_sitekey_last_drop'] as $o) {
+    foreach (['cg_sitekey_state', 'cg_sitekey_next_allowed_at', 'cg_sitekey_lock', 'cg_sitekey_last_drop', 'cg_register_next_allowed_at'] as $o) {
         $wpdb->delete($wpdb->options, ['option_name' => $o]);
         wp_cache_delete($o, 'options');
     }

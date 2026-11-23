@@ -15,6 +15,18 @@ define('CG_MIGRATION_NOTICE_AFTER', 3);
 // failed registration (at least a minute, longer when HQ sent Retry-After).
 define('CG_REGISTER_GATE_OPTION', 'cg_register_next_allowed_at');
 define('CG_REGISTER_MIN_GAP', MINUTE_IN_SECONDS);
+// Upper bound of the register gate, the same cap as the status wait. A
+// stored gate further ahead than this is ignored, and Retry-After is
+// clamped to it, so a clock that moved back or a bad header cannot keep
+// the site from registering for hours.
+define('CG_REGISTER_MAX_WAIT', 10 * MINUTE_IN_SECONDS);
+// Double-click lock for the manual Reconnect. Separate from the register
+// gate: the gate holds the automatic path, this lock only stops a second
+// Reconnect while one is still running. 45 s covers one register (15 s
+// timeout) plus the sync after it (15 s); the lock is removed as soon as
+// the call ends.
+define('CG_REGISTER_RECONNECT_LOCK', 'cg_register_reconnect_lock');
+define('CG_REGISTER_RECONNECT_LOCK_TTL', 45);
 
 function cg_plugin_activate()
 {
@@ -42,7 +54,9 @@ function cg_plugin_activate()
     if (!get_option('cg_license_status')) {
         update_option('cg_license_status', 'active');
     }
-    cg_register_site_with_hq();
+    // Activation is an explicit admin action: register now even if an earlier
+    // attempt left the gate closed.
+    cg_register_site_with_hq(true);
 
     if (function_exists('cg_send_plugin_analytics')) {
         cg_send_plugin_analytics('plugin_activation');
@@ -88,8 +102,24 @@ function cg_create_blocked_orders_table()
     dbDelta($sql);
 }
 
-function cg_register_site_with_hq()
+/**
+ * Registers the site with HQ and stores the key it returns.
+ *
+ * After a failed attempt (HQ down, an HTTP error including "already taken",
+ * or a 2xx without a key) CG_REGISTER_GATE_OPTION holds the earliest time of
+ * the next one; until then this returns without calling HQ, so checkout
+ * saves, syncs and page loads never repeat a register HQ just refused or
+ * could not answer. Only explicit admin actions pass $force: plugin
+ * activation and "Reconnect now" (which has checked and moved the gate itself).
+ *
+ * @param bool $force Skip the gate check (activation and Reconnect only).
+ */
+function cg_register_site_with_hq($force = false)
 {
+    if (!$force && cg_register_gate_left() > 0) {
+        return;
+    }
+
     $root_domain = cg_get_root_domain(get_site_url());
     $admin_email = get_option('admin_email');
 
@@ -119,6 +149,8 @@ function cg_register_site_with_hq()
     // problem, so nothing this site can retry will fix it on its own.
     if (!is_wp_error($response) && is_array($response) && empty($response['api_key'])) {
         update_option('cg_license_status', 'failed: Headquarters accepted registration but returned no API key. This is a server-side configuration issue — please contact support.');
+        // A retry right away gets the same answer; wait like any failure.
+        update_option(CG_REGISTER_GATE_OPTION, cg_register_now() + CG_REGISTER_MIN_GAP, false);
         return;
     }
 
@@ -130,11 +162,28 @@ function cg_register_site_with_hq()
         );
         if (!$is_already_taken) {
             update_option('cg_license_status', 'failed: ' . $response->get_error_message());
-            $data = $response->get_error_data();
-            $retry_after = is_array($data) ? (int) ($data['retry_after'] ?? 0) : 0;
-            update_option(CG_REGISTER_GATE_OPTION, cg_register_now() + max(CG_REGISTER_MIN_GAP, $retry_after), false);
         }
+        // "Already taken" keeps the current status, but it is still a
+        // refused register: gate it like every other failure so checkout
+        // saves and syncs do not repeat it.
+        $data = $response->get_error_data();
+        $retry_after = is_array($data) ? (int) ($data['retry_after'] ?? 0) : 0;
+        $wait = min(max(CG_REGISTER_MIN_GAP, $retry_after), CG_REGISTER_MAX_WAIT);
+        update_option(CG_REGISTER_GATE_OPTION, cg_register_now() + $wait, false);
     }
+}
+
+/**
+ * Seconds left on the register gate, or 0 when there is no gate, it has
+ * passed, or it lies more than CG_REGISTER_MAX_WAIT ahead (then it is not
+ * trusted and ignored).
+ *
+ * @return int
+ */
+function cg_register_gate_left()
+{
+    $left = (int) get_option(CG_REGISTER_GATE_OPTION, 0) - cg_register_now();
+    return ($left > 0 && $left <= CG_REGISTER_MAX_WAIT) ? $left : 0;
 }
 
 function cg_register_now()
@@ -178,9 +227,12 @@ function cg_render_register_failed_notice()
         return;
     }
     $gate = (int) get_option(CG_REGISTER_GATE_OPTION, 0);
+    $running = get_transient(CG_REGISTER_RECONNECT_LOCK) !== false;
     echo '<div class="notice notice-error"><p><strong>' . esc_html__('CheckoutGuard is not protecting checkouts right now.', 'checkoutguard') . '</strong> ';
     echo esc_html__('This site could not connect to CheckoutGuard yet. Orders still go through, but without the fraud check.', 'checkoutguard') . ' ';
-    if ($gate > cg_register_now()) {
+    if ($running) {
+        echo esc_html__('Reconnect is running. Reload this page in a few seconds.', 'checkoutguard');
+    } elseif (cg_register_gate_left() > 0) {
         echo esc_html(sprintf(
             /* translators: %s: time after which the admin may try again */
             __('You can try again after %s.', 'checkoutguard'),
@@ -197,26 +249,38 @@ function cg_render_register_failed_notice()
 add_action('admin_notices', 'cg_render_register_failed_notice');
 
 /**
- * One manual registration attempt, at most one per gate (a minute, or the
- * Retry-After HQ sent). The gate moves before the call, so a double click
- * or a reload never sends a second request.
+ * One manual registration attempt. An admin click is not held by the gate:
+ * it always sends one register and moves the gate first, so the automatic
+ * path (checkout saves, cron) stays gated after it.
  *
- * @return string 'not_needed', 'gated' or 'tried'.
+ * A short lock (CG_REGISTER_RECONNECT_LOCK, CG_REGISTER_RECONNECT_LOCK_TTL
+ * seconds) is set before the call and removed when it ends, success or not.
+ * While it is set a second click sends nothing.
+ *
+ * @return string 'not_needed', 'running' or 'tried'.
  */
 function cg_register_reconnect_attempt()
 {
     if (!cg_register_failed()) {
         return 'not_needed';
     }
-    $now = cg_register_now();
-    if ((int) get_option(CG_REGISTER_GATE_OPTION, 0) > $now) {
-        return 'gated';
+    if (get_transient(CG_REGISTER_RECONNECT_LOCK) !== false) {
+        return 'running';
     }
-    update_option(CG_REGISTER_GATE_OPTION, $now + CG_REGISTER_MIN_GAP, false);
-    if (!function_exists('cg_sync_with_hq')) {
-        require_once CG_ADMIN_DIR . 'admin-settings-page.php';
+    set_transient(CG_REGISTER_RECONNECT_LOCK, 1, CG_REGISTER_RECONNECT_LOCK_TTL);
+    try {
+        $now = cg_register_now();
+        update_option(CG_REGISTER_GATE_OPTION, $now + CG_REGISTER_MIN_GAP, false);
+        if (!function_exists('cg_sync_with_hq')) {
+            require_once CG_ADMIN_DIR . 'admin-settings-page.php';
+        }
+        // The one register this attempt allows. If it fails it sets the gate
+        // again, so the register inside the sync below stays gated.
+        cg_register_site_with_hq(true);
+        cg_sync_with_hq();
+    } finally {
+        delete_transient(CG_REGISTER_RECONNECT_LOCK);
     }
-    cg_sync_with_hq(); // Registers first when there is no key, then syncs.
     return 'tried';
 }
 
