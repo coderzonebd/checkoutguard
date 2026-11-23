@@ -84,7 +84,7 @@ function cg_delete_incomplete_checkout_on_order_completion($order_id)
         // request really removed are given back (a parallel hook may have
         // deleted some of them first).
         if ($deleted) {
-            cg_queue_usage_decrement('checkouts', min($count, (int) $deleted), 'order-' . (int) $order_id);
+            cg_queue_usage_decrement('checkouts', min($count, (int) $deleted), 'order-' . (int) $order->get_id());
         }
     }
 }
