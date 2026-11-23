@@ -31,6 +31,11 @@ $GLOBALS['QA_LOG'] = []; $GLOBALS['QA_ROUTES'] = [];
 add_filter('pre_http_request', function ($pre, $args, $url) {
     $path = preg_replace('#^.*?/api/v1#', '', (string) parse_url($url, PHP_URL_PATH));
     $GLOBALS['QA_LOG'][] = $path;
+    if ($path === '/sites/register' && !empty($GLOBALS['QA_ON_REGISTER'])) {
+        $cb = $GLOBALS['QA_ON_REGISTER'];
+        $GLOBALS['QA_ON_REGISTER'] = null;
+        $cb();
+    }
     $r = $GLOBALS['QA_ROUTES'][$path] ?? ['code' => 'down'];
     if ($r['code'] === 'down') {
         return new WP_Error('http_request_failed', 'cURL error 7: Failed to connect');
@@ -61,12 +66,30 @@ function qa_reset() {
     wp_cache_delete('notoptions', 'options'); wp_cache_delete('alloptions', 'options');
     wp_clear_scheduled_hook('cg_sitekey_request_event');
     delete_transient('cg_api_cache');
+    delete_transient(defined('CG_REGISTER_RECONNECT_LOCK') ? CG_REGISTER_RECONNECT_LOCK : 'cg_register_reconnect_lock');
     $o = is_array($GLOBALS['QA_ORIG']['cg_plugin_options']) ? $GLOBALS['QA_ORIG']['cg_plugin_options'] : [];
     unset($o['api_key']);
     cg_update_options_from_hq($o);
     update_option('cg_license_status', 'active');
     $GLOBALS['QA_LOG'] = []; $GLOBALS['QA_ROUTES'] = []; $GLOBALS['QA_NOW'] = 1800000000;
+    $GLOBALS['QA_ON_REGISTER'] = null;
     wp_set_current_user(0);
+}
+// The admin's "Sync Now" button (AJAX cg_handle_force_sync_ajax). Returns
+// 'ok', 'error' or 'none' (no JSON sent).
+function qa_sync_now() {
+    $u = get_current_user_id();
+    wp_set_current_user($GLOBALS['QA_ADMIN']);
+    $_POST = $_REQUEST = ['nonce' => wp_create_nonce('cg_force_sync_ajax')];
+    ob_start();
+    try {
+        cg_handle_force_sync_ajax();
+    } catch (QA_Ajax_Done $e) {
+    }
+    $j = json_decode((string) ob_get_clean(), true);
+    $_POST = $_REQUEST = [];
+    wp_set_current_user($u);
+    return is_array($j) ? (!empty($j['success']) ? 'ok' : 'error') : 'none';
 }
 // One guest checkout-field save (classic or block checkout AJAX), a new
 // session each time so the limit check runs (no existing row). Placeholder
@@ -267,6 +290,32 @@ $GLOBALS['QA_NOW'] = 1800000000 + 60; $GLOBALS['QA_LOG'] = [];
 qa_checkout_save(3); qa_checkout_save(4);
 $c = qa_registers();
 ok('S10', '2xx without a key: gate = first + 60 s, +59 s -> 0, +60 s -> 1, setup message', $a === 1 && $b === 0 && $c === 1 && $gate === 1800000000 + 60 && strpos($st, 'failed: Headquarters accepted registration') === 0, "first=$a at59=$b at60=$c gate=$gate status=" . substr($st, 0, 40));
+
+// G13b: Sync Now honours the Reconnect lock. The admin clicks Sync Now
+// (another tab) while a Reconnect is still waiting for HQ: Sync Now sends
+// no register of its own, so the pair sends exactly one. A Sync Now that
+// forced its register past the gate without checking the lock would send two.
+qa_reset();
+cg_register_site_with_hq();
+$GLOBALS['QA_NOW'] += 61; $GLOBALS['QA_LOG'] = [];
+wp_set_current_user($GLOBALS['QA_ADMIN']);
+$GLOBALS['QA_SYNC'] = null; $GLOBALS['QA_LOCKED'] = null;
+$GLOBALS['QA_ON_REGISTER'] = function () {
+    $GLOBALS['QA_LOCKED'] = get_transient(defined('CG_REGISTER_RECONNECT_LOCK') ? CG_REGISTER_RECONNECT_LOCK : 'cg_register_reconnect_lock') !== false;
+    $GLOBALS['QA_SYNC'] = qa_sync_now();
+};
+$a = cg_register_reconnect_attempt();
+$n = qa_registers();
+ok('G13b', 'Sync Now during a running Reconnect: no register of its own, 1 in total', $a === 'tried' && $GLOBALS['QA_LOCKED'] === true && $GLOBALS['QA_SYNC'] === 'error' && $n === 1, "a=$a locked=" . var_export($GLOBALS['QA_LOCKED'], true) . ' sync=' . var_export($GLOBALS['QA_SYNC'], true) . " register=$n calls=" . json_encode($GLOBALS['QA_LOG']));
+
+// G13b-ctl: with no Reconnect running and the gate over, Sync Now does send
+// one register (so G13b is not passing because Sync Now never registers).
+qa_reset();
+cg_register_site_with_hq();
+$GLOBALS['QA_NOW'] += 61; $GLOBALS['QA_LOG'] = [];
+$s = qa_sync_now();
+$n = qa_registers();
+ok('G13b-ctl', 'Sync Now, no Reconnect running, gate over: exactly 1 register', $s === 'error' && $n === 1, "sync=$s register=$n");
 
 $out = ob_get_clean();
 // U1-U3: the register gate has an upper bound of 600 s (10 min), the same
