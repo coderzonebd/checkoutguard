@@ -201,7 +201,8 @@ if ($has_fp_col) {
 }
 $ro = $oid ? wc_get_order($oid) : null;
 mi_check('R6 recovered order does not get the admin\'s device fingerprint', $ro && $ro->get_meta('_cg_device_fingerprint') === '');
-mi_check('R5 one HQ decrement for the one deleted row', mi_decrements() - $hq0 === 1, 'decrements=' . (mi_decrements() - $hq0));
+// Rafi spec 5.1: the recovered entry is not counted as incomplete either.
+mi_check('R5 two HQ decrements: the recovered entry and the one deleted row', mi_decrements() - $hq0 === 2, 'decrements=' . (mi_decrements() - $hq0));
 mi_clear_rows();
 
 // R7 the UPDATE to 'recovered' fails: the entry itself must not be
@@ -250,9 +251,11 @@ mi_clear_rows();
 
 // S3 WooCommerce "Add order" in wp-admin (created_via admin): the first call
 // has no identifier and must not mark the order, so the call after the
-// billing phone is set still cleans up.
+// billing phone is set still cleans up. Like a manual invoice (Rafi spec
+// 5.1) the matching row is kept as recovered and its usage is given back.
 mi_admin_context(false, true);
 $ph_row = mi_row(['phone' => '01799000666']);
+$hq3 = mi_decrements();
 $so = new WC_Order();
 $so->set_created_via('admin');
 $so->save();
@@ -264,7 +267,38 @@ $so->set_billing_phone('01799000666');
 $so->save();
 cg_delete_incomplete_checkout_on_order_completion($so->get_id());
 mi_admin_context(true, false);
-mi_check('S3 empty first call leaves no flag; second call with phone cleans up', $flag_after_empty === '' && mi_get($ph_row) === null, 'flag=' . var_export($flag_after_empty, true));
+$s3 = mi_get($ph_row);
+mi_check('S3 empty first call leaves no flag; second call with phone keeps the row as recovered, one decrement',
+    $flag_after_empty === '' && $s3 && $s3->status === 'recovered' && (int) $s3->recovered_order_id === $so->get_id() && mi_decrements() - $hq3 === 1,
+    'flag=' . var_export($flag_after_empty, true) . ' row=' . ($s3 ? $s3->status . '/' . $s3->recovered_order_id : 'missing') . ' decrements=' . (mi_decrements() - $hq3));
+mi_clear_rows();
+
+// A1 WooCommerce "Add order" with two matching rows (Rafi spec 5.1, same as
+// the manual invoice): the newest is kept as recovered with a note, the
+// older one is deleted, usage is given back for both; a row that matches
+// only the admin's device cookie is kept.
+mi_admin_context(true, true);
+$a_old = mi_row(['phone' => '01799000655', 'created_at' => date('Y-m-d H:i:s', current_time('timestamp') - 7200)]);
+$a_new = mi_row(['phone' => '01799000655', 'email' => 'cust5@cgmi.test', 'created_at' => date('Y-m-d H:i:s', current_time('timestamp') - 60)]);
+$a_fp = $has_fp_col ? mi_row(['phone' => '01799000656', 'device_fingerprint' => $ADMIN_FP]) : 0;
+$hqa = mi_decrements();
+$ao = new WC_Order();
+$ao->set_created_via('admin');
+$ao->set_billing_phone('01799000655');
+$ao->set_billing_email('cust5@cgmi.test');
+$ao->save();
+$created_orders[] = $ao->get_id();
+cg_delete_incomplete_checkout_on_order_completion($ao->get_id());
+$an = mi_get($a_new);
+mi_check('A1 admin "Add order": newest row recovered with the order id and a note, older row deleted, 2 decrements',
+    $an && $an->status === 'recovered' && (int) $an->recovered_order_id === $ao->get_id() && strpos((string) $an->admin_notes, '#' . $ao->get_id()) !== false
+    && mi_get($a_old) === null && mi_decrements() - $hqa === 2,
+    ($an ? $an->status . '/' . $an->recovered_order_id : 'missing') . ' old=' . (mi_get($a_old) ? 'kept' : 'gone') . ' decrements=' . (mi_decrements() - $hqa));
+if ($has_fp_col) {
+    mi_check('A2 admin "Add order": row matching only the admin\'s device cookie is kept', mi_get($a_fp) !== null);
+}
+mi_admin_context(true, false);
+mi_clear_rows();
 
 // S4 storefront: a recovered row of the same customer is kept.
 $hist = mi_row(['phone' => '01799000666', 'status' => 'recovered', 'recovered_order_id' => 1]);
