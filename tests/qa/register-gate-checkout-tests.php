@@ -488,6 +488,37 @@ $b = qa_registers();
 $GLOBALS['QA_ON_REGISTER'] = null;
 ok('G13j', 'forced register sees the Reconnect lock held', $s === 'error' && $b === 1 && $GLOBALS['QA_LOCKED'] === true, "sync=$s register=$b locked=" . var_export($GLOBALS['QA_LOCKED'], true));
 
+// G13l: the Reconnect lock outlives one register (15 s) plus one sync
+// (15 s). While the register request runs, the lock's timeout is moved
+// back as if it was taken 44 s ago (still held) and then 46 s ago (gone).
+// WordPress option transients expire when timeout < time(). Checked for
+// the Reconnect button and for Sync Now; the lock is taken again and must
+// be gone after each call (removed in finally).
+foreach (['G13l-reconnect', 'G13l-syncnow'] as $gid) {
+    qa_reset();
+    cg_register_site_with_hq();
+    $GLOBALS['QA_NOW'] = 1800000000 + 61; $GLOBALS['QA_LOG'] = [];
+    $GLOBALS['QA_L'] = null;
+    $GLOBALS['QA_ON_REGISTER'] = function () {
+        $k = '_transient_timeout_' . CG_REGISTER_RECONNECT_LOCK;
+        $t0 = (int) get_option($k);
+        update_option($k, $t0 - 44, false);
+        $h44 = get_transient(CG_REGISTER_RECONNECT_LOCK) !== false;
+        update_option($k, $t0 - 46, false);
+        $h46 = get_transient(CG_REGISTER_RECONNECT_LOCK) !== false;
+        $GLOBALS['QA_L'] = ['left' => $t0 - time(), 'h44' => $h44, 'h46' => $h46];
+        // The +46 s read removed the expired lock; take it again so the
+        // check after the call shows the caller's finally removes it.
+        set_transient(CG_REGISTER_RECONNECT_LOCK, 1, CG_REGISTER_RECONNECT_LOCK_TTL);
+    };
+    $r = $gid === 'G13l-reconnect' ? cg_register_reconnect_attempt() : qa_sync_now();
+    $b = qa_registers();
+    $GLOBALS['QA_ON_REGISTER'] = null;
+    $lock_after = get_transient(CG_REGISTER_RECONNECT_LOCK) !== false;
+    $L = $GLOBALS['QA_L'];
+    ok($gid, 'Reconnect lock held at +44 s, gone at +46 s, released after the call', !wp_using_ext_object_cache() && is_array($L) && $L['h44'] === true && $L['h46'] === false && $b === 1 && !$lock_after, 'r=' . var_export($r, true) . " register=$b lock=" . json_encode($L) . ' lock_after=' . var_export($lock_after, true));
+}
+
 // G13k: only Sync Now may force. Across the plugin code (tests excluded) there
 // is exactly one cg_sync_with_hq() call with an argument, and it is inside
 // cg_handle_force_sync_ajax(). Cron, the SiteKey claim, activation, Reconnect,
