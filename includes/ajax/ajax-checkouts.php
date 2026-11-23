@@ -142,7 +142,17 @@ function cg_handle_save_checkout_data()
     // Two tracker requests for a new customer can both find no record, both
     // insert one and both count it. Hold a lock from here until the insert
     // and look again once it is held: the other request's row is found then.
+    //
+    // The limit check and the contact reveal decision may ask HQ first (no
+    // cg_api_cache, or the reveal period is over): up to 15s. Do that before
+    // the lock is taken, so other new customers' requests do not wait for it.
+    $can_insert = true;
+    $reveal_decision = ['count' => false, 'until' => null];
     if (!$existing_record_id) {
+        $can_insert = cg_can_perform_action('checkouts');
+        if ($can_insert && function_exists('cg_contact_reveal_decide')) {
+            $reveal_decision = cg_contact_reveal_decide();
+        }
         if (!cg_incomplete_insert_lock()) {
             wp_send_json_error(['message' => 'Checkout data is being saved, please retry.', 'retry' => true], 409);
             return;
@@ -167,8 +177,8 @@ function cg_handle_save_checkout_data()
         }
     }
 
-    // Tier limit check for NEW incomplete checkouts
-    if (!$existing_record_id && !cg_can_perform_action('checkouts')) {
+    // Tier limit check for NEW incomplete checkouts (checked before the lock)
+    if (!$existing_record_id && !$can_insert) {
         cg_incomplete_insert_unlock();
         wp_send_json_error([
             'message'       => cg_get_limit_reached_message('checkouts'),
@@ -273,12 +283,10 @@ function cg_handle_save_checkout_data()
             $data_to_save['cart_value'] = 0.00;
         }
 
-        // Free contact reveals (1.5.0): decide before the insert, save the
-        // record no matter what, then count it. The record is revealed only
-        // after HQ confirmed the count; any failure leaves it masked.
-        $reveal_decision = function_exists('cg_contact_reveal_decide')
-            ? cg_contact_reveal_decide()
-            : ['count' => false, 'until' => null];
+        // Free contact reveals (1.5.0): decided before the insert lock (see
+        // above), save the record no matter what, then count it. The record
+        // is revealed only after HQ confirmed the count; any failure leaves
+        // it masked.
 
         $result = $wpdb->insert(
             $table_name,

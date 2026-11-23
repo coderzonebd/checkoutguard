@@ -141,6 +141,8 @@ add_filter('query', function ($q) {
 function qa_slow_status() {
     $s = &$GLOBALS['QA_SLOW'];
     $s['status_calls']++;
+    // I10: is the insert lock held while this request waits for HQ?
+    $s['free_at_status'][] = qa_lock_free();
     usleep(300000);
     if (!$s['second_done']) {
         $s['second_done'] = true;
@@ -271,6 +273,38 @@ try {
     $decr = qa_decr_calls();
     qa_check($R, 'I8b', 'after the order: 0 rows, increments - decrements = 0', qa_rows($c['fp']) === 0 && $incr - $decr === 0, 'rows=' . qa_rows($c['fp']) . " incr=$incr decr=$decr");
 
+    // I10: the insert lock is not held while HQ is asked. With no
+    // cg_api_cache the limit check syncs with HQ (up to 15s); every other
+    // new customer's tracker request would wait for that lock meanwhile.
+    $GLOBALS['QA_LOG'] = [];
+    delete_transient('cg_api_cache');
+    $c = qa_cust('i10');
+    $GLOBALS['QA_SLOW'] = ['c' => $c, 'status_calls' => 0, 'second_done' => true, 'second' => null, 'free_at_status' => []];
+    $res = qa_save($c);
+    $slow = $GLOBALS['QA_SLOW'];
+    $GLOBALS['QA_SLOW'] = null;
+    $rows = qa_rows($c['fp']);
+    $incr = qa_incr_calls();
+    $at = $slow['free_at_status'];
+    qa_check($R, 'I10', 'no cache: the HQ sync runs with the insert lock free; 1 row, 1 increment', $slow['status_calls'] >= 1 && $at === array_fill(0, count($at), true) && !empty($res['success']) && $rows === 1 && $incr === 1 && qa_lock_free() === true, 'res=' . wp_json_encode($res) . " status_calls={$slow['status_calls']} free_at_status=" . wp_json_encode($at) . " rows=$rows incr=$incr");
+
+    // I10b: the same for the contact reveal period sync (the cached period
+    // is over and its reveals are used up, so the decision asks HQ first).
+    $GLOBALS['QA_LOG'] = [];
+    $GLOBALS['QA_ORIG']['period'] = [get_option(CG_PERIOD_SYNCED_FOR_OPTION, null), get_transient(CG_PERIOD_SYNC_BACKOFF_TRANSIENT)];
+    delete_option(CG_PERIOD_SYNCED_FOR_OPTION);
+    delete_transient(CG_PERIOD_SYNC_BACKOFF_TRANSIENT);
+    set_transient('cg_api_cache', ['usage' => ['checkouts' => 10, 'contact_reveals' => 1], 'limits' => ['checkouts' => 100, 'contact_reveals' => 1], 'usage_period_end' => gmdate('Y-m-d\TH:i:s\Z', time() - 3600)], DAY_IN_SECONDS);
+    $c = qa_cust('i10b');
+    $GLOBALS['QA_SLOW'] = ['c' => $c, 'status_calls' => 0, 'second_done' => true, 'second' => null, 'free_at_status' => []];
+    $res = qa_save($c);
+    $slow = $GLOBALS['QA_SLOW'];
+    $GLOBALS['QA_SLOW'] = null;
+    $rows = qa_rows($c['fp']);
+    $incr = qa_incr_calls();
+    $at = $slow['free_at_status'];
+    qa_check($R, 'I10b', 'reveal period sync runs with the insert lock free; 1 row, 1 increment', $slow['status_calls'] >= 1 && $at === array_fill(0, count($at), true) && !empty($res['success']) && $rows === 1 && $incr === 1 && qa_lock_free() === true, 'res=' . wp_json_encode($res) . " status_calls={$slow['status_calls']} free_at_status=" . wp_json_encode($at) . " rows=$rows incr=$incr");
+
     // I6: the lock name fits GET_LOCK (64 chars) and differs per table
     // prefix, so two sites on one database do not wait for each other.
     $n = qa_lock_name();
@@ -312,6 +346,18 @@ try {
         delete_option('cg_plugin_options');
     } else {
         update_option('cg_plugin_options', $GLOBALS['QA_ORIG']['cg_plugin_options']);
+    }
+    if (isset($GLOBALS['QA_ORIG']['period'])) {
+        if ($GLOBALS['QA_ORIG']['period'][0] === null) {
+            delete_option(CG_PERIOD_SYNCED_FOR_OPTION);
+        } else {
+            update_option(CG_PERIOD_SYNCED_FOR_OPTION, $GLOBALS['QA_ORIG']['period'][0], false);
+        }
+        if ($GLOBALS['QA_ORIG']['period'][1] === false) {
+            delete_transient(CG_PERIOD_SYNC_BACKOFF_TRANSIENT);
+        } else {
+            set_transient(CG_PERIOD_SYNC_BACKOFF_TRANSIENT, $GLOBALS['QA_ORIG']['period'][1], HOUR_IN_SECONDS);
+        }
     }
     if ($GLOBALS['QA_ORIG']['cg_api_cache'] === false) {
         delete_transient('cg_api_cache');
