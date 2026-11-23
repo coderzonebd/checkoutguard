@@ -105,7 +105,9 @@ mi_clear_rows();
 
 // ---------- Manual invoice ----------
 mi_admin_context(true);
-$cust = mi_row(['phone' => '01799000111', 'email' => 'cust1@cgmi.test', 'first_name' => 'Cust']);
+$cust_old = mi_row(['phone' => '01799000111', 'first_name' => 'Cust', 'created_at' => date('Y-m-d H:i:s', current_time('timestamp') - 7200)]);
+$cust = mi_row(['phone' => '01799000111', 'email' => 'cust1@cgmi.test', 'first_name' => 'Cust', 'admin_notes' => 'called once', 'created_at' => date('Y-m-d H:i:s', current_time('timestamp') - 60)]);
+$cust_hold = mi_row(['email' => 'cust1@cgmi.test', 'status' => 'hold', 'created_at' => date('Y-m-d H:i:s', current_time('timestamp') - 3600)]);
 $adm_fp = $has_fp_col ? mi_row(['phone' => '01799000999', 'device_fingerprint' => $ADMIN_FP, 'first_name' => 'Other']) : 0;
 $adm_sid = $ADMIN_SID !== '' ? mi_row(['session_id' => $ADMIN_SID, 'phone' => '01799000888', 'first_name' => 'Other2']) : 0;
 $hq0 = mi_decrements();
@@ -119,7 +121,14 @@ $o = cg_create_manual_invoice_order([
 $ok = !is_wp_error($o);
 if ($ok) { $created_orders[] = $o->get_id(); }
 mi_check('M0 manual invoice order created', $ok, $ok ? '' : $o->get_error_message());
-mi_check('M1 manual invoice: incomplete row with the same phone/email is cleaned up', mi_get($cust) === null);
+$m1 = mi_get($cust);
+mi_check('M1 manual invoice: newest matching row is kept as recovered with the order id',
+    $ok && $m1 && $m1->status === 'recovered' && (int) $m1->recovered_order_id === $o->get_id(),
+    $m1 ? $m1->status . '/' . $m1->recovered_order_id : 'missing');
+mi_check('M1b manual invoice: recovered row keeps old notes and gets a recovery note',
+    $m1 && strpos((string) $m1->admin_notes, 'called once') === 0 && strpos((string) $m1->admin_notes, '#' . ($ok ? $o->get_id() : 0)) !== false,
+    $m1 ? (string) $m1->admin_notes : '');
+mi_check('M1c manual invoice: older incomplete and hold rows of the same customer are deleted', mi_get($cust_old) === null && mi_get($cust_hold) === null);
 if ($has_fp_col) {
     mi_check('M2 manual invoice: row matching only the admin\'s device cookie is kept', mi_get($adm_fp) !== null);
 }
@@ -128,7 +137,21 @@ if ($ADMIN_SID !== '') {
 }
 $fo = $ok ? wc_get_order($o->get_id()) : null;
 mi_check('M4 manual invoice order marked _cg_incomplete_cleaned=1', $fo && $fo->get_meta('_cg_incomplete_cleaned') === '1');
-mi_check('M5 one HQ decrement for the one deleted row', mi_decrements() - $hq0 === 1, 'decrements=' . (mi_decrements() - $hq0));
+mi_check('M5 one HQ decrement per matching row (recovered + deleted)', mi_decrements() - $hq0 === 3, 'decrements=' . (mi_decrements() - $hq0));
+// M8 a later storefront order of the same customer keeps the recovered row.
+// Drop the admin-only rows first: the storefront path would match them.
+$wpdb->query($wpdb->prepare("DELETE FROM {$T} WHERE id IN (%d, %d)", $adm_fp, $adm_sid));
+mi_admin_context(false, false);
+$hq1 = mi_decrements();
+$so8 = new WC_Order();
+$so8->set_created_via('checkout');
+$so8->set_billing_phone('01799000111');
+$so8->save();
+$created_orders[] = $so8->get_id();
+cg_delete_incomplete_checkout_on_order_completion($so8->get_id());
+$m8 = mi_get($cust);
+mi_check('M8 later storefront order keeps the recovered row, no decrement', $m8 && $m8->status === 'recovered' && mi_decrements() === $hq1);
+mi_admin_context(true);
 mi_check('M7 manual invoice order does not get the admin\'s device fingerprint', $fo && $fo->get_meta('_cg_device_fingerprint') === '', $fo ? (string) $fo->get_meta('_cg_device_fingerprint') : '');
 mi_clear_rows();
 
