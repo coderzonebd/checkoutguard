@@ -14,6 +14,13 @@
  * U4  all couriers error, fresh: the result is not kept in the 6 h
  *     courier cache (the next check asks HQ again).
  * U4-ctl control: all couriers ok, fresh: the result is cached.
+ * M1  HQ result has no courier keys at all, fresh: usage unchanged, not cached.
+ * M2  some couriers missing, the rest error, fresh: usage unchanged, not cached.
+ * M3  one courier missing as a non-array value, the rest error: usage
+ *     unchanged, not cached.
+ * M4  control: one courier ok, the others missing, fresh: usage +1, cached.
+ * M5  control: the returned shape is unchanged (a missing courier is still
+ *     filled with the default, error=false, for display).
  *
  * Run on a local test site only (never production):
  *   wp eval-file tests/qa/courier-all-fail-usage-tests.php
@@ -91,6 +98,42 @@ ok('U4', 'all couriers error, fresh: not cached in the courier transient', !$cac
 [$d, $src] = qa_usage_delta(qa_courier_result([], 'fresh'));
 $cached = $GLOBALS['QA_CACHED'];
 ok('U4-ctl', 'control: all couriers ok, fresh: cached in the courier transient', $cached, 'cached=' . ($cached ? 'yes' : 'no') . " source=$src");
+
+function qa_courier_map($map, $source) {
+    $res = ['summary' => ['success_rate' => 0, 'total_deliveries' => 0, 'successful_deliveries' => 0, 'cancelled_deliveries' => 0]];
+    foreach ($map as $k => $v) {
+        if ($v === 'ok') {
+            $res[$k] = ['error' => false, 'total' => 2, 'success' => 2, 'cancelled' => 0, 'success_rate' => 100];
+        } elseif ($v === 'err') {
+            $res[$k] = ['error' => true];
+        } else {
+            $res[$k] = $v;
+        }
+    }
+    return ['code' => 200, 'body' => ['cache_source' => $source, 'result' => $res]];
+}
+
+[$d, $src] = qa_usage_delta(qa_courier_map([], 'fresh'));
+$cached = $GLOBALS['QA_CACHED'];
+ok('M1', 'no courier keys, fresh: usage unchanged and not cached', $d === 0 && !$cached, "delta=$d cached=" . ($cached ? 'yes' : 'no') . " source=$src");
+[$d, $src] = qa_usage_delta(qa_courier_map(['pathao' => 'err', 'steadfast' => 'err'], 'fresh'));
+$cached = $GLOBALS['QA_CACHED'];
+ok('M2', 'some couriers missing, rest error, fresh: usage unchanged and not cached', $d === 0 && !$cached, "delta=$d cached=" . ($cached ? 'yes' : 'no') . " source=$src");
+$m3 = array_fill_keys($all, 'err');
+$m3['redx'] = 'unavailable';
+[$d, $src] = qa_usage_delta(qa_courier_map($m3, 'fresh'));
+$cached = $GLOBALS['QA_CACHED'];
+ok('M3', 'one courier non-array, rest error, fresh: usage unchanged and not cached', $d === 0 && !$cached, "delta=$d cached=" . ($cached ? 'yes' : 'no') . " source=$src");
+[$d, $src] = qa_usage_delta(qa_courier_map(['steadfast' => 'ok'], 'fresh'));
+$cached = $GLOBALS['QA_CACHED'];
+ok('M4', 'control: one courier ok, others missing, fresh: usage +1 and cached', $d === 1 && $cached, "delta=$d cached=" . ($cached ? 'yes' : 'no') . " source=$src");
+$GLOBALS['QA_HTTP'] = qa_courier_map(['steadfast' => 'ok'], 'fresh');
+delete_transient(CG_COURIER_AUTH_REJECT_TRANSIENT);
+delete_transient('cg_courier_cache_' . md5('01711119999'));
+$r5 = cg_perform_all_api_calls('01711119999', 0);
+delete_transient('cg_courier_cache_' . md5('01711119999'));
+$p5 = is_array($r5) && isset($r5['pathao']) && is_array($r5['pathao']) && $r5['pathao']['error'] === false && (int) $r5['pathao']['total'] === 0;
+ok('M5', 'control: missing courier still filled with the default for display', $p5, 'pathao=' . json_encode(is_array($r5) ? ($r5['pathao'] ?? null) : null));
 
 // restore
 delete_transient('cg_api_cache');
