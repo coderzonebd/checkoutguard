@@ -42,6 +42,9 @@
  *     already-registered answer deletes the option (A13d).
  * A13e/A13f the same as A13a/A13b with a bare body {"error":"already_registered"}
  *     (no "message", so the error message is the reason itself).
+ * A13g HTTP 409 with only {"message":"already_registered"} (no "error"
+ *     field): still already registered (option set, already-registered
+ *     notice, status kept, gate written).
  *
  * Run on a local test site only (never production):
  *   wp eval-file tests/qa/register-already-registered-notice-tests.php
@@ -343,6 +346,17 @@ $row = qa_opt_row();
 $GLOBALS['QA_NOW'] += 61;
 $b = qa_ar_notice();
 ok('A13c', 'HTTP 409 with the same body (control): option set, already-registered notice, status kept', qa_opt_set($row) && qa_ar_ok($b) && $status === 'active', "status=$status " . qa_opt_fmt($row) . ' ' . qa_ar_fmt($b));
+// A13g: 409 with only a "message" field that says already_registered (no
+// "error" field). The status is 409, so this is the already-registered path.
+qa_reset();
+$GLOBALS['QA_ROUTES'] = ['/sites/register' => ['code' => 409, 'body' => ['message' => 'already_registered']], '/sites/status' => ['code' => 'down']];
+cg_register_site_with_hq();
+$status = (string) get_option('cg_license_status');
+$row = qa_opt_row();
+$gate = (int) get_option('cg_register_next_allowed_at', 0) - $GLOBALS['QA_NOW'];
+$GLOBALS['QA_NOW'] += 61;
+$b = qa_ar_notice();
+ok('A13g', 'HTTP 409 with only {"message":"already_registered"}: option set, already-registered notice, status kept, gate written', qa_opt_set($row) && qa_ar_ok($b) && $status === 'active' && $gate > 0, "status=$status gate=+$gate " . qa_opt_fmt($row) . ' ' . qa_ar_fmt($b));
 qa_reset();
 $GLOBALS['QA_ROUTES'] = $GLOBALS['QA_AR'];
 cg_register_site_with_hq();
