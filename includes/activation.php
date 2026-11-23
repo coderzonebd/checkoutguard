@@ -15,6 +15,11 @@ define('CG_MIGRATION_NOTICE_AFTER', 3);
 // failed registration (at least a minute, longer when HQ sent Retry-After).
 define('CG_REGISTER_GATE_OPTION', 'cg_register_next_allowed_at');
 define('CG_REGISTER_MIN_GAP', MINUTE_IN_SECONDS);
+// Upper bound of the register gate, the same cap as the status wait. A
+// stored gate further ahead than this is ignored, and Retry-After is
+// clamped to it, so a clock that moved back or a bad header cannot keep
+// the site from registering for hours.
+define('CG_REGISTER_MAX_WAIT', 10 * MINUTE_IN_SECONDS);
 // Double-click lock for the manual Reconnect. Separate from the register
 // gate: the gate holds the automatic path, this lock only stops a second
 // Reconnect while one is still running.
@@ -106,7 +111,7 @@ function cg_create_blocked_orders_table()
  */
 function cg_register_site_with_hq($force = false)
 {
-    if (!$force && (int) get_option(CG_REGISTER_GATE_OPTION, 0) > cg_register_now()) {
+    if (!$force && cg_register_gate_left() > 0) {
         return;
     }
 
@@ -158,8 +163,22 @@ function cg_register_site_with_hq($force = false)
         // saves and syncs do not repeat it.
         $data = $response->get_error_data();
         $retry_after = is_array($data) ? (int) ($data['retry_after'] ?? 0) : 0;
-        update_option(CG_REGISTER_GATE_OPTION, cg_register_now() + max(CG_REGISTER_MIN_GAP, $retry_after), false);
+        $wait = min(max(CG_REGISTER_MIN_GAP, $retry_after), CG_REGISTER_MAX_WAIT);
+        update_option(CG_REGISTER_GATE_OPTION, cg_register_now() + $wait, false);
     }
+}
+
+/**
+ * Seconds left on the register gate, or 0 when there is no gate, it has
+ * passed, or it lies more than CG_REGISTER_MAX_WAIT ahead (then it is not
+ * trusted and ignored).
+ *
+ * @return int
+ */
+function cg_register_gate_left()
+{
+    $left = (int) get_option(CG_REGISTER_GATE_OPTION, 0) - cg_register_now();
+    return ($left > 0 && $left <= CG_REGISTER_MAX_WAIT) ? $left : 0;
 }
 
 function cg_register_now()
@@ -208,7 +227,7 @@ function cg_render_register_failed_notice()
     echo esc_html__('This site could not connect to CheckoutGuard yet. Orders still go through, but without the fraud check.', 'checkoutguard') . ' ';
     if ($running) {
         echo esc_html__('Reconnect is running. Reload this page in a few seconds.', 'checkoutguard');
-    } elseif ($gate > cg_register_now()) {
+    } elseif (cg_register_gate_left() > 0) {
         echo esc_html(sprintf(
             /* translators: %s: time after which the admin may try again */
             __('You can try again after %s.', 'checkoutguard'),
