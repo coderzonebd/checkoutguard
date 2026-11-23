@@ -669,7 +669,7 @@ function cg_recover_order_ajax_handler()
             'admin_notes' => trim($entry->admin_notes . "\n" . sprintf(__('Recovered as WC Order #%d on %s.', 'checkoutguard'), $order_id, current_time('mysql')))
         );
 
-        $wpdb->update(
+        $updated = $wpdb->update(
             $table_name,
             $update_data,
             array('id' => $entry_id),
@@ -679,8 +679,11 @@ function cg_recover_order_ajax_handler()
 
         // The entry is 'recovered' now and is kept; other incomplete rows of
         // the same customer are cleaned up (woocommerce_new_order ran before
-        // the billing address was set).
-        cg_delete_incomplete_checkout_on_order_completion($order_id);
+        // the billing address was set). If the update failed the entry is
+        // still 'incomplete' and the cleanup would delete it: skip it.
+        if ($updated !== false) {
+            cg_delete_incomplete_checkout_on_order_completion($order_id);
+        }
 
         wp_send_json_success(array(
             'message' => sprintf(__('Order #%s created successfully from incomplete checkout ID %d and set to Processing.', 'checkoutguard'), $order_id, $entry_id),
