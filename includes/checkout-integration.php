@@ -21,6 +21,13 @@ function cg_delete_incomplete_checkout_on_order_completion($order_id)
         return;
     }
 
+    // A blocked or closed attempt is not a placed order: draft -> cancelled
+    // still fires woocommerce_new_order, but the customer's incomplete row
+    // must stay, usage must not go down and no order-placed mark is set.
+    if ($order->get_meta('_cg_blocked', true) === '1' || $order->get_meta('_cg_attempt_closed', true) === '1') {
+        return;
+    }
+
     // Prevent duplicate cleanup execution for the same order
     if ($order->get_meta('_cg_incomplete_cleaned')) {
         return;
