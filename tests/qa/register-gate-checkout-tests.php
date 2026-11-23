@@ -377,12 +377,24 @@ $GLOBALS['QA_NOW'] += 10; $GLOBALS['QA_LOG'] = [];
 $qa_lk = defined('CG_REGISTER_RECONNECT_LOCK') ? CG_REGISTER_RECONNECT_LOCK : 'cg_register_reconnect_lock';
 $gate_open = (int) get_option('cg_register_next_allowed_at', 0) > $GLOBALS['QA_NOW'];
 $lock_before = get_transient($qa_lk) !== false;
-$GLOBALS['QA_E_LOCK'] = null; $GLOBALS['QA_E_TTL'] = null;
+$GLOBALS['QA_E_LOCK'] = null; $GLOBALS['QA_E_TTL'] = null; $GLOBALS['QA_E_SET_AT'] = null;
+// The TTL is measured from the second the lock was set (setted_transient),
+// not from the second the register callback runs, so a slow register
+// request before the callback does not shrink the measured TTL.
+$qa_e_rec = function ($transient) use ($qa_lk) {
+    if ($transient === $qa_lk && $GLOBALS['QA_E_SET_AT'] === null) {
+        $GLOBALS['QA_E_SET_AT'] = time();
+    }
+};
+add_action('setted_transient', $qa_e_rec, 10, 1);
 $GLOBALS['QA_ON_REGISTER'] = function () use ($qa_lk) {
     $GLOBALS['QA_E_LOCK'] = get_transient($qa_lk) !== false;
-    $GLOBALS['QA_E_TTL'] = (int) get_option('_transient_timeout_' . $qa_lk, 0) - time();
+    if ($GLOBALS['QA_E_SET_AT'] !== null) {
+        $GLOBALS['QA_E_TTL'] = (int) get_option('_transient_timeout_' . $qa_lk, 0) - $GLOBALS['QA_E_SET_AT'];
+    }
 };
 $s = qa_sync_now();
+remove_action('setted_transient', $qa_e_rec, 10);
 $n = qa_registers();
 $lock_after = get_transient($qa_lk) !== false;
 $ttl_const = defined('CG_REGISTER_RECONNECT_LOCK_TTL') ? (int) CG_REGISTER_RECONNECT_LOCK_TTL : 0;
