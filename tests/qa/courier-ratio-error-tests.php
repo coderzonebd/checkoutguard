@@ -11,6 +11,12 @@
  * HTTP is answered by a pre_http_request filter in this process; nothing
  * leaves the machine. Options and the blocked-orders rows it adds are
  * restored at the end (cg_last_known_plan too).
+ *
+ * Plan state is isolated: cg_last_known_plan, cg_api_cache and cg_last_synced
+ * are saved and removed at the start (E1-E6, E9 run on the free plan, where
+ * the ratio action is always block) and put back exactly at the end; one that
+ * did not exist before does not exist after. A ratio_action left saved on the
+ * site is ignored unless a case sets one.
  */
 if (!defined('ABSPATH')) {
     exit;
@@ -19,6 +25,19 @@ global $wpdb;
 $GLOBALS['QA_OPTS_ORIG'] = get_option('cg_plugin_options', []);
 $GLOBALS['QA_HTTP'] = ['code' => 'down'];
 $GLOBALS['QA_PAID'] = false;
+// Raw rows, so a transient comes back with its own timeout; null = absent.
+$GLOBALS['QA_PLAN_KEYS'] = ['cg_last_known_plan', '_transient_cg_api_cache', '_transient_timeout_cg_api_cache', '_transient_cg_last_synced', '_transient_timeout_cg_last_synced'];
+$GLOBALS['QA_PLAN_SAVED'] = [];
+foreach ($GLOBALS['QA_PLAN_KEYS'] as $k) {
+    $GLOBALS['QA_PLAN_SAVED'][$k] = $wpdb->get_row($wpdb->prepare("SELECT option_value, autoload FROM {$wpdb->options} WHERE option_name = %s", $k), ARRAY_A);
+}
+function qa_plan_clear() {
+    delete_option('cg_last_known_plan');
+    delete_transient('cg_api_cache');
+    delete_transient('cg_last_synced');
+    wp_cache_flush();
+}
+qa_plan_clear();
 add_filter('pre_http_request', function ($pre, $args, $url) {
     if (strpos($url, '/sites/courier-check') === false) {
         return new WP_Error('qa_blocked', 'blocked in test');
@@ -55,7 +74,7 @@ function qa_run($key, $grace, $http, $action = null) {
     if ($key === null) { unset($o['api_key']); } else { $o['api_key'] = $key; }
     $o['enable_courier_service'] = 1; $o['enable_fraud_blocker'] = 0;
     $o['ratio_blocker_grace_period'] = $grace; $o['ratio_blocker_threshold'] = 20;
-    if ($action !== null) { $o['ratio_action'] = $action; }
+    if ($action === null) { unset($o['ratio_action']); } else { $o['ratio_action'] = $action; }
     cg_update_options_from_hq($o);
     $GLOBALS['QA_HTTP'] = $http;
     $n = $GLOBALS['QA_N'];
@@ -89,12 +108,6 @@ $i = qa_run('qa-shared-key-not-real', 0, $none);
 ok('E9', 'real check, no deliveries yet, grace 0: allowed', qa_is_allow($i), qa_short($i));
 
 // Paid plan, ratio_action hold: a failed check must not put the order on hold either.
-$GLOBALS['QA_PLAN_ORIG'] = get_option('cg_last_known_plan', null);
-// cg_effective_plan() reads the cg_api_cache transient first; a cached free
-// plan on the test site would hide the paid plan set below.
-$GLOBALS['QA_API_CACHE_ORIG'] = get_transient('cg_api_cache');
-$GLOBALS['QA_API_CACHE_TTL'] = max(60, (int) get_option('_transient_timeout_cg_api_cache', 0) - time());
-delete_transient('cg_api_cache');
 cg_remember_last_known_plan(['plan_slug' => 'pro', 'status' => 'active']);
 wp_cache_delete('cg_last_known_plan', 'options');
 $paid = cg_is_paid_plan();
@@ -102,12 +115,20 @@ $g = qa_run('qa-shared-key-not-real', 0, ['code' => 'down'], 'hold');
 ok('E7', 'paid plan (hold), HQ down, grace 0: not held', $paid && qa_is_allow($g), 'paid=' . var_export($paid, true) . ' ' . qa_short($g));
 $h = qa_run('qa-shared-key-not-real', 0, $low, 'hold');
 ok('E8', 'paid plan (hold), real ratio 10%: still held', $paid && !empty($h['is_held']) && empty($h['is_blocked']), qa_short($h));
-if ($GLOBALS['QA_PLAN_ORIG'] === null) { delete_option('cg_last_known_plan'); } else { update_option('cg_last_known_plan', $GLOBALS['QA_PLAN_ORIG'], false); }
-wp_cache_delete('cg_last_known_plan', 'options');
-if ($GLOBALS['QA_API_CACHE_ORIG'] !== false) { set_transient('cg_api_cache', $GLOBALS['QA_API_CACHE_ORIG'], $GLOBALS['QA_API_CACHE_TTL']); }
+// E10: paid plan with no ratio_action saved: the product default is hold.
+$j = qa_run('qa-shared-key-not-real', 0, $low);
+$saved = get_option('cg_plugin_options', []);
+ok('E10', 'paid plan, no ratio_action saved, real ratio 10%: held_ratio (default hold)', $paid && !isset($saved['ratio_action']) && !empty($j['is_held']) && empty($j['is_blocked']) && ($j['block_code'] ?? '') === 'held_ratio', qa_short($j));
 
 $wpdb->query("DELETE FROM $table WHERE id > $max_id_before");
 cg_update_options_from_hq(is_array($GLOBALS['QA_OPTS_ORIG']) ? $GLOBALS['QA_OPTS_ORIG'] : []);
+qa_plan_clear();
+foreach ($GLOBALS['QA_PLAN_SAVED'] as $k => $v) {
+    if ($v !== null) {
+        $wpdb->replace($wpdb->options, ['option_name' => $k, 'option_value' => $v['option_value'], 'autoload' => $v['autoload']]);
+    }
+}
+wp_cache_flush();
 restore_error_handler();
 $R = $GLOBALS['R'];
 foreach ($R as $r) echo implode(' | ', $r), "\n";
