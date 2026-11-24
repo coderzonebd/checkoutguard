@@ -131,17 +131,37 @@ function cg_handle_save_checkout_data()
     global $wpdb;
     $table_name = $wpdb->prefix . 'cg_incomplete_checkouts';
 
-    // 3. Multi-key Existing Record Search (by session_id, device_fingerprint, or normalized phone)
+    // 3. Multi-key Existing Record Search (by session_id, normalized phone,
+    // or device_fingerprint together with phone or email)
     $where_clauses = ["session_id = %s"];
     $where_params = [$session_id];
 
-    if (!empty($raw_device_fp)) {
-        $where_clauses[] = "device_fingerprint = %s";
-        $where_params[] = $raw_device_fp;
-    }
-    if (!empty($phone) && strlen($phone) >= 7) {
+    $has_phone = !empty($phone) && strlen($phone) >= 7;
+    if ($has_phone) {
         $where_clauses[] = "phone = %s";
         $where_params[] = $phone;
+    }
+    // Browsers of the same phone model and version send the same device
+    // fingerprint, so on its own it does not identify a customer: a second
+    // customer would be written into the first customer's row. Match it only
+    // together with the phone or the email of this request. (fp AND phone is
+    // already covered by the phone clause above; it stays here so the rule
+    // reads in one place.)
+    if (!empty($raw_device_fp)) {
+        $fp_with = [];
+        $fp_params = [];
+        if ($has_phone) {
+            $fp_with[] = "phone = %s";
+            $fp_params[] = $phone;
+        }
+        if (!empty($email)) {
+            $fp_with[] = "email = %s";
+            $fp_params[] = $email;
+        }
+        if ($fp_with) {
+            $where_clauses[] = "(device_fingerprint = %s AND (" . implode(' OR ', $fp_with) . "))";
+            $where_params = array_merge($where_params, [$raw_device_fp], $fp_params);
+        }
     }
 
     // Recovered and cancelled rows are closed records: a recovered row holds
