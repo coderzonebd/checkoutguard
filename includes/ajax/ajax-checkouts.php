@@ -144,8 +144,12 @@ function cg_handle_save_checkout_data()
         $where_params[] = $phone;
     }
 
+    // Recovered and cancelled rows are closed records: a recovered row holds
+    // the order id, a cancelled row is the merchant's decision. A new checkout
+    // by the same customer gets its own row and must not overwrite either.
+    // Incomplete and hold rows are still updated in place.
     $lookup_sql = $wpdb->prepare(
-        "SELECT id FROM {$table_name} WHERE (" . implode(' OR ', $where_clauses) . ") ORDER BY id DESC LIMIT 1",
+        "SELECT id FROM {$table_name} WHERE (" . implode(' OR ', $where_clauses) . ") AND status NOT IN ('recovered', 'cancelled') ORDER BY id DESC LIMIT 1",
         ...$where_params
     );
     $existing_record_id = $wpdb->get_var($lookup_sql);
