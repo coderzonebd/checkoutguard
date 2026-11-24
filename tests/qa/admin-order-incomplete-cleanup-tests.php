@@ -432,11 +432,14 @@ mi_clear_rows();
 // Shopper's request: device cookie set, not an admin screen.
 mi_admin_context(true, false);
 // S1 checkout order: shopper's device cookie and phone still match.
-$fp_row = $has_fp_col ? mi_row(['device_fingerprint' => $ADMIN_FP, 'phone' => '01799000555']) : 0;
+// The cookie row carries the order's email: a device fingerprint alone
+// does not identify the customer (another customer's row may share it).
+$fp_row = $has_fp_col ? mi_row(['device_fingerprint' => $ADMIN_FP, 'phone' => '01799000555', 'email' => 'cust20@cgmi.test']) : 0;
 $ph_row = mi_row(['phone' => '01799000444']);
 $so = new WC_Order();
 $so->set_created_via('checkout');
 $so->set_billing_phone('01799000444');
+$so->set_billing_email('cust20@cgmi.test');
 $so->save();
 $created_orders[] = $so->get_id();
 cg_delete_incomplete_checkout_on_order_completion($so->get_id());
@@ -508,11 +511,13 @@ $created_orders[] = $so2->get_id();
 cg_delete_incomplete_checkout_on_order_completion($so2->get_id());
 mi_check('S4 storefront order: recovered row of the same customer is kept', mi_get($hist) !== null);
 
-// S5 order from another checkout plugin (created_via not set): the shopper's device cookie still matches.
+// S5 order from another checkout plugin (created_via not set): the shopper's
+// row (device cookie and the order's phone) is still cleaned up.
 mi_admin_context(true);
 if ($has_fp_col) {
-    $fp_row = mi_row(['device_fingerprint' => $ADMIN_FP]);
+    $fp_row = mi_row(['device_fingerprint' => $ADMIN_FP, 'phone' => '01799000677']);
     $so3 = new WC_Order();
+    $so3->set_billing_phone('01799000677');
     $so3->save();
     $created_orders[] = $so3->get_id();
     cg_delete_incomplete_checkout_on_order_completion($so3->get_id());
