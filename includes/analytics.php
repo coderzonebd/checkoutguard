@@ -49,6 +49,7 @@ function cg_send_plugin_analytics($event_type = 'weekly_analytics', $feedback = 
             'Content-Type' => 'application/json; charset=utf-8',
             'Accept' => 'application/json',
             'User-Agent' => 'CheckoutGuard/' . CG_VERSION,
+            'X-CG-Version' => CG_VERSION,
         ],
         'body' => wp_json_encode($payload),
     ]);

@@ -148,6 +148,7 @@ function cg_call_hq_api($endpoint, $body = [], $method = 'POST', $require_api_ke
         'Accept' => 'application/json',
         'X-Site-Domain' => $site_domain,
         'X-Product-Slug' => CG_PRODUCT_SLUG,
+        'X-CG-Version' => CG_VERSION,
     ];
 
     // Add X-Api-Key header if available
