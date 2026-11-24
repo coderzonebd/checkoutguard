@@ -227,13 +227,15 @@ try {
     qa_check($R, 'G7', 'store_api_checkout_order_processed runs the cleanup', $n === 0 && (bool) has_action('woocommerce_store_api_checkout_order_processed', 'cg_delete_incomplete_checkout_on_order_completion'), "rows=$n");
 
     // G8: a marked customer with a row (made by someone else's flow) is still updated.
+    // The row is found by the customer's phone: a device fingerprint alone
+    // does not identify a customer (record 64).
     qa_reset();
     $c = qa_cust('g8');
     $oid = qa_order($c);
     cg_delete_incomplete_checkout_on_order_completion($oid);
-    $wpdb->insert($GLOBALS['QA_T'], ['session_id' => $GLOBALS['QA_TAG'] . '-g8', 'device_fingerprint' => $c['fp'], 'status' => 'incomplete', 'first_name' => 'Old']);
+    $wpdb->insert($GLOBALS['QA_T'], ['session_id' => $GLOBALS['QA_TAG'] . '-g8', 'device_fingerprint' => $c['fp'], 'phone' => cg_normalize_phone_number($c['phone']), 'status' => 'incomplete', 'first_name' => 'Old']);
     qa_reset();
-    $r = qa_save($c, ['fp']);
+    $r = qa_save($c, ['fp', 'phone']);
     $fn = (string) $wpdb->get_var($wpdb->prepare("SELECT first_name FROM {$GLOBALS['QA_T']} WHERE device_fingerprint = %s", $c['fp']));
     qa_check($R, 'G8', 'existing row of a marked customer is updated, not counted', qa_rows('device_fingerprint', $c['fp']) === 1 && $fn === 'QA' && qa_incr_calls() === 0, "first_name=$fn incr=" . qa_incr_calls());
 
