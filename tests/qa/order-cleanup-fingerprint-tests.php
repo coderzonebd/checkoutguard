@@ -168,6 +168,22 @@ try {
     of_check('O4', 'order with fingerprint only: row kept, 0 decrements', of_get($a) !== null && of_decrements() - $h === 0, 'dec=' . (of_decrements() - $h));
     of_clear();
 
+    // O4b: same as O4 with no WC session. Under wp-cli WC()->session is set,
+    // so O4 always has a session_id clause; here the order gives no
+    // identifier at all and the fingerprint must still not be used.
+    $fp = of_fp('o4b');
+    $a = of_row(['device_fingerprint' => $fp, 'phone' => '01799100512']);
+    $h = of_decrements();
+    $saved_session = WC()->session;
+    WC()->session = null;
+    try {
+        of_order($fp, '', '');
+    } finally {
+        WC()->session = $saved_session;
+    }
+    of_check('O4b', 'order with fingerprint only and no WC session: row kept, 0 decrements', of_get($a) !== null && of_decrements() - $h === 0, 'dec=' . (of_decrements() - $h));
+    of_clear();
+
     // O5: a phone shorter than 7 digits is not an identifier, alone or with
     // the fingerprint.
     $fp = of_fp('o5');
