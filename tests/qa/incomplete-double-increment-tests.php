@@ -244,9 +244,12 @@ try {
     if (function_exists('cg_recently_placed_order') && defined('CG_ORDER_PLACED_MARK_TTL')) {
         qa_reset();
         $c = qa_cust('i7');
-        set_transient('cg_ordered_' . md5($c['fp']), 1, CG_ORDER_PLACED_MARK_TTL);
+        // Mark the customer's session (qa_session): a device fingerprint
+        // alone does not identify the customer.
+        $mark = 'cg_ordered_' . md5('t_' . $c['fp']);
+        set_transient($mark, 1, CG_ORDER_PLACED_MARK_TTL);
         $res = qa_save($c);
-        delete_transient('cg_ordered_' . md5($c['fp']));
+        delete_transient($mark);
         $free = qa_lock_free();
         qa_check($R, 'I7', 'order just placed: skipped, no row, no increment, lock free after', !empty($res['success']) && ($res['data']['skipped'] ?? '') === 'order_placed' && qa_rows($c['fp']) === 0 && qa_incr_calls() === 0 && $free === true, 'res=' . wp_json_encode($res) . ' rows=' . qa_rows($c['fp']) . ' free=' . var_export($free, true));
     }
