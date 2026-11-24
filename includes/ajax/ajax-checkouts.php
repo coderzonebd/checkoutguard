@@ -144,8 +144,11 @@ function cg_handle_save_checkout_data()
         $where_params[] = $phone;
     }
 
+    // A recovered row is the record of a recovery (it holds the order id):
+    // a new checkout by the same customer gets its own row and must not
+    // overwrite it. Incomplete and hold rows are still updated in place.
     $lookup_sql = $wpdb->prepare(
-        "SELECT id FROM {$table_name} WHERE (" . implode(' OR ', $where_clauses) . ") ORDER BY id DESC LIMIT 1",
+        "SELECT id FROM {$table_name} WHERE (" . implode(' OR ', $where_clauses) . ") AND status <> 'recovered' ORDER BY id DESC LIMIT 1",
         ...$where_params
     );
     $existing_record_id = $wpdb->get_var($lookup_sql);
