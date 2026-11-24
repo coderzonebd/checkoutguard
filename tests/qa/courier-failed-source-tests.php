@@ -122,4 +122,4 @@ foreach (array_unique($GLOBALS['QA_WARN']) as $w) {
 $counted = array_filter($R, function ($r) { return $r[2] !== 'LEGACY'; });
 $fl = count(array_filter($counted, function ($r) { return $r[2] !== 'PASS'; }));
 echo 'PLUGIN ' . ($GLOBALS['QA_LEGACY'] ? 'legacy' : 'current') . "\n";
-echo 'SUMMARY ' . (count($counted) - $fl) . '/' . count($counted) . " PASS\n";
+echo 'SUMMARY ' . (count($counted) - $fl) . '/' . count($counted) . ' ' . ($fl === 0 ? 'PASS' : 'FAIL') . "\n";
