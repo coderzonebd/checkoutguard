@@ -196,6 +196,25 @@ try {
     $rows = qa_rows_by_phone($a['phone']);
     qa_check($R, 'R5', 'hold row: updated in place, status hold, 1 row, 0 increments', !empty($res['success']) && count($rows) === 1 && $after['status'] === 'hold' && $after['updated_at'] !== QA_RR_OLD && qa_incr_calls() === 0, 'after=' . wp_json_encode($after) . ' rows=' . wp_json_encode($rows) . ' incr=' . qa_incr_calls());
 
+    // R6: two open rows share the phone (left by two earlier sessions).
+    // The lookup takes the newest one (ORDER BY id DESC): it is updated,
+    // the older row is untouched, nothing is counted.
+    qa_reset();
+    $a = qa_cust('r6');
+    $norm = cg_normalize_phone_number($a['phone']);
+    $ids = [];
+    foreach (['o', 'n'] as $k) {
+        $wpdb->insert($GLOBALS['QA_T'], ['session_id' => 't_' . $GLOBALS['QA_TAG'] . "r6$k", 'device_fingerprint' => $GLOBALS['QA_TAG'] . "fpr6$k", 'phone' => $norm, 'email' => $GLOBALS['QA_TAG'] . "r6$k@example.test", 'first_name' => 'Old', 'status' => 'incomplete', 'created_at' => QA_RR_OLD, 'updated_at' => QA_RR_OLD]);
+        $ids[$k] = (int) $wpdb->insert_id;
+    }
+    $before_old = qa_row($ids['o']);
+    qa_reset();
+    $res = qa_save($a);
+    $old = qa_row($ids['o']);
+    $new = qa_row($ids['n']);
+    $rows = qa_rows_by_phone($a['phone']);
+    qa_check($R, 'R6', 'two open rows with the phone: the newest is updated, the older unchanged, 0 increments', $ids['n'] > $ids['o'] && (int) ($res['data']['record_id'] ?? 0) === $ids['n'] && $old === $before_old && $new['email'] === $a['email'] && $new['updated_at'] !== QA_RR_OLD && count($rows) === 2 && qa_incr_calls() === 0, 'res=' . wp_json_encode($res) . ' old=' . wp_json_encode($old) . ' new=' . wp_json_encode($new) . ' incr=' . qa_incr_calls());
+
     qa_check($R, 'R9', 'no PHP warnings from the plugin', empty($GLOBALS['QA_WARN']), implode(' ; ', array_slice($GLOBALS['QA_WARN'], 0, 3)));
 } catch (Throwable $e) {
     qa_check($R, 'RX', 'fatal', false, get_class($e) . ': ' . $e->getMessage() . ' @ ' . basename($e->getFile()) . ':' . $e->getLine());
