@@ -131,17 +131,25 @@ function cg_handle_save_checkout_data()
     global $wpdb;
     $table_name = $wpdb->prefix . 'cg_incomplete_checkouts';
 
-    // 3. Multi-key Existing Record Search (by session_id, device_fingerprint, or normalized phone)
+    // 3. Multi-key Existing Record Search (by session_id, normalized phone,
+    // or device_fingerprint together with email)
     $where_clauses = ["session_id = %s"];
     $where_params = [$session_id];
 
-    if (!empty($raw_device_fp)) {
-        $where_clauses[] = "device_fingerprint = %s";
-        $where_params[] = $raw_device_fp;
-    }
-    if (!empty($phone) && strlen($phone) >= 7) {
+    $has_phone = !empty($phone) && strlen($phone) >= 7;
+    if ($has_phone) {
         $where_clauses[] = "phone = %s";
         $where_params[] = $phone;
+    }
+    // Browsers of the same phone model and version send the same device
+    // fingerprint, so on its own it does not identify a customer: a second
+    // customer would be written into the first customer's row. Match it only
+    // together with the email of this request. A fingerprint with the same
+    // phone needs no clause of its own: the phone clause above matches it.
+    if (!empty($raw_device_fp) && !empty($email)) {
+        $where_clauses[] = "(device_fingerprint = %s AND email = %s)";
+        $where_params[] = $raw_device_fp;
+        $where_params[] = $email;
     }
 
     // Recovered and cancelled rows are closed records: a recovered row holds
