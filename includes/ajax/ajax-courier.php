@@ -373,6 +373,12 @@ function cg_perform_all_api_calls_uncached_request($phone_number, $order_id, $by
         }
     }
 
+    // HQ answers "failed" when every courier failed and it refunded the
+    // check: no data, nothing counted. HQ's word wins over the local view.
+    if (($results['cache_source'] ?? '') === 'failed') {
+        $all_failed = true;
+    }
+
     // Sync local usage count when HQ incremented (fresh data means HQ counted it)
     if (!$all_failed && isset($results['cache_source']) && $results['cache_source'] === 'fresh') {
         $config = get_transient('cg_api_cache');
@@ -412,6 +418,8 @@ function cg_get_cache_badge_config($cache_source)
             return ['label' => 'Fresh Data', 'icon' => 'dashicons-yes-alt'];
         case 'server':
             return ['label' => 'From Server', 'icon' => 'dashicons-cloud'];
+        case 'failed':
+            return ['label' => 'Check Failed', 'icon' => 'dashicons-warning'];
         default:
             return ['label' => 'Unknown', 'icon' => 'dashicons-info'];
     }
