@@ -50,14 +50,14 @@ function cg_delete_incomplete_checkout_on_order_completion($order_id)
         $where_params[] = WC()->session->get_customer_id();
     }
 
-    // 2. Match by Device Fingerprint
+    // 2. Device fingerprint: not used to find rows. Browsers of the same
+    // phone model and version send the same fingerprint, so on its own it
+    // would delete another customer's row. With the phone or email of the
+    // order it adds nothing: those are matched on their own below. It is
+    // still part of the order-placed mark.
     $device_fp = $order->get_meta('_cg_device_fingerprint');
     if ($from_request && empty($device_fp) && !empty($_COOKIE['cg_device_fp'])) {
         $device_fp = sanitize_text_field(wp_unslash($_COOKIE['cg_device_fp']));
-    }
-    if (!empty($device_fp)) {
-        $where_clauses[] = 'device_fingerprint = %s';
-        $where_params[] = $device_fp;
     }
 
     // 3. Match by Normalized Phone Number
@@ -87,7 +87,7 @@ function cg_delete_incomplete_checkout_on_order_completion($order_id)
     // blur on the place-order click) can arrive after this cleanup. Mark the
     // customer for a short time so that request does not add the checkout
     // again as incomplete and count it again.
-    cg_mark_order_placed($where_params);
+    cg_mark_order_placed(empty($device_fp) ? $where_params : array_merge($where_params, [$device_fp]));
 
     $order->update_meta_data('_cg_incomplete_cleaned', '1');
     if (method_exists($order, 'save')) {
