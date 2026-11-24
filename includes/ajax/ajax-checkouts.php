@@ -188,8 +188,12 @@ function cg_handle_save_checkout_data()
 
     // The customer placed an order a moment ago and the cleanup removed the
     // record: a late tracker request must not add it back or count it again.
+    // The device fingerprint is not a key here: browsers of the same phone
+    // model and version send the same one, so another customer's new
+    // checkout would be skipped. The customer's own late request still has
+    // the session, phone or email of the order.
     if (!$existing_record_id && function_exists('cg_recently_placed_order')) {
-        $mark_keys = [$session_id, $raw_device_fp, $email];
+        $mark_keys = [$session_id, $email];
         if (!empty($phone) && strlen($phone) >= 7) {
             $mark_keys[] = $phone;
         }
