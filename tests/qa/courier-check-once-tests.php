@@ -141,6 +141,21 @@ $meta = wc_get_order($oid)->get_meta('_cg_success_ratio_data', true);
 ok('C11', 'error memo hit with an order id writes no courier meta', $n === 1 && ($e2['cache_source'] ?? '') === 'error' && empty($meta), "calls=$n src=" . ($e2['cache_source'] ?? '') . ' meta=' . (empty($meta) ? 'none' : (is_array($meta) ? ($meta['cache_source'] ?? '?') : 'set')));
 wc_get_order($oid)->delete(true);
 
+// C12: a failed check on the first call (no memo hit) with an order id also
+// writes no courier meta: timeout, cURL 7 and HQ 400 each leave
+// _cg_success_ratio_data empty on the order.
+foreach ([['C12-timeout', 'timeout', ['code' => 'timeout'], '01661222333'], ['C12-refused', 'cURL 7', ['code' => 'refused'], '01671222333'], ['C12-400', 'HQ 400', ['code' => 400, 'body' => ['error' => 'bad_request']], '01651222333']] as $c) {
+    $GLOBALS['QA_HTTP'] = $c[2];
+    qa_reset([$c[3]]);
+    $oid = $qa_mk_order();
+    $GLOBALS['QA_CALLS'] = [];
+    $e1 = cg_perform_all_api_calls($c[3], $oid);
+    $n = count($GLOBALS['QA_CALLS']);
+    $meta = wc_get_order($oid)->get_meta('_cg_success_ratio_data', true);
+    ok($c[0], $c[1] . ': first call with an order id writes no courier meta', $n === 1 && empty($meta), "calls=$n src=" . (is_array($e1) ? ($e1['cache_source'] ?? '') : gettype($e1)) . ' meta=' . (empty($meta) ? 'none' : (is_array($meta) ? ($meta['cache_source'] ?? '?') : 'set')));
+    wc_get_order($oid)->delete(true);
+}
+
 $GLOBALS['QA_HTTP'] = ['code' => 200, 'body' => ['cache_source' => 'fresh', 'result' => ['summary' => ['success_rate' => 90, 'total_deliveries' => 10, 'successful_deliveries' => 9, 'cancelled_deliveries' => 1]]]];
 qa_reset(['01771222333']);
 $oid = $qa_mk_order();
@@ -221,7 +236,7 @@ cg_perform_all_api_calls('01511222333', 0); cg_perform_all_api_calls('0151122233
 $n = count($GLOBALS['QA_CALLS']);
 ok('C8', 'bypass_cache sends a new call', $n === 2, "calls=$n");
 
-foreach (['01781222333', '01791222333', '01681222333', '01691222333', '01701222333', '01751222333', '01761222333', '01771222333', '01731222333', '01741222333', '01721222333', '01711222333', '+880 1711-222333', '8801711222333', '01811222333', '+8801811222333', '01911222333', '01611222333', '01511222333'] as $p) { delete_transient('cg_courier_cache_' . md5($p)); }
+foreach (['01661222333', '01671222333', '01651222333', '01781222333', '01791222333', '01681222333', '01691222333', '01701222333', '01751222333', '01761222333', '01771222333', '01731222333', '01741222333', '01721222333', '01711222333', '+880 1711-222333', '8801711222333', '01811222333', '+8801811222333', '01911222333', '01611222333', '01511222333'] as $p) { delete_transient('cg_courier_cache_' . md5($p)); }
 delete_transient(CG_COURIER_AUTH_REJECT_TRANSIENT);
 if (defined('CG_COURIER_TIMEOUT_WAIT_TRANSIENT')) { delete_transient(CG_COURIER_TIMEOUT_WAIT_TRANSIENT); }
 cg_update_options_from_hq(is_array($GLOBALS['QA_OPTS_ORIG']) ? $GLOBALS['QA_OPTS_ORIG'] : []);
