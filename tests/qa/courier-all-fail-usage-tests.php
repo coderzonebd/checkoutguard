@@ -127,6 +127,14 @@ ok('M3', 'one courier non-array, rest error, fresh: usage unchanged and not cach
 [$d, $src] = qa_usage_delta(qa_courier_map(['steadfast' => 'ok'], 'fresh'));
 $cached = $GLOBALS['QA_CACHED'];
 ok('M4', 'control: one courier ok, others missing, fresh: usage +1 and cached', $d === 1 && $cached, "delta=$d cached=" . ($cached ? 'yes' : 'no') . " source=$src");
+// M6: HQ 200 with an empty JSON object as "result" ({"result":{}}, with and
+// without cache_source): no courier data at all, so no local usage and no
+// 6-hour cache.
+foreach ([['M6', '{"result":{}}', ['result' => new stdClass()]], ['M6-fresh', '{"cache_source":"fresh","result":{}}', ['cache_source' => 'fresh', 'result' => new stdClass()]]] as $c) {
+    [$d, $src] = qa_usage_delta(['code' => 200, 'body' => $c[2]]);
+    $cached = $GLOBALS['QA_CACHED'];
+    ok($c[0], $c[1] . ': usage unchanged and not cached', $d === 0 && !$cached, "delta=$d cached=" . ($cached ? 'yes' : 'no') . " source=$src");
+}
 $GLOBALS['QA_HTTP'] = qa_courier_map(['steadfast' => 'ok'], 'fresh');
 delete_transient(CG_COURIER_AUTH_REJECT_TRANSIENT);
 delete_transient('cg_courier_cache_' . md5('01711119999'));

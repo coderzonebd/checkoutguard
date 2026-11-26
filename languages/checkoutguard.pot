@@ -1,0 +1,3295 @@
+# Copyright (C) 2026 Coder Zone BD
+# This file is distributed under the GPLv3 or later.
+msgid ""
+msgstr ""
+"Project-Id-Version: CheckoutGuard 1.5.0\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/checkoutguard\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2026-11-26T01:48:22+00:00\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"X-Generator: WP-CLI 2.12.0\n"
+"X-Domain: checkoutguard\n"
+
+#. Plugin Name of the plugin
+#: checkoutguard.php
+#: includes/admin/admin-menus.php:13
+#: includes/admin/admin-menus.php:14
+#: includes/admin/pages/common-components.php:17
+#: includes/privacy.php:22
+msgid "CheckoutGuard"
+msgstr ""
+
+#. Plugin URI of the plugin
+#: checkoutguard.php
+msgid "https://wordpress.org/plugins/checkoutguard/"
+msgstr ""
+
+#. Description of the plugin
+#: checkoutguard.php
+msgid "Tracks incomplete WooCommerce checkouts, provides recovery tools, a dashboard, and fraud blocking."
+msgstr ""
+
+#. Author of the plugin
+#: checkoutguard.php
+msgid "Coder Zone BD"
+msgstr ""
+
+#. Author URI of the plugin
+#: checkoutguard.php
+msgid "https://coderzonebd.com/"
+msgstr ""
+
+#: checkoutguard.php:88
+msgid "Every 6 Hours"
+msgstr ""
+
+#. translators: 1: opening <a> tag, 2: closing </a> tag
+#: checkoutguard.php:123
+#, php-format
+msgid "%1$scontact us%2$s"
+msgstr ""
+
+#. translators: %s: clickable "contact us" text
+#: checkoutguard.php:131
+#, php-format
+msgid "Your site is not active. Please %s to get it activated."
+msgstr ""
+
+#. translators: %s: clickable "contact us" text
+#: checkoutguard.php:136
+#, php-format
+msgid "Your license is suspended. Please %s to solve the issue."
+msgstr ""
+
+#: checkoutguard.php:140
+#: includes/admin/dashboard-widget.php:56
+msgid "There is an issue with your license status."
+msgstr ""
+
+#: includes/activation.php:255
+#: includes/activation.php:306
+#: includes/site-key.php:746
+msgid "CheckoutGuard is not protecting checkouts right now."
+msgstr ""
+
+#: includes/activation.php:256
+msgid "This site could not connect to CheckoutGuard yet. Orders still go through, but without the fraud check."
+msgstr ""
+
+#: includes/activation.php:258
+#: includes/activation.php:311
+#: includes/admin/admin-settings-page.php:93
+msgid "Reconnect is running. Reload this page in a few seconds."
+msgstr ""
+
+#. translators: %s: time after which the admin may try again
+#: includes/activation.php:262
+#: includes/activation.php:315
+#, php-format
+msgid "You can try again after %s."
+msgstr ""
+
+#: includes/activation.php:265
+#: includes/activation.php:318
+#: includes/activation.php:322
+#: includes/site-key.php:759
+msgid "If it keeps failing, contact CheckoutGuard support."
+msgstr ""
+
+#: includes/activation.php:268
+#: includes/activation.php:321
+#: includes/site-key.php:761
+msgid "Reconnect now"
+msgstr ""
+
+#: includes/activation.php:269
+#: includes/site-key.php:762
+msgid "Click \"Reconnect now\". If it keeps failing, contact CheckoutGuard support."
+msgstr ""
+
+#: includes/activation.php:307
+msgid "This site is already registered with CheckoutGuard, but this copy of the plugin is not connected to it. Orders still go through, but without the fraud check."
+msgstr ""
+
+#: includes/activation.php:385
+#: includes/admin/admin-settings-page.php:81
+#: includes/admin/print-order-page.php:102
+#: includes/ajax/ajax-checkouts.php:350
+#: includes/ajax/ajax-checkouts.php:1202
+#: includes/ajax/ajax-checkouts.php:1458
+#: includes/ajax/ajax-fraud.php:15
+#: includes/ajax/ajax-fraud.php:88
+#: includes/ajax/ajax-fraud.php:280
+#: includes/ajax/ajax-fraud.php:372
+#: includes/ajax/ajax-fraud.php:402
+#: includes/ajax/ajax-fraud.php:578
+#: includes/ajax/ajax-fraud.php:633
+#: includes/ajax/ajax-fraud.php:686
+#: includes/ajax/ajax-order-statuses.php:16
+#: includes/ajax/ajax-order-statuses.php:139
+#: includes/ajax/ajax-order-statuses.php:230
+#: includes/ajax/ajax-order-statuses.php:263
+#: includes/ajax/ajax-order-statuses.php:290
+#: includes/ajax/ajax-settings.php:17
+#: includes/invoice.php:865
+#: includes/invoice.php:968
+#: includes/invoice.php:996
+#: includes/invoice.php:1025
+#: includes/site-key.php:813
+msgid "Permission denied."
+msgstr ""
+
+#. translators: %d: number of failed attempts
+#: includes/activation.php:797
+#, php-format
+msgid "CheckoutGuard could not update its database tables (%d attempts). Your hosting may not allow ALTER TABLE for the WordPress database user. Please ask your host to allow it, or contact CheckoutGuard support. The plugin keeps working with the old table layout and retries automatically."
+msgstr ""
+
+#: includes/admin/admin-menus.php:24
+msgid "Dashboard Overview"
+msgstr ""
+
+#: includes/admin/admin-menus.php:25
+msgid "Dashboard"
+msgstr ""
+
+#: includes/admin/admin-menus.php:33
+#: includes/admin/admin-menus.php:34
+#: includes/admin/pages/page-checkouts.php:23
+msgid "Checkouts"
+msgstr ""
+
+#: includes/admin/admin-menus.php:42
+#: includes/admin/admin-menus.php:43
+#: includes/admin/admin-settings-page.php:728
+msgid "Fraud Blocker"
+msgstr ""
+
+#: includes/admin/admin-menus.php:50
+#: includes/admin/admin-menus.php:51
+msgid "Courier Analytics"
+msgstr ""
+
+#: includes/admin/admin-menus.php:61
+#: includes/admin/admin-menus.php:62
+#: includes/admin/admin-settings-page.php:742
+#: includes/admin/pages/page-order-statuses.php:21
+msgid "Order Statuses"
+msgstr ""
+
+#: includes/admin/admin-menus.php:71
+#: includes/admin/admin-menus.php:72
+#: includes/admin/admin-settings-page.php:749
+msgid "Invoices"
+msgstr ""
+
+#: includes/admin/admin-menus.php:80
+#: includes/admin/admin-menus.php:81
+#: includes/admin/admin-settings-page.php:461
+#: includes/admin/pages/page-courier-analytics.php:36
+#: includes/admin/pages/page-fraud-blocker.php:84
+#: includes/admin/pages/page-invoices.php:32
+msgid "Settings"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:111
+msgid "Successfully synced with Headquarters."
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:129
+msgid "Please check API connectivity."
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:131
+msgid "Could not sync with Headquarters: "
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:131
+msgid "Your current status was kept. Please try again in a few minutes."
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:292
+msgid "Checkout tracking"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:293
+msgid "Fraud blocker"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:294
+msgid "Courier service"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:295
+msgid "Data retention"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:356
+msgid "Settings saved."
+msgstr ""
+
+#. translators: %s: setting name, e.g. "Fraud blocker"
+#: includes/admin/admin-settings-page.php:366
+#, php-format
+msgid "Headquarters did not save your change to \"%s\", so it was restored to its previous value."
+msgstr ""
+
+#. translators: %s: comma-separated setting names
+#: includes/admin/admin-settings-page.php:369
+#, php-format
+msgid "Headquarters did not save your change to these settings, so they were restored to their previous values: %s."
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:371
+msgid "Headquarters did not save your settings change, so the affected settings were restored to their previous values."
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:374
+msgid "Your settings change could not be confirmed with Headquarters. It will be matched at the next sync."
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:422
+msgid "Unlimited"
+msgstr ""
+
+#. translators: %d: number of automatic blocks that do not count toward the plan limit
+#: includes/admin/admin-settings-page.php:432
+#, php-format
+msgid "+%d auto-blocked (not counted)"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:436
+msgid "used"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:450
+msgid "CheckoutGuard Settings"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:456
+msgid "Account & Usage"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:499
+msgid "Unknown"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:513
+msgid "Not connected"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:522
+msgid "Sync Now"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:529
+#, php-format
+msgid "Last synced: %s ago"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:536
+msgid "Not synced yet"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:547
+msgid "No data available"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:548
+msgid "Click \"Sync Now\" to fetch your account data from the Headquarters."
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:557
+#: includes/admin/admin-settings-page.php:721
+msgid "Checkout Tracking"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:560
+#: includes/ajax/ajax-usage-limits.php:182
+#: includes/ajax/ajax-usage-limits.php:251
+msgid "Incomplete Checkouts"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:566
+msgid "Full Contact Details (this period)"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:577
+msgid "Fraud Protection"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:581
+#: includes/ajax/ajax-usage-limits.php:183
+#: includes/ajax/ajax-usage-limits.php:252
+msgid "Blocked IPs"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:582
+#: includes/ajax/ajax-usage-limits.php:184
+#: includes/ajax/ajax-usage-limits.php:253
+msgid "Blocked Emails"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:583
+#: includes/ajax/ajax-usage-limits.php:185
+#: includes/ajax/ajax-usage-limits.php:254
+msgid "Blocked Phones"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:584
+#: includes/admin/pages/page-fraud-blocker.php:231
+#: includes/ajax/ajax-usage-limits.php:186
+#: includes/ajax/ajax-usage-limits.php:255
+msgid "Blocked Domains"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:585
+#: includes/admin/pages/page-fraud-blocker.php:279
+#: includes/ajax/ajax-usage-limits.php:187
+#: includes/ajax/ajax-usage-limits.php:256
+msgid "Blocked Addresses"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:586
+#: includes/admin/pages/page-fraud-blocker.php:322
+#: includes/ajax/ajax-usage-limits.php:188
+#: includes/ajax/ajax-usage-limits.php:257
+msgid "Blocked Devices"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:604
+#: includes/admin/admin-settings-page.php:735
+msgid "Courier Service"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:607
+msgid "API Checks"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:620
+msgid "Looking for an Upgrade?"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:621
+msgid "Find the perfect plan that fits your needs and unlock more features."
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:624
+#: includes/admin/pages/page-invoices.php:436
+msgid "View Our Plans"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:625
+msgid "Get Support"
+msgstr ""
+
+#. translators: 1: short reason code, 2: time ago
+#: includes/admin/admin-settings-page.php:645
+#, php-format
+msgid "Last site key delivery dropped: %1$s (%2$s ago)"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:657
+msgid "Recent API Activity"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:660
+msgid "Last call failed"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:667
+msgid "Time"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:668
+msgid "Endpoint"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:669
+msgid "Method"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:670
+msgid "Result"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:671
+#: includes/admin/pages/common-components.php:105
+msgid "Details"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:687
+#: includes/admin/pages/page-order-statuses.php:179
+#: includes/order-statuses.php:263
+msgid "Failed"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:713
+msgid "Module Toggles"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:722
+msgid "Track incomplete checkouts and recover lost revenue by following up with customers."
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:729
+msgid "Block fraudulent orders by IP, email, phone, device fingerprint, and more."
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:736
+msgid "Check courier success ratios before accepting orders to reduce failed deliveries."
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:743
+msgid "Create and manage custom WooCommerce order statuses with a visual overview."
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:750
+msgid "Auto-generate PDF invoices on order completion, with customer download and email attachment."
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:780
+msgid "General Settings"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:785
+msgid "Data Retention Policy"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:790
+#: includes/admin/admin-settings-page.php:791
+#: includes/admin/admin-settings-page.php:881
+#: includes/admin/admin-settings-page.php:882
+msgid "Days"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:792
+#: includes/admin/admin-settings-page.php:883
+msgid "Year"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:793
+#: includes/admin/admin-settings-page.php:884
+msgid "Never Delete"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:795
+#: includes/admin/admin-settings-page.php:887
+msgid "Delete incomplete checkout records after this many days."
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:801
+msgid "Exclude User Roles"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:818
+#: includes/admin/admin-settings-page.php:901
+msgid "Do not track checkouts for these user roles."
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:826
+msgid "Advanced"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:833
+msgid "Reset Order Statuses"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:836
+msgid "This will reset all order statuses back to WooCommerce defaults. Any custom statuses will be removed. Orders on custom statuses will NOT be migrated automatically."
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:840
+msgid "Reset Statuses"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:848
+msgid "Delete all data on uninstall"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:851
+#: includes/admin/admin-settings-page.php:941
+msgid "This will permanently delete all plugin tables and options when you delete the plugin from the Plugins page."
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:865
+#: includes/admin/pages/page-courier-analytics.php:152
+#: includes/admin/pages/page-fraud-blocker.php:591
+msgid "Save Settings"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:908
+#: includes/admin/admin-settings-page.php:916
+#: includes/admin/admin-settings-page.php:932
+msgid "Enable this module."
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:909
+msgid "This allows the plugin to track incomplete checkouts."
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:917
+msgid "This enables the fraud blocker at checkout."
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:923
+#: includes/admin/pages/page-fraud-blocker.php:353
+msgid "Your order cannot be processed at this time. Please contact support."
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:925
+msgid "The message shown to customers who are blocked by IP, email, or phone."
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:933
+msgid "This enables the courier success ratio check feature."
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:940
+msgid "Delete all plugin data upon uninstallation."
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:941
+msgid "Warning:"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:949
+#: includes/admin/pages/page-courier-analytics.php:133
+msgid "Block orders if the customer's success ratio is at or below this percentage."
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:956
+#: includes/admin/pages/page-courier-analytics.php:139
+msgid "orders"
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:957
+#: includes/admin/pages/page-courier-analytics.php:140
+msgid "Do not block new customers until they have more than this many total orders."
+msgstr ""
+
+#: includes/admin/admin-settings-page.php:966
+#: includes/admin/pages/page-courier-analytics.php:147
+msgid "This message will be shown in a popup to the customer. Use <code>{ratio}</code> as a placeholder for the customer's success ratio."
+msgstr ""
+
+#: includes/admin/dashboard-widget.php:15
+msgid "CheckoutGuard Summary"
+msgstr ""
+
+#. translators: 1: opening <a> tag, 2: closing </a> tag
+#: includes/admin/dashboard-widget.php:44
+#, php-format
+msgid "Your site is not active. Please %1$scontact us%2$s to get it activated."
+msgstr ""
+
+#. translators: 1: opening <a> tag, 2: closing </a> tag
+#: includes/admin/dashboard-widget.php:51
+#, php-format
+msgid "Your license is suspended. Please %1$scontact us%2$s to solve the issue."
+msgstr ""
+
+#: includes/admin/dashboard-widget.php:60
+msgid "Go to Settings"
+msgstr ""
+
+#: includes/admin/dashboard-widget.php:73
+#: includes/admin/pages/page-dashboard.php:29
+msgid "Loading dashboard data..."
+msgstr ""
+
+#: includes/admin/dashboard-widget.php:80
+#: includes/admin/pages/page-checkouts.php:30
+msgid "Incomplete"
+msgstr ""
+
+#: includes/admin/dashboard-widget.php:84
+#: includes/admin/pages/page-checkouts.php:44
+msgid "Recovered"
+msgstr ""
+
+#: includes/admin/dashboard-widget.php:88
+msgid "On Hold"
+msgstr ""
+
+#: includes/admin/dashboard-widget.php:92
+#: includes/admin/pages/page-checkouts.php:38
+#: includes/admin/pages/page-order-statuses.php:158
+#: includes/ajax/ajax-checkouts.php:518
+#: includes/order-statuses.php:261
+msgid "Cancelled"
+msgstr ""
+
+#: includes/admin/pages/common-components.php:52
+msgid "Due Today"
+msgstr ""
+
+#: includes/admin/pages/common-components.php:54
+msgid "Next 7 Days"
+msgstr ""
+
+#: includes/admin/pages/common-components.php:56
+msgid "Next 30 Days"
+msgstr ""
+
+#: includes/admin/pages/common-components.php:59
+msgid "Today"
+msgstr ""
+
+#: includes/admin/pages/common-components.php:61
+msgid "Yesterday"
+msgstr ""
+
+#: includes/admin/pages/common-components.php:63
+msgid "Last 7 Days"
+msgstr ""
+
+#: includes/admin/pages/common-components.php:65
+msgid "Last 30 Days"
+msgstr ""
+
+#: includes/admin/pages/common-components.php:70
+msgid "All"
+msgstr ""
+
+#: includes/admin/pages/common-components.php:75
+msgid "From:"
+msgstr ""
+
+#: includes/admin/pages/common-components.php:79
+msgid "To:"
+msgstr ""
+
+#: includes/admin/pages/common-components.php:83
+msgid "Filter"
+msgstr ""
+
+#: includes/admin/pages/common-components.php:90
+msgid "Search by name, email, phone, IP..."
+msgstr ""
+
+#: includes/admin/pages/common-components.php:107
+#: includes/admin/pages/common-components.php:154
+#: includes/admin/pages/page-invoices.php:156
+#: includes/admin/pages/page-order-statuses.php:119
+msgid "Close"
+msgstr ""
+
+#: includes/admin/pages/common-components.php:109
+msgid "Loading details..."
+msgstr ""
+
+#: includes/admin/pages/common-components.php:152
+#: includes/admin/pages/common-components.php:157
+msgid "Upgrade to Pro"
+msgstr ""
+
+#: includes/admin/pages/common-components.php:158
+msgid "Unlock all premium features including customer info, action buttons, follow-up management, fraud blocking, and more."
+msgstr ""
+
+#: includes/admin/pages/common-components.php:162
+msgid "Join WhatsApp Community"
+msgstr ""
+
+#: includes/admin/pages/common-components.php:166
+msgid "WhatsApp: +8801410323121"
+msgstr ""
+
+#: includes/admin/pages/common-components.php:170
+msgid "WhatsApp: +8801751126322"
+msgstr ""
+
+#: includes/admin/pages/common-components.php:174
+msgid "WhatsApp: +8801885660190"
+msgstr ""
+
+#: includes/admin/pages/common-components.php:175
+msgid "(WhatsApp only)"
+msgstr ""
+
+#: includes/admin/pages/common-components.php:179
+msgid "View Pricing Plans"
+msgstr ""
+
+#: includes/admin/pages/common-components.php:234
+msgid "Limit reached"
+msgstr ""
+
+#. translators: %s: comma-separated list of features at limit
+#. translators: %s: comma-separated list of features approaching limit
+#: includes/admin/pages/common-components.php:236
+#: includes/admin/pages/common-components.php:242
+#, php-format
+msgid "for: %s."
+msgstr ""
+
+#: includes/admin/pages/common-components.php:240
+msgid "Approaching limit"
+msgstr ""
+
+#: includes/admin/pages/common-components.php:245
+msgid "Upgrade your plan to increase your limits."
+msgstr ""
+
+#: includes/admin/pages/common-components.php:249
+msgid "WhatsApp Us"
+msgstr ""
+
+#: includes/admin/pages/common-components.php:252
+msgid "View Pricing"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:24
+#: includes/admin/pages/page-courier-analytics.php:18
+#: includes/admin/pages/page-dashboard.php:22
+#: includes/admin/pages/page-fraud-blocker.php:55
+#: includes/admin/pages/page-order-statuses.php:22
+msgid "Toggle Dark Mode"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:29
+msgid "Checkout tabs"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:32
+msgid "Follow Up"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:34
+#: includes/admin/pages/page-checkouts.php:40
+#: includes/admin/pages/page-checkouts.php:46
+#: includes/admin/pages/page-checkouts.php:52
+#: includes/admin/pages/page-fraud-blocker.php:69
+#: includes/admin/pages/page-fraud-blocker.php:75
+#: includes/admin/pages/page-fraud-blocker.php:81
+msgid "Upgrade to Pro to unlock"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:50
+msgid "Blocked Orders"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:59
+msgid "Checkouts that were started but not completed."
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:63
+#: includes/admin/pages/page-checkouts.php:84
+#: includes/admin/pages/page-checkouts.php:105
+#: includes/admin/pages/page-checkouts.php:126
+#: includes/admin/pages/page-checkouts.php:147
+msgid "Loading entries..."
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:76
+msgid "Upgrade to Pro to access Follow Up"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:77
+#: includes/admin/pages/page-checkouts.php:98
+#: includes/admin/pages/page-checkouts.php:119
+#: includes/admin/pages/page-checkouts.php:140
+#: includes/admin/pages/page-courier-analytics.php:30
+#: includes/admin/pages/page-fraud-blocker.php:207
+#: includes/admin/pages/page-fraud-blocker.php:251
+#: includes/admin/pages/page-fraud-blocker.php:298
+#: includes/admin/pages/page-fraud-blocker.php:447
+#: includes/admin/pages/page-fraud-blocker.php:468
+#: includes/admin/pages/page-invoices.php:324
+#: includes/admin/pages/page-invoices.php:361
+#: includes/admin/pages/page-invoices.php:407
+#: includes/admin/print-order-page.php:305
+#: includes/ajax/ajax-checkouts.php:390
+#: includes/ajax/ajax-checkouts.php:575
+#: includes/ajax/ajax-checkouts.php:644
+#: includes/ajax/ajax-fraud.php:440
+#: includes/ajax/ajax-fraud.php:511
+msgid "Upgrade Now"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:80
+msgid "Incomplete checkouts marked as \"Hold\" for future follow-up, ordered by follow-up date."
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:97
+msgid "Upgrade to Pro to access Cancelled Checkouts"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:101
+msgid "Incomplete checkouts that have been marked as \"Cancelled\"."
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:118
+msgid "Upgrade to Pro to access Recovered Checkouts"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:122
+msgid "Incomplete checkouts that have been successfully recovered as WooCommerce orders."
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:139
+msgid "Upgrade to Pro to access Blocked Orders"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:143
+msgid "Checkout attempts that were automatically blocked due to a low success ratio."
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:175
+#, php-format
+msgid "No checkouts found with status \"%s\" for the selected criteria."
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:184
+#: includes/admin/pages/page-fraud-blocker.php:21
+msgid "ID"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:187
+#: includes/admin/pages/page-fraud-blocker.php:22
+#: includes/admin/pages/page-invoices.php:164
+#: includes/admin/pages/page-invoices.php:199
+msgid "Name"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:188
+#: includes/admin/pages/page-fraud-blocker.php:23
+#: includes/admin/pages/page-fraud-blocker.php:757
+#: includes/admin/pages/page-invoices.php:172
+#: includes/ajax/ajax-checkouts.php:397
+#: includes/ajax/ajax-fraud.php:447
+#: includes/privacy.php:102
+msgid "Email"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:191
+#: includes/admin/pages/page-fraud-blocker.php:24
+#: includes/admin/pages/page-fraud-blocker.php:766
+#: includes/admin/pages/page-invoices.php:168
+#: includes/ajax/ajax-checkouts.php:409
+#: includes/ajax/ajax-fraud.php:459
+#: includes/privacy.php:103
+msgid "Phone"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:192
+#: includes/admin/pages/page-fraud-blocker.php:25
+#: includes/admin/pages/page-fraud-blocker.php:418
+#: includes/ajax/ajax-checkouts.php:420
+#: includes/ajax/ajax-fraud.php:470
+#: includes/privacy.php:108
+msgid "IP Address"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:194
+msgid "Follow-up Date"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:196
+#: includes/ajax/ajax-checkouts.php:425
+msgid "Recovered Order"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:198
+#: includes/admin/pages/page-fraud-blocker.php:796
+#: includes/admin/pages/page-invoices.php:176
+#: includes/privacy.php:104
+msgid "Address"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:200
+#: includes/admin/pages/page-fraud-blocker.php:26
+#: includes/ajax/ajax-checkouts.php:621
+#: includes/ajax/ajax-fraud.php:553
+#: includes/privacy.php:109
+msgid "Cart Value"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:201
+#: includes/admin/pages/page-fraud-blocker.php:27
+msgid "Cart Items"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:202
+msgid "Last Updated"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:203
+#: includes/admin/pages/page-fraud-blocker.php:30
+#: includes/admin/pages/page-invoices.php:124
+#: includes/admin/pages/page-order-statuses.php:58
+msgid "Actions"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:233
+msgid "(No Name Provided)"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:237
+#, php-format
+msgid "View details for %s"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:243
+#: includes/admin/pages/page-fraud-blocker.php:864
+#: includes/ajax/ajax-checkouts.php:400
+#: includes/ajax/ajax-fraud.php:450
+msgid "Upgrade to Pro to see full email"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:251
+#: includes/admin/pages/page-fraud-blocker.php:871
+#: includes/ajax/ajax-checkouts.php:412
+#: includes/ajax/ajax-fraud.php:462
+msgid "Upgrade to Pro to see full number"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:259
+#: includes/admin/pages/page-checkouts.php:272
+#: includes/ajax/ajax-checkouts.php:1122
+msgid "N/A"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:293
+#: includes/admin/pages/page-fraud-blocker.php:878
+msgid "item"
+msgid_plural "items"
+msgstr[0] ""
+msgstr[1] ""
+
+#: includes/admin/pages/page-checkouts.php:300
+#: includes/admin/pages/page-fraud-blocker.php:896
+msgid "View Details"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:303
+#: includes/admin/pages/page-checkouts.php:307
+#: includes/ajax/ajax-checkouts.php:650
+#: includes/ajax/ajax-checkouts.php:660
+msgid "Recover Order"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:304
+#: includes/ajax/ajax-checkouts.php:653
+msgid "Mark as Hold"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:305
+#: includes/admin/pages/page-checkouts.php:309
+#: includes/ajax/ajax-checkouts.php:656
+#: includes/ajax/ajax-checkouts.php:666
+msgid "Mark as Cancelled"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:308
+#: includes/ajax/ajax-checkouts.php:663
+msgid "Edit Follow-up Date"
+msgstr ""
+
+#: includes/admin/pages/page-checkouts.php:311
+#: includes/ajax/ajax-checkouts.php:670
+msgid "Re-open to Incomplete"
+msgstr ""
+
+#: includes/admin/pages/page-courier-analytics.php:17
+msgid "Courier Success Ratio Checker"
+msgstr ""
+
+#: includes/admin/pages/page-courier-analytics.php:22
+msgid "Enter a customer phone number to check their delivery success and return ratio across different courier services."
+msgstr ""
+
+#: includes/admin/pages/page-courier-analytics.php:29
+msgid "Upgrade to Pro to unlock Courier Analytics"
+msgstr ""
+
+#: includes/admin/pages/page-courier-analytics.php:34
+msgid "Courier analytics tabs"
+msgstr ""
+
+#: includes/admin/pages/page-courier-analytics.php:35
+msgid "Ratio Checker"
+msgstr ""
+
+#: includes/admin/pages/page-courier-analytics.php:46
+msgid "Recent Checks"
+msgstr ""
+
+#: includes/admin/pages/page-courier-analytics.php:51
+msgid "No recent checks yet. Check a number to see it here."
+msgstr ""
+
+#: includes/admin/pages/page-courier-analytics.php:58
+msgid "ago"
+msgstr ""
+
+#: includes/admin/pages/page-courier-analytics.php:77
+msgid "Customer Phone Number"
+msgstr ""
+
+#: includes/admin/pages/page-courier-analytics.php:84
+msgid "Enter phone number (e.g., 01XXXXXXXXX)"
+msgstr ""
+
+#: includes/admin/pages/page-courier-analytics.php:89
+msgid "Check Ratio"
+msgstr ""
+
+#: includes/admin/pages/page-courier-analytics.php:93
+msgid "Press Enter to check or click the button"
+msgstr ""
+
+#: includes/admin/pages/page-courier-analytics.php:115
+msgid "Success Ratio Blocker Settings"
+msgstr ""
+
+#: includes/admin/pages/page-courier-analytics.php:119
+msgid "When the ratio is too low"
+msgstr ""
+
+#: includes/admin/pages/page-courier-analytics.php:122
+msgid "Hold the order for review (recommended)"
+msgstr ""
+
+#: includes/admin/pages/page-courier-analytics.php:123
+msgid "Block the checkout"
+msgstr ""
+
+#: includes/admin/pages/page-courier-analytics.php:125
+msgid "Hold: the order is placed and set to On hold with a note, even when it is already paid. You release it yourself. Nothing is refunded or cancelled."
+msgstr ""
+
+#: includes/admin/pages/page-courier-analytics.php:130
+msgid "Block Threshold (%)"
+msgstr ""
+
+#: includes/admin/pages/page-courier-analytics.php:137
+msgid "New Customer Grace Period"
+msgstr ""
+
+#: includes/admin/pages/page-courier-analytics.php:144
+msgid "Blocked Order Notice"
+msgstr ""
+
+#: includes/admin/pages/page-dashboard.php:21
+msgid "CheckoutGuard Dashboard"
+msgstr ""
+
+#: includes/admin/pages/page-dashboard.php:44
+msgid "Incomplete Orders"
+msgstr ""
+
+#: includes/admin/pages/page-dashboard.php:48
+msgid "Recovered Orders"
+msgstr ""
+
+#: includes/admin/pages/page-dashboard.php:52
+msgid "Hold Orders"
+msgstr ""
+
+#: includes/admin/pages/page-dashboard.php:56
+msgid "Cancelled Orders"
+msgstr ""
+
+#: includes/admin/pages/page-dashboard.php:62
+msgid "Incomplete Value"
+msgstr ""
+
+#: includes/admin/pages/page-dashboard.php:66
+msgid "Recovered Value"
+msgstr ""
+
+#: includes/admin/pages/page-dashboard.php:70
+msgid "Hold Value"
+msgstr ""
+
+#: includes/admin/pages/page-dashboard.php:74
+msgid "Cancelled Value"
+msgstr ""
+
+#: includes/admin/pages/page-dashboard.php:83
+msgid "Checkout Trends"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:15
+msgid "No orders have been blocked yet."
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:28
+msgid "Success Ratio (%)"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:29
+#: includes/ajax/ajax-fraud.php:471
+msgid "Blocked At"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:47
+msgid "You do not have sufficient permissions to access this page."
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:54
+msgid "Fraud Blocker Management"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:59
+msgid "Manage blocked IP addresses, email addresses, phone numbers, domains, addresses, and devices to prevent unwanted orders."
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:62
+msgid "Fraud blocker tabs"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:63
+msgid "IP Addresses"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:64
+msgid "Emails"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:65
+msgid "Phones"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:67
+msgid "Domains"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:73
+msgid "Addresses"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:79
+msgid "Devices"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:90
+msgid "IP Address Blocker"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:94
+msgid "IP Address to Block:"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:97
+#: includes/admin/pages/page-fraud-blocker.php:135
+#: includes/admin/pages/page-fraud-blocker.php:173
+#: includes/admin/pages/page-fraud-blocker.php:217
+#: includes/admin/pages/page-fraud-blocker.php:265
+#: includes/admin/pages/page-fraud-blocker.php:308
+msgid "Reason (Optional):"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:99
+#: includes/admin/pages/page-fraud-blocker.php:137
+#: includes/admin/pages/page-fraud-blocker.php:175
+#: includes/admin/pages/page-fraud-blocker.php:219
+#: includes/admin/pages/page-fraud-blocker.php:267
+#: includes/admin/pages/page-fraud-blocker.php:310
+msgid "Expires After:"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:101
+#: includes/admin/pages/page-fraud-blocker.php:139
+#: includes/admin/pages/page-fraud-blocker.php:177
+#: includes/admin/pages/page-fraud-blocker.php:221
+#: includes/admin/pages/page-fraud-blocker.php:269
+#: includes/admin/pages/page-fraud-blocker.php:312
+msgid "Never (Permanent)"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:102
+#: includes/admin/pages/page-fraud-blocker.php:140
+#: includes/admin/pages/page-fraud-blocker.php:178
+#: includes/admin/pages/page-fraud-blocker.php:222
+#: includes/admin/pages/page-fraud-blocker.php:270
+#: includes/admin/pages/page-fraud-blocker.php:313
+msgid "7 Days"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:103
+#: includes/admin/pages/page-fraud-blocker.php:141
+#: includes/admin/pages/page-fraud-blocker.php:179
+#: includes/admin/pages/page-fraud-blocker.php:223
+#: includes/admin/pages/page-fraud-blocker.php:271
+#: includes/admin/pages/page-fraud-blocker.php:314
+msgid "30 Days"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:104
+#: includes/admin/pages/page-fraud-blocker.php:142
+#: includes/admin/pages/page-fraud-blocker.php:180
+#: includes/admin/pages/page-fraud-blocker.php:224
+#: includes/admin/pages/page-fraud-blocker.php:272
+#: includes/admin/pages/page-fraud-blocker.php:315
+msgid "90 Days"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:108
+msgid "Block IP Address"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:111
+msgid "Blocked IP Addresses"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:113
+#: includes/admin/pages/page-fraud-blocker.php:151
+#: includes/admin/pages/page-fraud-blocker.php:189
+#: includes/admin/pages/page-fraud-blocker.php:233
+#: includes/admin/pages/page-fraud-blocker.php:281
+#: includes/admin/pages/page-fraud-blocker.php:324
+msgid "Export"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:114
+#: includes/admin/pages/page-fraud-blocker.php:152
+#: includes/admin/pages/page-fraud-blocker.php:190
+#: includes/admin/pages/page-fraud-blocker.php:234
+#: includes/admin/pages/page-fraud-blocker.php:343
+msgid "Import"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:119
+msgid "Search IPs..."
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:128
+msgid "Email Address Blocker"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:132
+msgid "Email Address to Block:"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:146
+msgid "Block Email Address"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:149
+msgid "Blocked Email Addresses"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:157
+msgid "Search Emails..."
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:166
+msgid "Phone Number Blocker"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:170
+msgid "Phone Number to Block:"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:184
+msgid "Block Phone Number"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:187
+msgid "Blocked Phone Numbers"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:195
+msgid "Search Phones..."
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:206
+msgid "Upgrade to Pro to unlock Domain Blocking"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:211
+msgid "Email Domain Blocker"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:214
+msgid "Domain to Block:"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:216
+msgid "Block all emails from this domain. Do not include the @ symbol."
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:228
+msgid "Block Domain"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:239
+msgid "Search Domains..."
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:250
+msgid "Upgrade to Pro to unlock Address Blocking"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:255
+msgid "Address Blocker"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:258
+msgid "Address Line 1:"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:260
+msgid "City:"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:262
+msgid "Postcode:"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:264
+msgid "The address will be normalized and hashed for matching. Small formatting differences will be ignored."
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:276
+msgid "Block Address"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:286
+msgid "Search Addresses..."
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:297
+msgid "Upgrade to Pro to unlock Device Blocking"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:302
+msgid "Device Blocker"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:305
+msgid "Device Fingerprint:"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:306
+msgid "Device fingerprint hash"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:307
+msgid "Device fingerprints are automatically captured at checkout. You can find them in order details. Blocked devices cannot place orders, and optionally cannot access the site at all."
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:319
+msgid "Block Device"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:329
+msgid "Search Devices..."
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:338
+msgid "Import Blocklist"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:339
+msgid "Paste CSV data below. First column is the value, second column (optional) is the reason. One entry per line."
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:340
+msgid ""
+"192.168.1.1,Spammer\n"
+"10.0.0.1,Fraudulent orders"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:344
+#: includes/admin/pages/page-invoices.php:269
+msgid "Cancel"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:357
+msgid "Fraud Blocker Settings"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:360
+msgid "Custom Block Message"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:363
+msgid "The message shown to customers who are blocked by IP, email, phone, domain, address, or device."
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:368
+msgid "Duplicate Order Blocker"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:369
+msgid "Prevent customers from submitting identical or duplicate orders repeatedly within a short time window."
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:372
+msgid "Enable Duplicate Blocker"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:375
+msgid "Block rapid duplicate checkout submissions."
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:379
+#: includes/admin/pages/page-fraud-blocker.php:533
+msgid "Time Window"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:390
+msgid "Check for recent orders placed within this time window."
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:394
+msgid "Detection Mode"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:398
+msgid "Smart (Block identical cart products & quantities only)"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:399
+msgid "Strict (Block any order from the same customer)"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:401
+msgid "Smart mode first matches the cart items; if they do not match, it matches by order total."
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:405
+msgid "Matching Criteria"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:410
+msgid "Phone Number (Normalized)"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:414
+msgid "Device Fingerprint (Browser/Hardware)"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:422
+#: includes/privacy.php:136
+msgid "Email Address"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:430
+msgid "Custom Notice Message"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:432
+#: includes/admin/pages/page-fraud-blocker.php:446
+msgid "Upgrade to Pro to customize notice message"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:438
+#: includes/checkout-integration.php:1183
+msgid "You have already placed an order recently. Please wait a few moments before ordering again, or contact us if you need to modify your order."
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:453
+msgid "Custom message requires a Pro plan."
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:453
+msgid "Free plan uses the default notice above. Available placeholders: {time_window}, {phone}. The order number is never shown to the customer."
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:455
+msgid "Leave blank to use default. Available placeholders: {time_window}, {phone}. The order number is never shown to the customer."
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:467
+msgid "Upgrade to Pro to unlock advanced settings"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:472
+msgid "Auto-Block Repeat Offenders"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:475
+msgid "Enable Auto-Block"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:478
+msgid "Automatically block IP/email/phone after repeated failed attempts."
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:482
+msgid "Block After"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:484
+msgid "failed attempts"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:488
+msgid "Within Time Window"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:502
+msgid "Auto-Block Duration"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:517
+msgid "Rate Limiting"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:520
+msgid "Enable Rate Limiting"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:523
+msgid "Limit the number of checkout attempts per time window."
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:527
+msgid "Max Attempts"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:529
+msgid "attempts per window"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:548
+msgid "Device Blocking"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:551
+msgid "Enable Device Fingerprinting"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:554
+msgid "Capture browser fingerprints and allow device-level blocking."
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:558
+msgid "Site-Wide Device Block"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:561
+msgid "Completely block site access for blocked devices (not just checkout)."
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:562
+msgid "When enabled, blocked devices will see a 403 Access Denied page on every page of the site."
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:567
+msgid "Risk Scoring (Advanced)"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:570
+msgid "Enable Risk Scoring"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:573
+msgid "Calculate a fraud risk score (0-100) based on multiple signals."
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:574
+msgid "Combines courier ratio, recent blocks, velocity, email domain reputation, and device history into a single score."
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:578
+msgid "Block Threshold"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:581
+msgid "Orders with a risk score at or above this threshold will be blocked."
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:645
+#: includes/admin/pages/page-invoices.php:92
+msgid "Select All"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:646
+msgid "Delete Selected"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:653
+msgid "No items currently blocked."
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:687
+msgid "Auto"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:690
+#, php-format
+msgid "Expires: %s"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:733
+msgid "IP"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:785
+msgid "Device"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:806
+msgid "Fraud Blocking"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:827
+msgid "Protected Gateway"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:830
+msgid "Unblock"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:834
+msgid "Block"
+msgstr ""
+
+#: includes/admin/pages/page-fraud-blocker.php:883
+msgid "Held"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:21
+msgid "CheckoutGuard Invoices"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:27
+msgid "All Invoices"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:62
+msgid "Generate From Existing Order"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:64
+msgid "Order ID"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:68
+msgid "Generate Invoice"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:72
+msgid "For orders that predate the invoice feature, or need re-generating manually."
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:76
+msgid "Blank Invoice / Label"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:82
+#: includes/admin/pages/page-invoices.php:153
+msgid "New Blank Invoice"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:85
+msgid "Build a fully custom invoice and shipping label with no WooCommerce order needed — freeform items or picked from your catalog. Never affects stock, the Orders list, or reports."
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:95
+msgid "Download Selected (ZIP)"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:100
+msgid "Search order, name, email..."
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:105
+msgid "Loading invoices..."
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:110
+msgid "No invoices generated yet. Invoices are created automatically when an order reaches Processing or Completed."
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:119
+msgid "Order"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:120
+msgid "Invoice #"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:121
+#: includes/admin/pages/page-invoices.php:161
+msgid "Customer"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:122
+#: includes/admin/print-order-page.php:576
+msgid "Date"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:123
+#: includes/admin/pages/page-invoices.php:263
+#: includes/admin/print-order-page.php:587
+#: includes/admin/print-order-page.php:636
+msgid "Total"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:154
+msgid "Create a fully custom invoice and shipping label — no WooCommerce order needed. Never touches stock, the Orders list, or reports."
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:165
+msgid "e.g. Rahim Uddin"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:180
+msgid "City"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:184
+msgid "State / Division"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:188
+msgid "Postcode"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:195
+msgid "Items"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:198
+msgid "Product (optional)"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:200
+#: includes/ajax/ajax-checkouts.php:606
+#: includes/ajax/ajax-fraud.php:540
+msgid "Qty"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:201
+#: includes/ajax/ajax-checkouts.php:607
+msgid "Price"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:202
+msgid "Amount"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:208
+msgid "Add Item"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:214
+msgid "Payment & Shipping"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:216
+#: includes/admin/print-order-page.php:604
+msgid "Payment Method"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:218
+#: includes/admin/print-order-page.php:607
+#: includes/invoice.php:821
+msgid "Cash on Delivery"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:219
+#: includes/invoice.php:822
+msgid "Paid"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:220
+#: includes/invoice.php:823
+msgid "Bank Transfer"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:221
+#: includes/invoice.php:824
+msgid "Other"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:225
+msgid "Transaction ID"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:229
+msgid "Shipping Charge"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:234
+msgid "Courier (optional)"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:236
+#: includes/ajax/ajax-checkouts.php:515
+msgid "Courier"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:238
+msgid "— None —"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:245
+msgid "Tracking Number"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:247
+msgid "Used on the printable shipping label."
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:255
+#: includes/admin/print-order-page.php:622
+msgid "Subtotal"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:259
+#: includes/admin/pages/page-order-statuses.php:168
+#: includes/admin/print-order-page.php:632
+#: includes/invoice.php:815
+msgid "Shipping"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:272
+msgid "Create Invoice"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:299
+msgid "Invoice Numbering"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:304
+msgid "Number Digits"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:309
+msgid "Zero-padded digit count for the sequence number."
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:316
+msgid "Advanced Numbering"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:323
+msgid "Upgrade to Pro to unlock custom numbering"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:329
+msgid "Number Prefix"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:334
+msgid "E.g. \"INV-\" produces invoice numbers like INV-000123."
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:339
+msgid "Reset Sequence"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:343
+msgid "Never"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:344
+msgid "Yearly"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:345
+msgid "Monthly"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:353
+msgid "Bangladesh Tax Fields"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:360
+msgid "Upgrade to Pro to unlock Tax Fields"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:365
+msgid "Show Tax Fields on Invoice"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:375
+msgid "VAT Registration No."
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:382
+msgid "TIN"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:389
+msgid "BIN"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:399
+msgid "Invoice Footer"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:406
+msgid "Upgrade to Pro to customize the footer"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:412
+msgid "Footer Text"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:419
+msgid "Leave empty to remove the footer entirely."
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:421
+msgid "Free plan invoices always show \"Generated by Coder Zone BD\"."
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:432
+msgid "Unlock Advanced Invoicing"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:433
+msgid "Custom numbering, BD tax fields, and footer branding are available on Pro plans."
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:442
+msgid "Save Invoice Settings"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:471
+msgid "(No Name)"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:476
+#: includes/admin/print-order-page.php:236
+#: includes/invoice.php:641
+msgid "Print Invoice"
+msgstr ""
+
+#: includes/admin/pages/page-invoices.php:480
+#: includes/invoice.php:649
+msgid "Download Invoice"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:14
+msgid "You do not have sufficient permissions."
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:26
+msgid "Overview of all WooCommerce order statuses and manage your custom statuses."
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:29
+msgid "Status Overview"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:33
+msgid "Loading order counts..."
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:40
+msgid "Manage Statuses"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:43
+#: includes/admin/pages/page-order-statuses.php:118
+msgid "Add New Status"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:52
+#: includes/admin/pages/page-order-statuses.php:136
+msgid "Color"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:53
+msgid "Label"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:54
+#: includes/admin/pages/page-order-statuses.php:128
+msgid "Slug"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:55
+msgid "Type"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:56
+msgid "Description"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:57
+#: includes/ajax/ajax-checkouts.php:516
+msgid "Orders"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:78
+msgid "Default"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:80
+msgid "Custom"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:89
+msgid "Edit"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:92
+msgid "Delete"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:124
+msgid "Status Label"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:125
+msgid "e.g., Awaiting Pickup"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:131
+msgid "auto-generated"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:133
+msgid "Auto-generated from label. Cannot be changed after creation."
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:143
+msgid "Description (optional)"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:147
+msgid "Icon (optional)"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:152
+msgid "None"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:153
+msgid "Cart"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:154
+msgid "Delivery"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:155
+msgid "Pending"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:156
+msgid "Confirmed"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:157
+msgid "Approved"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:159
+msgid "Rejected"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:160
+msgid "Warning"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:161
+msgid "Flagged"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:162
+msgid "Priority"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:163
+msgid "Payment"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:164
+#: includes/order-statuses.php:258
+msgid "Processing"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:165
+msgid "Refund"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:166
+msgid "Archived"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:167
+msgid "Tagged"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:169
+msgid "Contact"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:170
+msgid "Email Sent"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:171
+msgid "Review"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:172
+msgid "Locked"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:173
+msgid "Unlocked"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:174
+msgid "In Progress"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:175
+msgid "Picking"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:176
+msgid "Transferred"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:177
+msgid "Notify"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:178
+#: includes/order-statuses.php:260
+msgid "Completed"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:180
+msgid "Verified"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:181
+msgid "Scheduled"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:182
+msgid "Print"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:183
+msgid "Warehouse"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:203
+msgid "Show in Bulk Actions"
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:205
+msgid "When enabled, this status will appear in the \"Change status to\" bulk action on the WooCommerce orders page."
+msgstr ""
+
+#: includes/admin/pages/page-order-statuses.php:210
+msgid "Save Status"
+msgstr ""
+
+#: includes/admin/print-order-page.php:71
+#: includes/admin/print-order-page.php:72
+msgid "Print Order"
+msgstr ""
+
+#: includes/admin/print-order-page.php:109
+#: includes/admin/print-order-page.php:146
+#: includes/invoice.php:546
+#: includes/invoice.php:874
+msgid "Order not found."
+msgstr ""
+
+#: includes/admin/print-order-page.php:115
+msgid "Invalid courier."
+msgstr ""
+
+#: includes/admin/print-order-page.php:124
+msgid "Courier info saved."
+msgstr ""
+
+#: includes/admin/print-order-page.php:136
+msgid "You do not have permission to access this page."
+msgstr ""
+
+#: includes/admin/print-order-page.php:141
+msgid "Invalid or expired link."
+msgstr ""
+
+#: includes/admin/print-order-page.php:218
+#, php-format
+msgid "Print — Order #%s"
+msgstr ""
+
+#: includes/admin/print-order-page.php:224
+msgid "Back to Order"
+msgstr ""
+
+#: includes/admin/print-order-page.php:226
+msgid "Invoice"
+msgstr ""
+
+#: includes/admin/print-order-page.php:227
+msgid "Print Label"
+msgstr ""
+
+#: includes/admin/print-order-page.php:241
+msgid "Courier:"
+msgstr ""
+
+#: includes/admin/print-order-page.php:243
+msgid "— Not assigned —"
+msgstr ""
+
+#: includes/admin/print-order-page.php:249
+msgid "Tracking / Consignment ID:"
+msgstr ""
+
+#: includes/admin/print-order-page.php:250
+msgid "Optional"
+msgstr ""
+
+#: includes/admin/print-order-page.php:252
+msgid "Save"
+msgstr ""
+
+#: includes/admin/print-order-page.php:304
+msgid "Courier shipping labels require a Pro plan"
+msgstr ""
+
+#: includes/admin/print-order-page.php:339
+msgid "ORDER:"
+msgstr ""
+
+#: includes/admin/print-order-page.php:340
+msgid "PAYMENT:"
+msgstr ""
+
+#: includes/admin/print-order-page.php:340
+msgid "COD"
+msgstr ""
+
+#: includes/admin/print-order-page.php:340
+msgid "Prepaid"
+msgstr ""
+
+#: includes/admin/print-order-page.php:350
+msgid "NAME:"
+msgstr ""
+
+#: includes/admin/print-order-page.php:351
+msgid "PHONE:"
+msgstr ""
+
+#: includes/admin/print-order-page.php:352
+msgid "ADDRESS:"
+msgstr ""
+
+#: includes/admin/print-order-page.php:357
+msgid "CASH ON DELIVERY"
+msgstr ""
+
+#: includes/admin/print-order-page.php:364
+#: includes/admin/print-order-page.php:412
+msgid "Generated by Coder Zone BD"
+msgstr ""
+
+#: includes/admin/print-order-page.php:369
+msgid "Shipped From:"
+msgstr ""
+
+#: includes/admin/print-order-page.php:380
+msgid "Shipped To:"
+msgstr ""
+
+#: includes/admin/print-order-page.php:381
+#: includes/admin/print-order-page.php:569
+msgid "Phone:"
+msgstr ""
+
+#: includes/admin/print-order-page.php:382
+msgid "Address:"
+msgstr ""
+
+#: includes/admin/print-order-page.php:394
+msgid "Order ID:"
+msgstr ""
+
+#: includes/admin/print-order-page.php:396
+msgid "Collectable Amount:"
+msgstr ""
+
+#: includes/admin/print-order-page.php:403
+msgid "Order Date:"
+msgstr ""
+
+#: includes/admin/print-order-page.php:404
+msgid "Target Hub:"
+msgstr ""
+
+#: includes/admin/print-order-page.php:405
+msgid "Sort:"
+msgstr ""
+
+#: includes/admin/print-order-page.php:411
+#: includes/admin/print-order-page.php:662
+msgid "Printed:"
+msgstr ""
+
+#: includes/admin/print-order-page.php:558
+msgid "Invoice to:"
+msgstr ""
+
+#: includes/admin/print-order-page.php:572
+msgid "INVOICE"
+msgstr ""
+
+#: includes/admin/print-order-page.php:574
+msgid "Invoice No#"
+msgstr ""
+
+#: includes/admin/print-order-page.php:575
+msgid "Order No#"
+msgstr ""
+
+#: includes/admin/print-order-page.php:584
+msgid "Item"
+msgstr ""
+
+#: includes/admin/print-order-page.php:585
+msgid "Quantity"
+msgstr ""
+
+#: includes/admin/print-order-page.php:586
+msgid "Unit Price"
+msgstr ""
+
+#: includes/admin/print-order-page.php:613
+msgid "Transaction ID:"
+msgstr ""
+
+#: includes/admin/print-order-page.php:615
+msgid "Paid on:"
+msgstr ""
+
+#: includes/admin/print-order-page.php:627
+msgid "Tax"
+msgstr ""
+
+#: includes/admin/print-order-page.php:655
+msgid "Thank you for your business!"
+msgstr ""
+
+#: includes/admin/print-order-page.php:658
+msgid "Authorized Signed"
+msgstr ""
+
+#: includes/admin/woocommerce-integration.php:12
+#: includes/ajax/ajax-fraud.php:482
+msgid "Success Ratio"
+msgstr ""
+
+#: includes/admin/woocommerce-integration.php:37
+msgid "Check"
+msgstr ""
+
+#: includes/admin/woocommerce-integration.php:39
+msgid "No phone"
+msgstr ""
+
+#: includes/admin/woocommerce-integration.php:50
+#: includes/admin/woocommerce-integration.php:51
+msgid "Customer Success Ratio"
+msgstr ""
+
+#: includes/admin/woocommerce-integration.php:65
+msgid "Could not load order data."
+msgstr ""
+
+#: includes/admin/woocommerce-integration.php:76
+msgid "No billing phone number found."
+msgstr ""
+
+#: includes/admin/woocommerce-integration.php:83
+msgid "Check Full Ratio"
+msgstr ""
+
+#: includes/admin/woocommerce-integration.php:93
+msgid "Fraud Blocker Actions"
+msgstr ""
+
+#: includes/admin/woocommerce-integration.php:222
+msgid "No customer identifiers available."
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:355
+#: includes/ajax/ajax-checkouts.php:773
+#: includes/ajax/ajax-checkouts.php:930
+#: includes/ajax/ajax-checkouts.php:1010
+#: includes/ajax/ajax-checkouts.php:1067
+#: includes/ajax/ajax-checkouts.php:1147
+#: includes/ajax/ajax-fraud.php:407
+msgid "Invalid ID provided."
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:365
+#: includes/ajax/ajax-checkouts.php:1099
+#: includes/ajax/ajax-checkouts.php:1157
+msgid "Entry not found."
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:377
+#: includes/ajax/ajax-fraud.php:428
+msgid "Unknown Customer"
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:389
+#: includes/ajax/ajax-fraud.php:439
+msgid "Upgrade to Pro to view Customer Info"
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:394
+#: includes/ajax/ajax-fraud.php:444
+msgid "Customer Info"
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:421
+msgid "Captured"
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:422
+msgid "Updated"
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:439
+msgid "Follow-up"
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:448
+msgid "Billing Address"
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:465
+msgid "Customer Success Rating"
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:466
+msgid "Refresh (clear cache)"
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:475
+msgid "No phone number available for this customer."
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:477
+#, php-format
+msgid "Phone number %s is not a valid Bangladeshi format."
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:504
+msgid "Total:"
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:505
+msgid "Delivered:"
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:506
+msgid "Cancelled:"
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:517
+msgid "Delivered"
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:519
+msgid "Rate"
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:563
+msgid "Could not retrieve success rating data from the server."
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:574
+#: includes/ajax/ajax-fraud.php:510
+msgid "Upgrade to Pro to unlock Fraud Blocking"
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:597
+msgid "Cart Details"
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:605
+#: includes/ajax/ajax-fraud.php:539
+msgid "Product"
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:613
+#: includes/ajax/ajax-fraud.php:546
+msgid "Unknown Product"
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:627
+#: includes/ajax/ajax-fraud.php:559
+msgid "No cart items found."
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:633
+msgid "Admin Notes"
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:643
+msgid "Upgrade to Pro to use Action Buttons"
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:764
+#: includes/ajax/ajax-checkouts.php:921
+#: includes/ajax/ajax-checkouts.php:1001
+#: includes/ajax/ajax-checkouts.php:1058
+#: includes/ajax/ajax-checkouts.php:1138
+msgid "You do not have permission to perform this action."
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:768
+#: includes/ajax/ajax-checkouts.php:925
+#: includes/ajax/ajax-checkouts.php:1005
+#: includes/ajax/ajax-checkouts.php:1062
+#: includes/ajax/ajax-checkouts.php:1142
+#: includes/ajax/ajax-fraud.php:19
+msgid "This feature requires a Pro plan. Please upgrade to access it."
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:783
+msgid "This entry is being recovered by another request. Reload the page to see the result."
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:814
+#: includes/ajax/ajax-checkouts.php:962
+#: includes/ajax/ajax-checkouts.php:1020
+msgid "Incomplete checkout entry not found."
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:818
+msgid "This entry cannot be recovered. Current status: "
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:830
+msgid "Error creating WooCommerce order: "
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:858
+msgid "No cart items found in the incomplete checkout entry."
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:867
+#, php-format
+msgid "Order created from Incomplete Checkout ID %d by %s. Related WC Order ID: #%d"
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:876
+#, php-format
+msgid "Recovered as WC Order #%d on %s."
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:903
+#, php-format
+msgid "Order #%s created successfully from incomplete checkout ID %d and set to Processing."
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:936
+msgid "Follow-up date not provided."
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:945
+msgid "Invalid date format. Please use<y_bin_46>-MM-DD."
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:952
+msgid "Invalid date provided."
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:967
+msgid "This entry is not marked as incomplete. Current status: "
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:985
+#, php-format
+msgid "Entry ID %d marked as \"Hold\" with follow-up date: %s."
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:988
+msgid "Failed to mark entry as hold."
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:1025
+msgid "This entry cannot be cancelled. Current status: "
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:1042
+#, php-format
+msgid "Entry ID %d marked as \"Cancelled\"."
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:1045
+msgid "Failed to mark entry as cancelled."
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:1073
+msgid "New follow-up date not provided."
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:1082
+msgid "Invalid date format. Please use<y_bin_46>-MM-DD or leave empty to clear."
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:1089
+msgid "Invalid date provided after format check."
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:1104
+msgid "This entry is not marked as \"Hold\". Cannot edit follow-up date."
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:1121
+msgid "Follow-up date updated successfully."
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:1125
+msgid "Failed to update follow-up date."
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:1162
+msgid "This entry is not marked as \"Cancelled\". Cannot re-open."
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:1185
+#, php-format
+msgid "Entry ID %d has been re-opened to \"Incomplete\"."
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:1188
+msgid "Failed to re-open entry."
+msgstr ""
+
+#: includes/ajax/ajax-checkouts.php:1510
+#: includes/ajax/ajax-checkouts.php:1520
+#: includes/ajax/ajax-checkouts.php:1530
+msgid "This feature requires a Pro plan."
+msgstr ""
+
+#: includes/ajax/ajax-courier.php:311
+#: includes/ajax/ajax-courier.php:325
+msgid "Courier providers are taking too long to respond. Please try again in a few moments."
+msgstr ""
+
+#: includes/ajax/ajax-courier.php:337
+msgid "Courier check returned an unexpected answer."
+msgstr ""
+
+#: includes/ajax/ajax-courier.php:683
+msgid "Not available."
+msgstr ""
+
+#: includes/ajax/ajax-fraud.php:83
+#: includes/ajax/ajax-fraud.php:275
+#: includes/ajax/ajax-fraud.php:367
+#: includes/ajax/ajax-fraud.php:628
+#: includes/invoice.php:540
+msgid "Security check failed."
+msgstr ""
+
+#: includes/ajax/ajax-fraud.php:105
+msgid "This block type requires a Pro plan. Please upgrade to access it."
+msgstr ""
+
+#: includes/ajax/ajax-fraud.php:143
+msgid "Invalid IP address format."
+msgstr ""
+
+#: includes/ajax/ajax-fraud.php:147
+msgid "This IP address belongs to Cloudflare, a server gateway, or an administrator and cannot be blocked."
+msgstr ""
+
+#: includes/ajax/ajax-fraud.php:155
+msgid "Invalid email address format."
+msgstr ""
+
+#: includes/ajax/ajax-fraud.php:170
+msgid "Invalid domain format. Example: tempmail.com"
+msgstr ""
+
+#: includes/ajax/ajax-fraud.php:180
+msgid "Address line 1 is required."
+msgstr ""
+
+#: includes/ajax/ajax-fraud.php:189
+msgid "Could not generate address hash."
+msgstr ""
+
+#: includes/ajax/ajax-fraud.php:205
+msgid "Device fingerprint is required."
+msgstr ""
+
+#: includes/ajax/ajax-fraud.php:210
+#: includes/ajax/ajax-fraud.php:335
+#: includes/ajax/ajax-fraud.php:595
+#: includes/ajax/ajax-fraud.php:657
+msgid "Invalid block type."
+msgstr ""
+
+#: includes/ajax/ajax-fraud.php:215
+msgid "Value cannot be empty."
+msgstr ""
+
+#: includes/ajax/ajax-fraud.php:222
+#, php-format
+msgid "This %s is already in the blocklist."
+msgstr ""
+
+#: includes/ajax/ajax-fraud.php:263
+msgid "Database error."
+msgstr ""
+
+#: includes/ajax/ajax-fraud.php:347
+msgid "No item ID or value provided for deletion."
+msgstr ""
+
+#: includes/ajax/ajax-fraud.php:352
+msgid "Could not remove item from the database."
+msgstr ""
+
+#: includes/ajax/ajax-fraud.php:354
+msgid "Item not found in the blocklist. It may have been removed already."
+msgstr ""
+
+#: includes/ajax/ajax-fraud.php:356
+msgid "Item removed from blocklist."
+msgstr ""
+
+#: includes/ajax/ajax-fraud.php:378
+msgid "Invalid Log ID."
+msgstr ""
+
+#: includes/ajax/ajax-fraud.php:387
+msgid "Log entry deleted successfully."
+msgstr ""
+
+#: includes/ajax/ajax-fraud.php:389
+msgid "Could not delete the log entry."
+msgstr ""
+
+#: includes/ajax/ajax-fraud.php:417
+msgid "Blocked order log not found."
+msgstr ""
+
+#: includes/ajax/ajax-fraud.php:431
+msgid "Blocked"
+msgstr ""
+
+#: includes/ajax/ajax-fraud.php:479
+msgid "Block Reason"
+msgstr ""
+
+#: includes/ajax/ajax-fraud.php:486
+msgid "Threshold"
+msgstr ""
+
+#: includes/ajax/ajax-fraud.php:531
+msgid "Cart at Time of Block"
+msgstr ""
+
+#: includes/ajax/ajax-fraud.php:641
+msgid "No items selected."
+msgstr ""
+
+#: includes/ajax/ajax-fraud.php:673
+#, php-format
+msgid "%d item(s) removed from blocklist."
+msgstr ""
+
+#: includes/ajax/ajax-fraud.php:695
+msgid "CSV data is too large. Maximum size is 1 MB."
+msgstr ""
+
+#: includes/ajax/ajax-fraud.php:700
+msgid "No CSV data provided."
+msgstr ""
+
+#: includes/ajax/ajax-fraud.php:714
+msgid "Import is only supported for IP, Email, Phone, and Domain blocklists."
+msgstr ""
+
+#: includes/ajax/ajax-fraud.php:789
+#, php-format
+msgid "Import complete: %d added, %d skipped (duplicates or invalid)."
+msgstr ""
+
+#. translators: 1: count of remaining items, 2: pricing link open tag, 3: close tag, 4: WhatsApp link open tag, 5: close tag
+#: includes/ajax/ajax-fraud.php:793
+#, php-format
+msgid "Plan limit reached — %1$d remaining items were not imported. %2$sUpgrade your plan%3$s or %4$scontact us on WhatsApp%5$s."
+msgstr ""
+
+#: includes/ajax/ajax-order-statuses.php:27
+msgid "Status label is required."
+msgstr ""
+
+#: includes/ajax/ajax-order-statuses.php:53
+#: includes/ajax/ajax-order-statuses.php:160
+#: includes/ajax/ajax-order-statuses.php:278
+msgid "Status not found."
+msgstr ""
+
+#: includes/ajax/ajax-order-statuses.php:60
+msgid "Status updated successfully."
+msgstr ""
+
+#: includes/ajax/ajax-order-statuses.php:78
+msgid "Could not generate a valid slug from the label."
+msgstr ""
+
+#. translators: %s: the reserved slug
+#: includes/ajax/ajax-order-statuses.php:89
+#, php-format
+msgid "The slug \"%s\" is reserved by WooCommerce and cannot be used. Please choose a different label."
+msgstr ""
+
+#: includes/ajax/ajax-order-statuses.php:98
+msgid "A status with this slug already exists."
+msgstr ""
+
+#: includes/ajax/ajax-order-statuses.php:117
+msgid "Status created successfully."
+msgstr ""
+
+#: includes/ajax/ajax-order-statuses.php:146
+msgid "No status slug provided."
+msgstr ""
+
+#. translators: %d: number of orders
+#: includes/ajax/ajax-order-statuses.php:170
+#, php-format
+msgid "This status has %d order(s). Please select a status to migrate them to."
+msgstr ""
+
+#: includes/ajax/ajax-order-statuses.php:182
+msgid "Invalid migration target status."
+msgstr ""
+
+#. translators: 1: old status label, 2: new status label
+#: includes/ajax/ajax-order-statuses.php:197
+#, php-format
+msgid "Status automatically changed from \"%1$s\" to \"%2$s\" because the custom status was deleted."
+msgstr ""
+
+#. translators: %s: status slug
+#: includes/ajax/ajax-order-statuses.php:214
+#, php-format
+msgid "Status \"%s\" deleted successfully."
+msgstr ""
+
+#: includes/ajax/ajax-order-statuses.php:268
+msgid "No slug provided."
+msgstr ""
+
+#: includes/ajax/ajax-order-statuses.php:296
+msgid "Order statuses have been reset to WooCommerce defaults."
+msgstr ""
+
+#: includes/ajax/ajax-settings.php:83
+msgid "Settings saved successfully."
+msgstr ""
+
+#: includes/ajax/ajax-usage-limits.php:189
+#: includes/ajax/ajax-usage-limits.php:258
+msgid "Courier API Checks"
+msgstr ""
+
+#: includes/ajax/ajax-usage-limits.php:190
+#: includes/ajax/ajax-usage-limits.php:259
+msgid "Full Contact Details"
+msgstr ""
+
+#. translators: 1: settings page link open tag, 2: close tag
+#: includes/ajax/ajax-usage-limits.php:244
+#, php-format
+msgid "CheckoutGuard hasn't synced with Headquarters yet, so this feature is paused until it does — this is not a plan limit. Go to %1$sSettings%2$s and click \"Sync Now\"."
+msgstr ""
+
+#. translators: 1: feature label, 2: pricing link open tag, 3: close tag, 4: WhatsApp link open tag, 5: close tag
+#: includes/ajax/ajax-usage-limits.php:264
+#, php-format
+msgid "You have reached your plan limit for %1$s. %2$sUpgrade your plan%3$s or %4$scontact us on WhatsApp%5$s."
+msgstr ""
+
+#. translators: 1: WooCommerce order ID, 2: date and time
+#: includes/checkout-integration.php:127
+#, php-format
+msgid "Recovered by a WooCommerce admin order as WC Order #%1$d on %2$s."
+msgstr ""
+
+#: includes/checkout-integration.php:128
+#, php-format
+msgid "Recovered by manual invoice as WC Order #%d on %s."
+msgstr ""
+
+#: includes/checkout-integration.php:567
+#, php-format
+msgid "[CheckoutGuard] Order automatically cancelled by Fraud/Duplicate Blocker. Code: %1$s. Rule: %2$s. Time: %3$s UTC."
+msgstr ""
+
+#: includes/checkout-integration.php:1272
+msgid "Your order cannot be processed at this time. Please contact support if you believe this is an error."
+msgstr ""
+
+#: includes/checkout-integration.php:1278
+msgid "Too many checkout attempts. Please try again later."
+msgstr ""
+
+#: includes/checkout-integration.php:1832
+msgid "Access denied. Your device has been blocked from this store. Contact support if you believe this is an error."
+msgstr ""
+
+#: includes/checkout-integration.php:1836
+#: includes/checkout-integration.php:1839
+msgid "Access Denied"
+msgstr ""
+
+#: includes/invoice.php:54
+#: includes/invoice.php:80
+msgctxt "Order status"
+msgid "Manual Invoice"
+msgstr ""
+
+#: includes/invoice.php:407
+msgid "Invalid order."
+msgstr ""
+
+#: includes/invoice.php:414
+msgid "Monthly invoice limit reached on the Free plan. Upgrade to Pro for unlimited invoices."
+msgstr ""
+
+#: includes/invoice.php:420
+msgid "Invoice PDF library is missing."
+msgstr ""
+
+#: includes/invoice.php:478
+msgid "Could not write invoice temp file."
+msgstr ""
+
+#: includes/invoice.php:557
+msgid "You do not have permission to access this invoice."
+msgstr ""
+
+#: includes/invoice.php:564
+msgid "Packing slips require a Pro plan."
+msgstr ""
+
+#: includes/invoice.php:745
+msgid "Customer name is required."
+msgstr ""
+
+#: includes/invoice.php:753
+msgid "Add at least one line item."
+msgstr ""
+
+#: includes/invoice.php:879
+msgid "This order already has an invoice."
+msgstr ""
+
+#: includes/invoice.php:885
+#: includes/invoice.php:944
+msgid "Could not generate invoice number."
+msgstr ""
+
+#: includes/invoice.php:890
+#, php-format
+msgid "Invoice %s generated."
+msgstr ""
+
+#: includes/invoice.php:900
+msgid "Creating a blank manual invoice requires a Pro plan."
+msgstr ""
+
+#: includes/invoice.php:949
+#, php-format
+msgid "Invoice %s created."
+msgstr ""
+
+#: includes/invoice.php:975
+msgid "Product not found."
+msgstr ""
+
+#: includes/invoice.php:1029
+msgid "Bulk invoice download requires a Pro plan."
+msgstr ""
+
+#: includes/invoice.php:1036
+msgid "No invoices selected."
+msgstr ""
+
+#: includes/invoice.php:1041
+msgid "The PHP zip extension is required for bulk download."
+msgstr ""
+
+#: includes/invoice.php:1048
+msgid "Could not create ZIP file."
+msgstr ""
+
+#: includes/invoice.php:1070
+msgid "No invoices could be generated for the selected orders."
+msgstr ""
+
+#. translators: %s: order status label
+#: includes/order-statuses.php:159
+#, php-format
+msgid "Change status to %s"
+msgstr ""
+
+#: includes/order-statuses.php:201
+msgid "Order status changed via bulk action."
+msgstr ""
+
+#. translators: 1: number of orders, 2: status label
+#: includes/order-statuses.php:236
+#, php-format
+msgid "%1$d order status changed to \"%2$s\"."
+msgid_plural "%1$d order statuses changed to \"%2$s\"."
+msgstr[0] ""
+msgstr[1] ""
+
+#: includes/order-statuses.php:257
+msgid "Pending payment"
+msgstr ""
+
+#: includes/order-statuses.php:259
+msgid "On hold"
+msgstr ""
+
+#: includes/order-statuses.php:262
+msgid "Refunded"
+msgstr ""
+
+#: includes/privacy.php:24
+msgid "This site uses the CheckoutGuard plugin for WooCommerce to track incomplete checkouts, prevent fraudulent orders, manage fraud controls, generate invoices, and analyze courier delivery success rates. The site owner is responsible for deciding the lawful basis, retention period, and notices that apply to this processing."
+msgstr ""
+
+#: includes/privacy.php:26
+msgid "What data we collect"
+msgstr ""
+
+#: includes/privacy.php:27
+msgid "When you begin filling in the WooCommerce checkout form, the following data may be captured before you complete your order:"
+msgstr ""
+
+#: includes/privacy.php:29
+msgid "Billing name, email address, phone number, and full billing address."
+msgstr ""
+
+#: includes/privacy.php:30
+msgid "Cart contents including product names, quantities, and totals."
+msgstr ""
+
+#: includes/privacy.php:31
+msgid "Your IP address and browser session identifier."
+msgstr ""
+
+#: includes/privacy.php:32
+msgid "Fraud-prevention records, including blocklist values, reasons, and blocked-order details where configured by the site owner."
+msgstr ""
+
+#: includes/privacy.php:35
+msgid "Why we collect this data"
+msgstr ""
+
+#: includes/privacy.php:36
+msgid "This data is collected for the following purposes:"
+msgstr ""
+
+#: includes/privacy.php:38
+msgid "To follow up on incomplete checkouts and help you complete your purchase."
+msgstr ""
+
+#: includes/privacy.php:39
+msgid "To prevent fraudulent orders by checking customer details against blocklists."
+msgstr ""
+
+#: includes/privacy.php:40
+msgid "To analyze courier delivery success rates using phone numbers (when the Courier Analytics feature is enabled)."
+msgstr ""
+
+#: includes/privacy.php:41
+msgid "To generate invoices, packing slips, and shipping labels when those features are used."
+msgstr ""
+
+#: includes/privacy.php:44
+msgid "Where data is stored and shared"
+msgstr ""
+
+#: includes/privacy.php:45
+msgid "Checkout records, invoices, blocklists, and most operational data are stored locally in this WordPress database. CheckoutGuard does not send customer checkout records to its licensing service. When Courier Analytics is used, the customer phone number is sent to the selected courier APIs to retrieve delivery statistics."
+msgstr ""
+
+#: includes/privacy.php:46
+msgid "For license validation, usage limits, settings synchronization, and plugin analytics, CheckoutGuard sends limited site and administrator information to CheckoutGuard Headquarters at li.czbd.app. This may include the site domain, a domain hash, administrator email address, site name, WordPress/WooCommerce/PHP/MySQL versions, active theme, plugin version, selected plugin settings, feature-usage summaries, license status, and timestamps. Plugin analytics is sent from the plugin to this service even when licensing data is otherwise stored locally."
+msgstr ""
+
+#: includes/privacy.php:47
+msgid "If an administrator chooses Allow in the Appsero insights notice, diagnostic and usage information is also sent to Appsero at appsero.com. Appsero may receive the site name and URL, administrator name and email address, WordPress/PHP/MySQL/server details, WordPress version, site language, user count, active and inactive plugin information, and plugin version. Appsero tracking is disabled unless an administrator opts in and can be declined from the notice."
+msgstr ""
+
+#: includes/privacy.php:49
+msgid "How long we retain this data"
+msgstr ""
+
+#: includes/privacy.php:50
+msgid "Incomplete checkout records are retained according to the data retention policy configured in the plugin settings (default: 90 days). Fraud blocklist entries are retained until manually removed by the store administrator or until their expiry date."
+msgstr ""
+
+#: includes/privacy.php:52
+msgid "Data removal"
+msgstr ""
+
+#: includes/privacy.php:53
+msgid "You may request access to or removal of your personal data through the WordPress personal data export and erasure tools available under Tools > Export Personal Data and Tools > Erase Personal Data. Upon a valid request, CheckoutGuard removes local incomplete checkout records, blocked-order logs, and email blocklist entries associated with your email address. Data already sent to CheckoutGuard Headquarters, Appsero, or courier providers is subject to those providers' policies and the site owner's instructions."
+msgstr ""
+
+#: includes/privacy.php:55
+msgid "Controller and contact"
+msgstr ""
+
+#: includes/privacy.php:56
+msgid "The WordPress site owner or operator is the data controller for customer data collected by this plugin. Replace this sentence with your legal business name and contact details. For questions about CheckoutGuard services or data sent to CheckoutGuard Headquarters, contact Coder Zone BD at https://coderzonebd.com/contact. For Appsero processing, see https://appsero.com/privacy-policy/."
+msgstr ""
+
+#: includes/privacy.php:73
+#: includes/privacy.php:158
+msgid "CheckoutGuard Data"
+msgstr ""
+
+#: includes/privacy.php:100
+msgid "First Name"
+msgstr ""
+
+#: includes/privacy.php:101
+msgid "Last Name"
+msgstr ""
+
+#: includes/privacy.php:110
+msgid "Status"
+msgstr ""
+
+#: includes/privacy.php:111
+msgid "Created At"
+msgstr ""
+
+#: includes/privacy.php:116
+msgid "CheckoutGuard - Incomplete Checkouts"
+msgstr ""
+
+#: includes/privacy.php:117
+msgid "Checkout data captured by CheckoutGuard."
+msgstr ""
+
+#: includes/privacy.php:132
+msgid "CheckoutGuard - Blocklist Entries"
+msgstr ""
+
+#: includes/privacy.php:133
+msgid "Fraud blocklist entries associated with your email."
+msgstr ""
+
+#: includes/privacy.php:137
+msgid "Reason"
+msgstr ""
+
+#: includes/privacy.php:138
+msgid "Blocked On"
+msgstr ""
+
+#. translators: 1: success ratio, 2: threshold
+#: includes/ratio-hold.php:76
+#, php-format
+msgid "CheckoutGuard: payment received, on hold for review (courier success ratio %1$d%% <= threshold %2$d%%)."
+msgstr ""
+
+#. translators: 1: success ratio, 2: threshold
+#: includes/ratio-hold.php:79
+#, php-format
+msgid "CheckoutGuard: on hold for review (courier success ratio %1$d%% <= threshold %2$d%%)."
+msgstr ""
+
+#: includes/ratio-hold.php:216
+msgid "CheckoutGuard: kept on hold for review (courier success ratio). A shop manager can release it from the order page."
+msgstr ""
+
+#: includes/site-key.php:292
+msgid "Site key confirmed."
+msgstr ""
+
+#: includes/site-key.php:323
+msgid "Site key was not confirmed in time; using the previous key."
+msgstr ""
+
+#: includes/site-key.php:324
+msgid "Site key was rejected; using the previous key."
+msgstr ""
+
+#: includes/site-key.php:747
+msgid "A security update needs to finish on this site. Orders still go through, but without the fraud check."
+msgstr ""
+
+#. translators: %s: time of the next automatic attempt
+#: includes/site-key.php:755
+#, php-format
+msgid "Next automatic attempt: %s."
+msgstr ""
+
+#: includes/site-key.php:797
+msgid "Your paid plan is paused on this site until it is reconnected."
+msgstr ""
+
+#. translators: %s: date until which the paid plan stays active
+#: includes/site-key.php:803
+#, php-format
+msgid "Your paid plan stays active until %s."
+msgstr ""
+
+#: includes/site-key.php:807
+msgid "Your paid plan stays active for up to 72 hours after the last successful connection."
+msgstr ""
+
+#: includes/utils.php:33
+msgid "<strong>CheckoutGuard</strong> requires WooCommerce to be installed and activated to function properly."
+msgstr ""
+
+#: includes/utils.php:138
+msgid "API Key is not configured in plugin settings. Please ensure plugin is activated and able to communicate with Headquarters."
+msgstr ""
+
+#: includes/utils.php:211
+msgid "API key rotated by Headquarters; retrying once with the new key."
+msgstr ""
+
+#: includes/utils.php:257
+msgid "Headquarters returned no API key for this product."
+msgstr ""
+
+#: includes/utils.php:372
+msgid "The libsodium extension is required to verify license signatures."
+msgstr ""
+
+#: includes/utils.php:375
+msgid "Server response was not signed."
+msgstr ""
+
+#: includes/utils.php:390
+#: includes/utils.php:399
+msgid "Cryptographic signature verification failed — the server response may have been tampered with."
+msgstr ""
+
+#: includes/utils.php:407
+msgid "License server response is too old to trust — please try syncing again."
+msgstr ""
+
+#: includes/utils.php:1121
+msgid "This item cannot be blocked from here."
+msgstr ""

@@ -141,6 +141,21 @@ $meta = wc_get_order($oid)->get_meta('_cg_success_ratio_data', true);
 ok('C11', 'error memo hit with an order id writes no courier meta', $n === 1 && ($e2['cache_source'] ?? '') === 'error' && empty($meta), "calls=$n src=" . ($e2['cache_source'] ?? '') . ' meta=' . (empty($meta) ? 'none' : (is_array($meta) ? ($meta['cache_source'] ?? '?') : 'set')));
 wc_get_order($oid)->delete(true);
 
+// C12: a failed check on the first call (no memo hit) with an order id also
+// writes no courier meta: timeout, cURL 7 and HQ 400 each leave
+// _cg_success_ratio_data empty on the order.
+foreach ([['C12-timeout', 'timeout', ['code' => 'timeout'], '01661222333'], ['C12-refused', 'cURL 7', ['code' => 'refused'], '01671222333'], ['C12-400', 'HQ 400', ['code' => 400, 'body' => ['error' => 'bad_request']], '01651222333']] as $c) {
+    $GLOBALS['QA_HTTP'] = $c[2];
+    qa_reset([$c[3]]);
+    $oid = $qa_mk_order();
+    $GLOBALS['QA_CALLS'] = [];
+    $e1 = cg_perform_all_api_calls($c[3], $oid);
+    $n = count($GLOBALS['QA_CALLS']);
+    $meta = wc_get_order($oid)->get_meta('_cg_success_ratio_data', true);
+    ok($c[0], $c[1] . ': first call with an order id writes no courier meta', $n === 1 && empty($meta), "calls=$n src=" . (is_array($e1) ? ($e1['cache_source'] ?? '') : gettype($e1)) . ' meta=' . (empty($meta) ? 'none' : (is_array($meta) ? ($meta['cache_source'] ?? '?') : 'set')));
+    wc_get_order($oid)->delete(true);
+}
+
 $GLOBALS['QA_HTTP'] = ['code' => 200, 'body' => ['cache_source' => 'fresh', 'result' => ['summary' => ['success_rate' => 90, 'total_deliveries' => 10, 'successful_deliveries' => 9, 'cancelled_deliveries' => 1]]]];
 qa_reset(['01771222333']);
 $oid = $qa_mk_order();
@@ -185,6 +200,22 @@ foreach ([['C16c-null', 'HQ 200 with {"result": null}', ['cache_source' => 'fres
     $n = count($GLOBALS['QA_CALLS']);
     ok($c[0], $c[1] . ': not cached, the next request calls HQ again (2 calls)', $tc === 'no' && $n === 2, "cached=$tc calls=$n src=" . (is_array($r1) ? ($r1['cache_source'] ?? '') : gettype($r1)));
 }
+// C16d: HQ answers 200 with "result" set to a scalar (a string, a number,
+// true). Not a courier result either: it must not be cached, so the next
+// request asks HQ again. The is_array() check on "result" turns it into an
+// error result (cache_source "error"); the all-failed rule would also keep
+// it out of the cache, so the test checks the source to pin the guard.
+foreach ([['C16d-str', 'HQ 200 with {"result": "ok"}', 'ok', '01711222333'], ['C16d-int', 'HQ 200 with {"result": 1}', 1, '01721222333'], ['C16d-true', 'HQ 200 with {"result": true}', true, '01731222333']] as $c) {
+    $GLOBALS['QA_HTTP'] = ['code' => 200, 'body' => ['cache_source' => 'fresh', 'result' => $c[2]]];
+    qa_reset([$c[3]]);
+    $r1 = cg_perform_all_api_calls($c[3], 0);
+    $tc = get_transient('cg_courier_cache_' . md5($c[3])) !== false ? 'yes' : 'no';
+    if (function_exists('cg_courier_request_memo_reset')) { cg_courier_request_memo_reset(); }
+    cg_perform_all_api_calls($c[3], 0);
+    $n = count($GLOBALS['QA_CALLS']);
+    $src1 = is_array($r1) ? ($r1['cache_source'] ?? '') : gettype($r1);
+    ok($c[0], $c[1] . ': error result, not cached, the next request calls HQ again (2 calls)', $src1 === 'error' && $tc === 'no' && $n === 2, "cached=$tc calls=$n src=$src1");
+}
 // C16-ctl: a real 200 courier result is cached, so the next request makes no
 // call (C16 is not passing because nothing is ever cached). The answer has
 // one courier with data: a summary alone counts as an all-failed answer,
@@ -205,7 +236,7 @@ cg_perform_all_api_calls('01511222333', 0); cg_perform_all_api_calls('0151122233
 $n = count($GLOBALS['QA_CALLS']);
 ok('C8', 'bypass_cache sends a new call', $n === 2, "calls=$n");
 
-foreach (['01781222333', '01791222333', '01681222333', '01691222333', '01701222333', '01751222333', '01761222333', '01771222333', '01731222333', '01741222333', '01721222333', '01711222333', '+880 1711-222333', '8801711222333', '01811222333', '+8801811222333', '01911222333', '01611222333', '01511222333'] as $p) { delete_transient('cg_courier_cache_' . md5($p)); }
+foreach (['01661222333', '01671222333', '01651222333', '01781222333', '01791222333', '01681222333', '01691222333', '01701222333', '01751222333', '01761222333', '01771222333', '01731222333', '01741222333', '01721222333', '01711222333', '+880 1711-222333', '8801711222333', '01811222333', '+8801811222333', '01911222333', '01611222333', '01511222333'] as $p) { delete_transient('cg_courier_cache_' . md5($p)); }
 delete_transient(CG_COURIER_AUTH_REJECT_TRANSIENT);
 if (defined('CG_COURIER_TIMEOUT_WAIT_TRANSIENT')) { delete_transient(CG_COURIER_TIMEOUT_WAIT_TRANSIENT); }
 cg_update_options_from_hq(is_array($GLOBALS['QA_OPTS_ORIG']) ? $GLOBALS['QA_OPTS_ORIG'] : []);
