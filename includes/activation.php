@@ -27,6 +27,89 @@ define('CG_REGISTER_MAX_WAIT', 10 * MINUTE_IN_SECONDS);
 // the call ends.
 define('CG_REGISTER_RECONNECT_LOCK', 'cg_register_reconnect_lock');
 define('CG_REGISTER_RECONNECT_LOCK_TTL', 45);
+
+/**
+ * Take the Reconnect / Sync Now lock. Atomic: the lock is one options row
+ * (autoload no) written with INSERT IGNORE, so of two requests racing for it
+ * only the one whose insert added the row wins. add_option()/set_transient()
+ * are not used: they write with ON DUPLICATE KEY UPDATE, so both racers win.
+ * The row holds the Unix time the lock expires (int). An expired row (its
+ * request died) is taken over with a conditional UPDATE; of two requests
+ * taking over the same expired row only one changes it (rows_affected 1).
+ *
+ * Reads go to the table, never get_option(): with a persistent object cache
+ * the alloptions/notoptions entries can hold an old answer.
+ *
+ * @return int|false The expiry written (pass it to release), or false.
+ */
+function cg_register_reconnect_lock_acquire()
+{
+    global $wpdb;
+    $now = time();
+    $expires = $now + CG_REGISTER_RECONNECT_LOCK_TTL;
+    $wpdb->query($wpdb->prepare(
+        "INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %d, 'no')",
+        CG_REGISTER_RECONNECT_LOCK,
+        $expires
+    ));
+    $won = (int) $wpdb->rows_affected === 1;
+    if (!$won) {
+        $wpdb->query($wpdb->prepare(
+            "UPDATE {$wpdb->options} SET option_value = %d WHERE option_name = %s AND option_value < %d",
+            $expires,
+            CG_REGISTER_RECONNECT_LOCK,
+            $now
+        ));
+        $won = (int) $wpdb->rows_affected === 1;
+    }
+    cg_register_reconnect_lock_cache_flush();
+    return $won ? $expires : false;
+}
+
+/**
+ * Drop the options cache entries that could hold an old lock value.
+ */
+function cg_register_reconnect_lock_cache_flush()
+{
+    wp_cache_delete(CG_REGISTER_RECONNECT_LOCK, 'options');
+    wp_cache_delete('notoptions', 'options');
+    wp_cache_delete('alloptions', 'options');
+}
+
+/**
+ * Whether a Reconnect / Sync Now lock is held and not expired. Reads the
+ * table directly so a persistent object cache cannot hide another request's
+ * lock.
+ */
+function cg_register_reconnect_lock_held()
+{
+    global $wpdb;
+    $v = $wpdb->get_var($wpdb->prepare(
+        "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s",
+        CG_REGISTER_RECONNECT_LOCK
+    ));
+    return $v !== null && (int) $v >= time();
+}
+
+/**
+ * Release the lock, only if the row still holds the expiry this request
+ * wrote: a lock another request took over after this one expired stays.
+ *
+ * @param int|false $expires What cg_register_reconnect_lock_acquire() returned.
+ */
+function cg_register_reconnect_lock_release($expires)
+{
+    global $wpdb;
+    if (!is_int($expires) || $expires <= 0) {
+        return;
+    }
+    $wpdb->query($wpdb->prepare(
+        "DELETE FROM {$wpdb->options} WHERE option_name = %s AND option_value = %d",
+        CG_REGISTER_RECONNECT_LOCK,
+        $expires
+    ));
+    cg_register_reconnect_lock_cache_flush();
+}
 // Time HQ last answered register with "already registered" / "already taken"
 // while this site had no key. Kept until a key is stored.
 define('CG_REGISTER_ALREADY_REGISTERED_OPTION', 'cg_register_already_registered_at');
@@ -255,7 +338,7 @@ function cg_render_register_failed_notice()
         return;
     }
     $gate = (int) get_option(CG_REGISTER_GATE_OPTION, 0);
-    $running = get_transient(CG_REGISTER_RECONNECT_LOCK) !== false;
+    $running = cg_register_reconnect_lock_held();
     echo '<div class="notice notice-error"><p><strong>' . esc_html__('CheckoutGuard is not protecting checkouts right now.', 'checkoutguard') . '</strong> ';
     echo esc_html__('This site could not connect to CheckoutGuard yet. Orders still go through, but without the fraud check.', 'checkoutguard') . ' ';
     if ($running) {
@@ -306,7 +389,7 @@ function cg_render_register_already_registered_notice()
         return;
     }
     $gate = (int) get_option(CG_REGISTER_GATE_OPTION, 0);
-    $running = get_transient(CG_REGISTER_RECONNECT_LOCK) !== false;
+    $running = cg_register_reconnect_lock_held();
     echo '<div class="notice notice-error"><p><strong>' . esc_html__('CheckoutGuard is not protecting checkouts right now.', 'checkoutguard') . '</strong> ';
     echo esc_html__('This site is already registered with CheckoutGuard, but this copy of the plugin is not connected to it. Orders still go through, but without the fraud check.', 'checkoutguard') . ' ';
     // Same three states as the failed notice: Reconnect running, inside the
@@ -353,8 +436,8 @@ add_action('add_option_cg_plugin_options', function ($option, $value) {
  * path (checkout saves, cron) stays gated after it.
  *
  * A short lock (CG_REGISTER_RECONNECT_LOCK, CG_REGISTER_RECONNECT_LOCK_TTL
- * seconds) is set before the call and removed when it ends, success or not.
- * While it is set a second click sends nothing.
+ * seconds) is taken atomically before the call and released when it ends,
+ * success or not. While it is held a second click sends nothing.
  *
  * @return string 'not_needed', 'running' or 'tried'.
  */
@@ -363,10 +446,10 @@ function cg_register_reconnect_attempt()
     if (!cg_register_failed() && !cg_register_already_registered()) {
         return 'not_needed';
     }
-    if (get_transient(CG_REGISTER_RECONNECT_LOCK) !== false) {
+    $lock = cg_register_reconnect_lock_acquire();
+    if ($lock === false) {
         return 'running';
     }
-    set_transient(CG_REGISTER_RECONNECT_LOCK, 1, CG_REGISTER_RECONNECT_LOCK_TTL);
     try {
         $now = cg_register_now();
         update_option(CG_REGISTER_GATE_OPTION, $now + CG_REGISTER_MIN_GAP, false);
@@ -378,7 +461,7 @@ function cg_register_reconnect_attempt()
         cg_register_site_with_hq(true);
         cg_sync_with_hq();
     } finally {
-        delete_transient(CG_REGISTER_RECONNECT_LOCK);
+        cg_register_reconnect_lock_release($lock);
     }
     return 'tried';
 }

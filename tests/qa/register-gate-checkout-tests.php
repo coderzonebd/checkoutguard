@@ -21,6 +21,7 @@
 if (!defined('ABSPATH')) {
     exit;
 }
+require_once __DIR__ . '/inc-reconnect-lock.php';
 $GLOBALS['QA_NOW'] = 1800000000;
 $GLOBALS['QA_ORIG'] = [];
 foreach (['cg_plugin_options', 'cg_license_status', 'cg_register_next_allowed_at', 'cg_sitekey_state'] as $o) {
@@ -68,7 +69,7 @@ function qa_reset() {
     wp_cache_delete('notoptions', 'options'); wp_cache_delete('alloptions', 'options');
     wp_clear_scheduled_hook('cg_sitekey_request_event');
     delete_transient('cg_api_cache');
-    delete_transient(defined('CG_REGISTER_RECONNECT_LOCK') ? CG_REGISTER_RECONNECT_LOCK : 'cg_register_reconnect_lock');
+    qa_rl_clear();
     $o = is_array($GLOBALS['QA_ORIG']['cg_plugin_options']) ? $GLOBALS['QA_ORIG']['cg_plugin_options'] : [];
     unset($o['api_key']);
     cg_update_options_from_hq($o);
@@ -340,7 +341,7 @@ $GLOBALS['QA_NOW'] += 61; $GLOBALS['QA_LOG'] = [];
 wp_set_current_user($GLOBALS['QA_ADMIN']);
 $GLOBALS['QA_SYNC'] = null; $GLOBALS['QA_LOCKED'] = null;
 $GLOBALS['QA_ON_REGISTER'] = function () {
-    $GLOBALS['QA_LOCKED'] = get_transient(defined('CG_REGISTER_RECONNECT_LOCK') ? CG_REGISTER_RECONNECT_LOCK : 'cg_register_reconnect_lock') !== false;
+    $GLOBALS['QA_LOCKED'] = qa_rl_held();
     $GLOBALS['QA_SYNC'] = qa_sync_now();
 };
 $a = cg_register_reconnect_attempt();
@@ -362,7 +363,7 @@ ok('G13b-ctl', 'Sync Now, no Reconnect running, gate over: exactly 1 register', 
 qa_reset();
 cg_register_site_with_hq();
 $GLOBALS['QA_NOW'] += 61; $GLOBALS['QA_LOG'] = [];
-set_transient('cg_register_reconnect_lock', 1, 10);
+qa_rl_set(10);
 $s = qa_sync_now();
 $n = count($GLOBALS['QA_LOG']);
 ok('G13d', 'Sync Now (force) with the Reconnect lock held: 0 HQ calls', $n === 0, "sync=" . var_export($s, true) . " hq_calls=$n log=" . json_encode($GLOBALS['QA_LOG']));
@@ -376,30 +377,32 @@ cg_register_site_with_hq();
 $GLOBALS['QA_NOW'] += 10; $GLOBALS['QA_LOG'] = [];
 $qa_lk = defined('CG_REGISTER_RECONNECT_LOCK') ? CG_REGISTER_RECONNECT_LOCK : 'cg_register_reconnect_lock';
 $gate_open = (int) get_option('cg_register_next_allowed_at', 0) > $GLOBALS['QA_NOW'];
-$lock_before = get_transient($qa_lk) !== false;
+$lock_before = qa_rl_held();
 $GLOBALS['QA_E_LOCK'] = null; $GLOBALS['QA_E_TTL'] = null; $GLOBALS['QA_E_SET_AT'] = null;
-// The TTL is measured from the second the lock was set (setted_transient),
-// not from the second the register callback runs, so a slow register
-// request before the callback does not shrink the measured TTL.
-$qa_e_rec = function ($transient) use ($qa_lk) {
-    if ($transient === $qa_lk && $GLOBALS['QA_E_SET_AT'] === null) {
+// The TTL is measured from the second the lock row was written (the
+// INSERT seen by a query filter), not from the second the register
+// callback runs, so a slow register request does not shrink it.
+$qa_e_rec = function ($q) use ($qa_lk) {
+    if ($GLOBALS['QA_E_SET_AT'] === null && preg_match('/^\s*INSERT\b/i', $q) && strpos($q, "'" . $qa_lk . "'") !== false) {
         $GLOBALS['QA_E_SET_AT'] = time();
     }
+    return $q;
 };
-add_action('setted_transient', $qa_e_rec, 10, 1);
+add_filter('query', $qa_e_rec);
 $GLOBALS['QA_ON_REGISTER'] = function () use ($qa_lk) {
-    $GLOBALS['QA_E_LOCK'] = get_transient($qa_lk) !== false;
-    if ($GLOBALS['QA_E_SET_AT'] !== null) {
-        $GLOBALS['QA_E_TTL'] = (int) get_option('_transient_timeout_' . $qa_lk, 0) - $GLOBALS['QA_E_SET_AT'];
+    $GLOBALS['QA_E_LOCK'] = qa_rl_held();
+    $v = qa_rl_value();
+    if ($GLOBALS['QA_E_SET_AT'] !== null && $v !== null) {
+        $GLOBALS['QA_E_TTL'] = $v - $GLOBALS['QA_E_SET_AT'];
     }
 };
 $s = qa_sync_now();
-remove_action('setted_transient', $qa_e_rec, 10);
+remove_filter('query', $qa_e_rec);
 $n = qa_registers();
-$lock_after = get_transient($qa_lk) !== false;
+$lock_after = qa_rl_held();
 $ttl_const = defined('CG_REGISTER_RECONNECT_LOCK_TTL') ? (int) CG_REGISTER_RECONNECT_LOCK_TTL : 0;
 ok('G13e', 'Sync Now, no key, no lock, inside the gate: lock set during the register, exactly 1 register, lock gone after', $gate_open && !$lock_before && $GLOBALS['QA_E_LOCK'] === true && $n === 1 && !$lock_after, 'gate_open=' . var_export($gate_open, true) . ' lock_before=' . var_export($lock_before, true) . ' lock_during=' . var_export($GLOBALS['QA_E_LOCK'], true) . " register=$n lock_after=" . var_export($lock_after, true) . " sync=$s");
-ok('G13e-ttl', 'the Reconnect lock TTL is 45 s (constant and the stored transient)', $ttl_const === 45 && $GLOBALS['QA_E_TTL'] !== null && $GLOBALS['QA_E_TTL'] >= 44 && $GLOBALS['QA_E_TTL'] <= 45, "const=$ttl_const measured=" . var_export($GLOBALS['QA_E_TTL'], true));
+ok('G13e-ttl', 'the Reconnect lock TTL is 45 s (constant and the stored expiry)', $ttl_const === 45 && $GLOBALS['QA_E_TTL'] !== null && $GLOBALS['QA_E_TTL'] >= 44 && $GLOBALS['QA_E_TTL'] <= 45, "const=$ttl_const measured=" . var_export($GLOBALS['QA_E_TTL'], true));
 
 // G13d-run: with the Reconnect lock held, Sync Now answers with
 // data.code === 'running' (exact field, no other field accepted) and sends
@@ -407,7 +410,7 @@ ok('G13e-ttl', 'the Reconnect lock TTL is 45 s (constant and the stored transien
 qa_reset();
 cg_register_site_with_hq();
 $GLOBALS['QA_NOW'] += 61; $GLOBALS['QA_LOG'] = [];
-set_transient($qa_lk, 1, 45);
+qa_rl_set(45);
 $s = qa_sync_now();
 $n = count($GLOBALS['QA_LOG']);
 $j = json_decode((string) $GLOBALS['QA_SYNC_RAW'], true);
@@ -494,21 +497,21 @@ qa_reset();
 cg_register_site_with_hq();
 $GLOBALS['QA_NOW'] = 1800000000 + 10; $GLOBALS['QA_LOG'] = [];
 $GLOBALS['QA_LOCKED'] = null;
-$GLOBALS['QA_ON_REGISTER'] = function () { $GLOBALS['QA_LOCKED'] = get_transient(CG_REGISTER_RECONNECT_LOCK) !== false; };
+$GLOBALS['QA_ON_REGISTER'] = function () { $GLOBALS['QA_LOCKED'] = qa_rl_held(); };
 $s = qa_sync_now();
 $b = qa_registers();
 $GLOBALS['QA_ON_REGISTER'] = null;
 ok('G13j', 'forced register sees the Reconnect lock held', $s === 'error' && $b === 1 && $GLOBALS['QA_LOCKED'] === true, "sync=$s register=$b locked=" . var_export($GLOBALS['QA_LOCKED'], true));
 
 // G13l: the Reconnect lock outlives one register (15 s) plus one sync
-// (15 s). While the register request runs, the lock's timeout is moved
-// back as if it was taken 44 s ago (still held) and then 46 s ago (gone).
-// WordPress option transients expire when timeout < time(). Checked for
-// the Reconnect button and for Sync Now; the lock is taken again and must
-// be gone after each call (removed in finally).
-// The ages are counted from the second the lock was set (recorded by the
-// setted_transient action), not from the second the callback runs, so a
-// slow register request before the callback cannot make +44 s look expired.
+// (15 s). While the register request runs, the stored expiry is moved back
+// as if the lock was taken 44 s ago (still held) and then 46 s ago (gone),
+// read with the plugin's own cg_register_reconnect_lock_held() (held while
+// expiry >= time()). Checked for the Reconnect button and for Sync Now; the
+// expiry is then put back so the caller's finally can release its own lock,
+// and the row must be gone after each call.
+// The ages are counted from the second the lock row was written (the
+// INSERT seen by a query filter), not from the second the callback runs.
 // On its own G13l pins the TTL to 44 or 45 s (TTL 44 still passes);
 // G13e-ttl and L4c pin the constant to exactly 45.
 foreach (['G13l-reconnect', 'G13l-syncnow'] as $gid) {
@@ -517,38 +520,42 @@ foreach (['G13l-reconnect', 'G13l-syncnow'] as $gid) {
     $GLOBALS['QA_NOW'] = 1800000000 + 61; $GLOBALS['QA_LOG'] = [];
     $GLOBALS['QA_L'] = null;
     $GLOBALS['QA_LOCK_SET_AT'] = null;
-    $qa_rec = function ($transient) {
-        if ($transient === CG_REGISTER_RECONNECT_LOCK && $GLOBALS['QA_LOCK_SET_AT'] === null) {
+    $qa_rec = function ($q) {
+        if ($GLOBALS['QA_LOCK_SET_AT'] === null && preg_match('/^\s*INSERT\b/i', $q) && strpos($q, "'" . CG_REGISTER_RECONNECT_LOCK . "'") !== false) {
             $GLOBALS['QA_LOCK_SET_AT'] = time();
         }
+        return $q;
     };
-    add_action('setted_transient', $qa_rec, 10, 1);
+    add_filter('query', $qa_rec);
     $GLOBALS['QA_ON_REGISTER'] = function () {
-        $k = '_transient_timeout_' . CG_REGISTER_RECONNECT_LOCK;
-        $t0 = (int) get_option($k);
+        global $wpdb;
+        $v = qa_rl_value();
         $set = $GLOBALS['QA_LOCK_SET_AT'];
         $now = time();
-        if ($set === null) {
-            $GLOBALS['QA_L'] = ['set_at' => null];
+        if ($set === null || $v === null || !function_exists('cg_register_reconnect_lock_held')) {
+            $GLOBALS['QA_L'] = ['set_at' => $set, 'value' => $v];
             return;
         }
-        // Timeout as it would look from now if the lock was taken $age s ago.
-        update_option($k, $t0 - ($set + 44 - $now), false);
-        $h44 = get_transient(CG_REGISTER_RECONNECT_LOCK) !== false;
-        update_option($k, $t0 - ($set + 46 - $now), false);
-        $h46 = get_transient(CG_REGISTER_RECONNECT_LOCK) !== false;
-        $GLOBALS['QA_L'] = ['ttl' => $t0 - $set, 'waited' => $now - $set, 'h44' => $h44, 'h46' => $h46];
-        // The +46 s read removed the expired lock; take it again so the
-        // check after the call shows the caller's finally removes it.
-        set_transient(CG_REGISTER_RECONNECT_LOCK, 1, CG_REGISTER_RECONNECT_LOCK_TTL);
+        $ttl = $v - $set;
+        $put = function ($val) use ($wpdb) {
+            $wpdb->query($wpdb->prepare("UPDATE {$wpdb->options} SET option_value = %d WHERE option_name = %s", $val, CG_REGISTER_RECONNECT_LOCK));
+            qa_rl_flush();
+        };
+        // Expiry as it would look from now if the lock was taken $age s ago.
+        $put($now - 44 + $ttl);
+        $h44 = cg_register_reconnect_lock_held();
+        $put($now - 46 + $ttl);
+        $h46 = cg_register_reconnect_lock_held();
+        $put($v);
+        $GLOBALS['QA_L'] = ['ttl' => $ttl, 'waited' => $now - $set, 'h44' => $h44, 'h46' => $h46];
     };
     $r = $gid === 'G13l-reconnect' ? cg_register_reconnect_attempt() : qa_sync_now();
     $b = qa_registers();
     $GLOBALS['QA_ON_REGISTER'] = null;
-    remove_action('setted_transient', $qa_rec, 10);
-    $lock_after = get_transient(CG_REGISTER_RECONNECT_LOCK) !== false;
+    remove_filter('query', $qa_rec);
+    $lock_after = qa_rl_value();
     $L = $GLOBALS['QA_L'];
-    ok($gid, 'Reconnect lock held at +44 s, gone at +46 s, released after the call', !wp_using_ext_object_cache() && is_array($L) && ($L['h44'] ?? null) === true && ($L['h46'] ?? null) === false && $b === 1 && !$lock_after, 'r=' . var_export($r, true) . " register=$b lock=" . json_encode($L) . ' lock_after=' . var_export($lock_after, true));
+    ok($gid, 'Reconnect lock held at +44 s, gone at +46 s, released after the call', !wp_using_ext_object_cache() && is_array($L) && ($L['h44'] ?? null) === true && ($L['h46'] ?? null) === false && $b === 1 && $lock_after === null, 'r=' . var_export($r, true) . " register=$b lock=" . json_encode($L) . ' lock_after=' . var_export($lock_after, true));
 }
 
 // G13k: only Sync Now may force. Across the plugin code (tests excluded) there

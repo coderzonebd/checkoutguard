@@ -14,6 +14,7 @@
 if (!defined('ABSPATH')) {
     exit;
 }
+require_once __DIR__ . '/inc-reconnect-lock.php';
 $GLOBALS['QA_NOW'] = 1800000000;
 $GLOBALS['QA_ORIG'] = [];
 foreach (['cg_plugin_options', 'cg_license_status', 'cg_register_next_allowed_at', 'cg_sitekey_state'] as $o) {
@@ -58,7 +59,7 @@ function qa_reset() {
     wp_cache_delete('notoptions', 'options'); wp_cache_delete('alloptions', 'options');
     wp_clear_scheduled_hook('cg_sitekey_request_event');
     // The Reconnect double-click lock must not leak from one case into the next.
-    delete_transient(defined('CG_REGISTER_RECONNECT_LOCK') ? CG_REGISTER_RECONNECT_LOCK : 'cg_register_reconnect_lock');
+    qa_rl_clear();
     $o = is_array($GLOBALS['QA_ORIG']['cg_plugin_options']) ? $GLOBALS['QA_ORIG']['cg_plugin_options'] : [];
     unset($o['api_key']);
     cg_update_options_from_hq($o);
@@ -230,23 +231,24 @@ cg_register_site_with_hq();
 $at60 = qa_regs();
 ok('L3', 'failed Reconnect keeps the 60 s gate for the auto path: +59 s -> 0, +60 s -> 1', $a === 'tried' && $gate === 60 && $at59 === 0 && $at60 === 1, "a=$a gate=$gate at59=$at59 at60=$at60");
 
-// L4: the lock is the transient 'cg_register_reconnect_lock' with the TTL
-// CG_REGISTER_RECONNECT_LOCK_TTL, read while the register call is running.
-// The TTL uses the real clock (set_transient), so TTL or TTL-1 is accepted.
+// L4: the lock is the option row 'cg_register_reconnect_lock' (autoload no)
+// holding its expiry, now + CG_REGISTER_RECONNECT_LOCK_TTL, read from the
+// table while the register call is running. Real clock, so TTL or TTL-1.
 // L4b keeps a separate check that the lock expires at all (TTL > 0).
 qa_reset();
 cg_register_site_with_hq();
 $GLOBALS['QA_NOW'] += 61; $GLOBALS['QA_LOG'] = [];
-$GLOBALS['QA_LK'] = null; $GLOBALS['QA_TTL'] = null;
+$GLOBALS['QA_LK'] = null; $GLOBALS['QA_TTL'] = null; $GLOBALS['QA_AUTOLOAD'] = null;
 $GLOBALS['QA_ON_REGISTER'] = function () {
-    $GLOBALS['QA_LK'] = get_transient('cg_register_reconnect_lock');
-    $GLOBALS['QA_TTL'] = (int) get_option('_transient_timeout_cg_register_reconnect_lock', 0) - time();
+    $GLOBALS['QA_LK'] = qa_rl_value();
+    $GLOBALS['QA_AUTOLOAD'] = qa_rl_autoload();
+    $GLOBALS['QA_TTL'] = $GLOBALS['QA_LK'] === null ? null : $GLOBALS['QA_LK'] - time();
 };
 $a = cg_register_reconnect_attempt();
-$after = get_transient('cg_register_reconnect_lock');
+$after = qa_rl_value();
 $ttl = $GLOBALS['QA_TTL'];
 $want = defined('CG_REGISTER_RECONNECT_LOCK_TTL') ? (int) CG_REGISTER_RECONNECT_LOCK_TTL : null;
-ok('L4', "lock is transient 'cg_register_reconnect_lock', TTL = CG_REGISTER_RECONNECT_LOCK_TTL, gone after the call", $a === 'tried' && defined('CG_REGISTER_RECONNECT_LOCK') && CG_REGISTER_RECONNECT_LOCK === 'cg_register_reconnect_lock' && $GLOBALS['QA_LK'] !== false && $GLOBALS['QA_LK'] !== null && $want !== null && ($ttl === $want || $ttl === $want - 1) && $after === false, "a=$a lk=" . var_export($GLOBALS['QA_LK'], true) . " ttl=" . var_export($ttl, true) . " want=" . var_export($want, true) . " after=" . var_export($after, true));
+ok('L4', "lock is option row 'cg_register_reconnect_lock' (autoload no), expiry = now + CG_REGISTER_RECONNECT_LOCK_TTL, gone after the call", $a === 'tried' && defined('CG_REGISTER_RECONNECT_LOCK') && CG_REGISTER_RECONNECT_LOCK === 'cg_register_reconnect_lock' && $GLOBALS['QA_LK'] !== null && $GLOBALS['QA_AUTOLOAD'] === 'no' && $want !== null && ($ttl === $want || $ttl === $want - 1) && $after === null, "a=$a lk=" . var_export($GLOBALS['QA_LK'], true) . " autoload=" . var_export($GLOBALS['QA_AUTOLOAD'], true) . " ttl=" . var_export($ttl, true) . " want=" . var_export($want, true) . " after=" . var_export($after, true));
 ok('L4b', 'the lock expires on its own: TTL constant and the measured TTL are both > 0', $want !== null && $want > 0 && is_int($ttl) && $ttl > 0, "want=" . var_export($want, true) . " ttl=" . var_export($ttl, true));
 // L4c: Reconnect and Sync Now share this lock; the agreed TTL is at least
 // 45 s so a slow HQ register call cannot outlive the lock.
@@ -258,7 +260,7 @@ ok('L4c', 'CG_REGISTER_RECONNECT_LOCK_TTL is at least 45 s', $want !== null && $
 qa_reset();
 cg_register_site_with_hq();
 $GLOBALS['QA_NOW'] += 61; $GLOBALS['QA_LOG'] = [];
-set_transient('cg_register_reconnect_lock', 1, 10);
+qa_rl_set(10);
 $a = cg_register_reconnect_attempt();
 $n = count($GLOBALS['QA_LOG']);
 ok('L5', 'lock held (set by the test): Reconnect -> running, 0 HQ calls', $a === 'running' && $n === 0, "a=" . var_export($a, true) . " hq_calls=$n log=" . json_encode($GLOBALS['QA_LOG']));
@@ -267,7 +269,7 @@ ok('L5', 'lock held (set by the test): Reconnect -> running, 0 HQ calls', $a ===
 qa_reset();
 cg_register_site_with_hq();
 $GLOBALS['QA_NOW'] += 61; $GLOBALS['QA_LOG'] = [];
-delete_transient('cg_register_reconnect_lock');
+qa_rl_clear();
 $a = cg_register_reconnect_attempt();
 $n = qa_regs();
 ok('L5-ctl', 'no lock: Reconnect -> tried, exactly 1 register', $a === 'tried' && $n === 1, "a=" . var_export($a, true) . " register_calls=$n");
