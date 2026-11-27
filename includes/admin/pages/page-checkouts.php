@@ -300,11 +300,11 @@ function cg_get_checkout_table_rows_html($results, $current_status)
                     printf('<a href="#" class="button button-small cg-view-details" data-id="%d" title="%s"><span class="dashicons dashicons-visibility"></span></a> ', esc_attr($row->id), __('View Details', 'checkoutguard'));
 
                     if ($current_status === 'incomplete') {
-                        printf('<a href="#" class="button button-small button-primary cg-recover-order" data-id="%d" title="%s"><span class="dashicons dashicons-yes"></span></a> ', esc_attr($row->id), __('Recover Order', 'checkoutguard'));
+                        printf('<a href="#" class="button button-small button-primary cg-recover-order" data-id="%d" title="%s"><span class="dashicons dashicons-yes"></span></a> ', esc_attr($row->id), esc_attr(__('Recover Order', 'checkoutguard') . ' - ' . __('This will reduce stock and send the customer the order email.', 'checkoutguard')));
                         printf('<a href="#" class="button button-small cg-mark-hold" data-id="%d" title="%s"><span class="dashicons dashicons-clock"></span></a> ', esc_attr($row->id), __('Mark as Hold', 'checkoutguard'));
                         printf('<a href="#" class="button button-small cg-mark-cancelled" data-id="%d" title="%s"><span class="dashicons dashicons-no-alt"></span></a>', esc_attr($row->id), __('Mark as Cancelled', 'checkoutguard'));
                     } elseif ($current_status === 'hold') {
-                        printf('<a href="#" class="button button-small button-primary cg-recover-order" data-id="%d" title="%s"><span class="dashicons dashicons-yes"></span></a> ', esc_attr($row->id), __('Recover Order', 'checkoutguard'));
+                        printf('<a href="#" class="button button-small button-primary cg-recover-order" data-id="%d" title="%s"><span class="dashicons dashicons-yes"></span></a> ', esc_attr($row->id), esc_attr(__('Recover Order', 'checkoutguard') . ' - ' . __('This will reduce stock and send the customer the order email.', 'checkoutguard')));
                         printf('<a href="#" class="button button-small cg-edit-follow-up-date" data-id="%d" data-current-date="%s" title="%s"><span class="dashicons dashicons-edit"></span></a> ', esc_attr($row->id), esc_attr($row->follow_up_date), __('Edit Follow-up Date', 'checkoutguard'));
                         printf('<a href="#" class="button button-small cg-mark-cancelled" data-id="%d" title="%s"><span class="dashicons dashicons-no-alt"></span></a>', esc_attr($row->id), __('Mark as Cancelled', 'checkoutguard'));
                     } elseif ($current_status === 'cancelled') {

@@ -671,6 +671,9 @@ function cg_get_incomplete_checkout_details_ajax_handler()
                 </a>
             <?php endif; ?>
         </div>
+        <?php if (in_array($entry->status, array('incomplete', 'hold'), true)): ?>
+            <p class="description cg-recover-hint"><?php esc_html_e('This will reduce stock and send the customer the order email.', 'checkoutguard'); ?></p>
+        <?php endif; ?>
         <?php if (!cg_is_pro_plan()): ?>
         </div><!-- .cg-pro-locked-hover -->
         <?php endif; ?>
