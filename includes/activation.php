@@ -20,6 +20,14 @@ define('CG_REGISTER_MIN_GAP', MINUTE_IN_SECONDS);
 // clamped to it, so a clock that moved back or a bad header cannot keep
 // the site from registering for hours.
 define('CG_REGISTER_MAX_WAIT', 10 * MINUTE_IN_SECONDS);
+// Manual register gate: earliest time the admin's next manual try
+// (Reconnect now, or Sync Now while there is no key) may call register.
+// The automatic gate above does not hold a manual try; this one does, so a
+// Reconnect from an old tab or a second Sync Now click right after the last
+// one sends nothing. Each manual try opens it for CG_REGISTER_MIN_GAP, or up
+// to the automatic gate when HQ asked for longer (Retry-After). Same upper
+// bound (CG_REGISTER_MAX_WAIT). A stored key clears it.
+define('CG_REGISTER_MANUAL_GATE_OPTION', 'cg_register_manual_next_allowed_at');
 // Double-click lock for the manual Reconnect. Separate from the register
 // gate: the gate holds the automatic path, this lock only stops a second
 // Reconnect while one is still running. 45 s covers one register (15 s
@@ -196,9 +204,12 @@ function cg_create_blocked_orders_table()
  * the next one; until then this returns without calling HQ, so checkout
  * saves, syncs and page loads never repeat a register HQ just refused or
  * could not answer. Only explicit admin actions pass $force: plugin
- * activation and "Reconnect now" (which has checked and moved the gate itself).
+ * activation and the manual tries ("Reconnect now", and "Sync Now" while
+ * there is no key). The manual tries do not check this gate; their callers
+ * hold the Reconnect lock and check the manual gate
+ * (CG_REGISTER_MANUAL_GATE_OPTION) instead, see cg_register_manual_try_begin().
  *
- * @param bool $force Skip the gate check (activation and Reconnect only).
+ * @param bool $force Skip the gate check (activation and the manual tries).
  */
 function cg_register_site_with_hq($force = false)
 {
@@ -226,6 +237,7 @@ function cg_register_site_with_hq($force = false)
         $options['api_key'] = sanitize_text_field($response['api_key']);
         cg_update_options_from_hq($options);
         delete_option(CG_REGISTER_GATE_OPTION);
+        delete_option(CG_REGISTER_MANUAL_GATE_OPTION);
         delete_option(CG_REGISTER_ALREADY_REGISTERED_OPTION);
         return;
     }
@@ -296,6 +308,62 @@ function cg_register_gate_left()
     return ($left > 0 && $left <= CG_REGISTER_MAX_WAIT) ? $left : 0;
 }
 
+/**
+ * Seconds left on the manual register gate, with the same upper bound as
+ * cg_register_gate_left().
+ *
+ * @return int
+ */
+function cg_register_manual_gate_left()
+{
+    $left = (int) get_option(CG_REGISTER_MANUAL_GATE_OPTION, 0) - cg_register_now();
+    return ($left > 0 && $left <= CG_REGISTER_MAX_WAIT) ? $left : 0;
+}
+
+/**
+ * Start one manual register try. Call only while holding the Reconnect lock,
+ * so the check and the write below cannot race another manual try.
+ *
+ * @return bool False while the manual gate is open (send nothing); true
+ *              after opening it for CG_REGISTER_MIN_GAP.
+ */
+function cg_register_manual_try_begin()
+{
+    if (cg_register_manual_gate_left() > 0) {
+        return false;
+    }
+    update_option(CG_REGISTER_MANUAL_GATE_OPTION, cg_register_now() + CG_REGISTER_MIN_GAP, false);
+    return true;
+}
+
+/**
+ * After a manual try: when it failed and HQ asked for a longer wait
+ * (Retry-After, already capped in the automatic gate), the next manual try
+ * waits for it too.
+ */
+function cg_register_manual_try_end()
+{
+    $options = get_option('cg_plugin_options', []);
+    if (is_array($options) && !empty($options['api_key'])) {
+        return;
+    }
+    $left = cg_register_gate_left();
+    if ($left > cg_register_manual_gate_left()) {
+        update_option(CG_REGISTER_MANUAL_GATE_OPTION, cg_register_now() + $left, false);
+    }
+}
+
+/**
+ * Seconds until the admin may try a manual register again: the longer of
+ * the automatic and the manual gate (0 when both are over).
+ *
+ * @return int
+ */
+function cg_register_try_again_left()
+{
+    return max(cg_register_gate_left(), cg_register_manual_gate_left());
+}
+
 function cg_register_now()
 {
     return function_exists('cg_sitekey_now') ? cg_sitekey_now() : time();
@@ -337,17 +405,17 @@ function cg_render_register_failed_notice()
     if (!$on_dashboard && strpos($page, 'cg-') !== 0) {
         return;
     }
-    $gate = (int) get_option(CG_REGISTER_GATE_OPTION, 0);
+    $wait = cg_register_try_again_left();
     $running = cg_register_reconnect_lock_held();
     echo '<div class="notice notice-error"><p><strong>' . esc_html__('CheckoutGuard is not protecting checkouts right now.', 'checkoutguard') . '</strong> ';
     echo esc_html__('This site could not connect to CheckoutGuard yet. Orders still go through, but without the fraud check.', 'checkoutguard') . ' ';
     if ($running) {
         echo esc_html__('Reconnect is running. Reload this page in a few seconds.', 'checkoutguard');
-    } elseif (cg_register_gate_left() > 0) {
+    } elseif ($wait > 0) {
         echo esc_html(sprintf(
             /* translators: %s: time after which the admin may try again */
             __('You can try again after %s.', 'checkoutguard'),
-            wp_date(get_option('date_format') . ' ' . get_option('time_format'), $gate)
+            wp_date(get_option('date_format') . ' ' . get_option('time_format'), cg_register_now() + $wait)
         )) . ' ';
         echo esc_html__('If it keeps failing, contact CheckoutGuard support.', 'checkoutguard');
     } else {
@@ -388,7 +456,7 @@ function cg_render_register_already_registered_notice()
     if (!$on_dashboard && strpos($page, 'cg-') !== 0) {
         return;
     }
-    $gate = (int) get_option(CG_REGISTER_GATE_OPTION, 0);
+    $wait = cg_register_try_again_left();
     $running = cg_register_reconnect_lock_held();
     echo '<div class="notice notice-error"><p><strong>' . esc_html__('CheckoutGuard is not protecting checkouts right now.', 'checkoutguard') . '</strong> ';
     echo esc_html__('This site is already registered with CheckoutGuard, but this copy of the plugin is not connected to it. Orders still go through, but without the fraud check.', 'checkoutguard') . ' ';
@@ -396,11 +464,11 @@ function cg_render_register_already_registered_notice()
     // (capped) gate, or the Reconnect button.
     if ($running) {
         echo esc_html__('Reconnect is running. Reload this page in a few seconds.', 'checkoutguard');
-    } elseif (cg_register_gate_left() > 0) {
+    } elseif ($wait > 0) {
         echo esc_html(sprintf(
             /* translators: %s: time after which the admin may try again */
             __('You can try again after %s.', 'checkoutguard'),
-            wp_date(get_option('date_format') . ' ' . get_option('time_format'), $gate)
+            wp_date(get_option('date_format') . ' ' . get_option('time_format'), cg_register_now() + $wait)
         )) . ' ';
         echo esc_html__('If it keeps failing, contact CheckoutGuard support.', 'checkoutguard');
     } else {
@@ -431,15 +499,18 @@ add_action('add_option_cg_plugin_options', function ($option, $value) {
 }, 10, 2);
 
 /**
- * One manual registration attempt. An admin click is not held by the gate:
- * it always sends one register and moves the gate first, so the automatic
+ * One manual registration attempt. The automatic gate does not hold it (a
+ * failed checkout-save register must not lock the admin out), but the
+ * manual gate does: after a manual try (this or Sync Now) the next one
+ * sends nothing until CG_REGISTER_MIN_GAP has passed, or longer when HQ
+ * sent Retry-After. A try moves the automatic gate first, so the automatic
  * path (checkout saves, cron) stays gated after it.
  *
  * A short lock (CG_REGISTER_RECONNECT_LOCK, CG_REGISTER_RECONNECT_LOCK_TTL
- * seconds) is taken atomically before the call and released when it ends,
- * success or not. While it is held a second click sends nothing.
+ * seconds) is taken atomically before the gate check and released when the
+ * call ends, success or not. While it is held a second click sends nothing.
  *
- * @return string 'not_needed', 'running' or 'tried'.
+ * @return string 'not_needed', 'running', 'gated' or 'tried'.
  */
 function cg_register_reconnect_attempt()
 {
@@ -451,6 +522,9 @@ function cg_register_reconnect_attempt()
         return 'running';
     }
     try {
+        if (!cg_register_manual_try_begin()) {
+            return 'gated';
+        }
         $now = cg_register_now();
         update_option(CG_REGISTER_GATE_OPTION, $now + CG_REGISTER_MIN_GAP, false);
         if (!function_exists('cg_sync_with_hq')) {
@@ -459,6 +533,7 @@ function cg_register_reconnect_attempt()
         // The one register this attempt allows. If it fails it sets the gate
         // again, so the register inside the sync below stays gated.
         cg_register_site_with_hq(true);
+        cg_register_manual_try_end();
         cg_sync_with_hq();
     } finally {
         cg_register_reconnect_lock_release($lock);
