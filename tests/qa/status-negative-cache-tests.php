@@ -446,8 +446,8 @@ function qa_wait_at() {
 $RREG = ['/sites/register' => ['code' => 500, 'body' => ['message' => 'qa register down']]];
 
 // N17: a key is stored and a status wait runs. Sync now skips the wait (one
-// status call) and makes no register call: with a key the forced path only
-// reaches status, never the register gate.
+// status call) and makes no register call: with a key Sync now clears the
+// wait and calls status, never the register gate.
 qa_reset(); $GLOBALS['QA_ROUTES'] = $R403 + $RREG;
 qa_saves_at([0]);
 $r = qa_force_sync_full();

@@ -142,7 +142,7 @@ ok('K9', 'shared-key rollback restores the shared key', cg_sitekey_current_key()
 
 // K10: a status wait left from an earlier failure (cg_status_next_allowed_at,
 // +300 s) must not hold back the status call that commits a claimed key:
-// the claim forces that one call. Exactly one status call, result committed.
+// the claim clears the wait for that one call (no force, see G13k). Exactly one status call, result committed.
 // Stands on its own (no other case sets the wait), so it does not rely on
 // what K3, K4 or K9 leave behind.
 qa_reset();
