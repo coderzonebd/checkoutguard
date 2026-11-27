@@ -16,6 +16,9 @@
  * keeps it.
  * The wait only stops status calls: it never blocks an order, even with
  * no cg_api_cache (N16).
+ * Sync now with a key stored makes no register call (N17); with no key the
+ * Reconnect lock and the manual register gate still hold it, a status wait
+ * or not (N18, N19).
  *
  * The wait must use the plugin clock (cg_register_now() / cg_sitekey_now(),
  * filter cg_sitekey_now), so this test can move time without sleeping.
@@ -421,6 +424,65 @@ $process = wc_get_notices('error');
 wc_clear_notices();
 $calls = qa_status() - $before;
 ok('N16', 'status wait running, no cg_api_cache: clean order passes (validation guard, process guard, engine), 0 status calls', $a === 1 && $wait !== null && $cache === false && $classic === [] && $msg === null && $process === [] && $calls === 0, "first=$a wait=" . ($wait === null ? 'none' : '+' . ((int) $wait - $GLOBALS['QA_T0'])) . ' cache=' . ($cache === false ? 'none' : 'set') . ' classic=' . json_encode($classic) . ' engine=' . var_export($msg, true) . ' process=' . count($process) . " status=$calls");
+
+// The Sync now button, also returning what it answered (JSON) and the
+// register calls it made.
+function qa_force_sync_full() {
+    $reg = count(array_keys($GLOBALS['QA_LOG'], '/sites/register', true));
+    ob_start();
+    $st = qa_force_sync();
+    $json = json_decode((string) ob_get_clean(), true);
+    return [
+        'status' => $st,
+        'register' => count(array_keys($GLOBALS['QA_LOG'], '/sites/register', true)) - $reg,
+        'code' => is_array($json) ? ($json['data']['code'] ?? ($json['success'] ? 'ok' : 'error')) : 'none',
+    ];
+}
+function qa_wait_at() {
+    wp_cache_delete('cg_status_next_allowed_at', 'options');
+    $w = get_option('cg_status_next_allowed_at', null);
+    return $w === null ? 'none' : '+' . ((int) $w - $GLOBALS['QA_T0']);
+}
+$RREG = ['/sites/register' => ['code' => 500, 'body' => ['message' => 'qa register down']]];
+
+// N17: a key is stored and a status wait runs. Sync now skips the wait (one
+// status call) and makes no register call: with a key the forced path only
+// reaches status, never the register gate.
+qa_reset(); $GLOBALS['QA_ROUTES'] = $R403 + $RREG;
+qa_saves_at([0]);
+$r = qa_force_sync_full();
+ok('N17', 'key stored, wait running: Sync now -> 0 register calls, 1 status call (wait skipped), failure writes a new wait', $r['register'] === 0 && $r['status'] === 1 && qa_wait_at() === '+60', 'register=' . $r['register'] . ' status=' . $r['status'] . ' code=' . $r['code'] . ' wait=' . qa_wait_at());
+
+// N18: no key and the Reconnect/Sync Now lock is held by another request.
+// Sync now answers "running" and calls nothing: force never passes the lock,
+// and the status wait it would skip is left as it was.
+qa_reset(); $GLOBALS['QA_ROUTES'] = $R403 + $RREG;
+$o = get_option('cg_plugin_options', []); unset($o['api_key']); cg_update_options_from_hq($o);
+update_option('cg_status_next_allowed_at', $GLOBALS['QA_T0'] + 60, false);
+$lock = cg_register_reconnect_lock_acquire();
+$r = qa_force_sync_full();
+cg_register_reconnect_lock_release($lock);
+ok('N18', 'no key, lock held: Sync now -> "running", 0 register calls, 0 status calls, wait unchanged', is_int($lock) && $r['code'] === 'running' && $r['register'] === 0 && $r['status'] === 0 && qa_wait_at() === '+60', 'lock=' . var_export(is_int($lock), true) . ' code=' . $r['code'] . ' register=' . $r['register'] . ' status=' . $r['status'] . ' wait=' . qa_wait_at());
+
+// N19: no key, lock free, the manual register gate still closed. Sync now
+// answers "gated" and calls nothing, also with a status wait stored.
+qa_reset(); $GLOBALS['QA_ROUTES'] = $R403 + $RREG;
+$o = get_option('cg_plugin_options', []); unset($o['api_key']); cg_update_options_from_hq($o);
+update_option('cg_status_next_allowed_at', $GLOBALS['QA_T0'] + 60, false);
+update_option(CG_REGISTER_MANUAL_GATE_OPTION, cg_register_now() + 300, false);
+$r = qa_force_sync_full();
+ok('N19', 'no key, manual gate closed: Sync now -> "gated", 0 register calls, 0 status calls', $r['code'] === 'gated' && $r['register'] === 0 && $r['status'] === 0, 'code=' . $r['code'] . ' register=' . $r['register'] . ' status=' . $r['status'] . ' wait=' . qa_wait_at());
+delete_option(CG_REGISTER_MANUAL_GATE_OPTION);
+
+// N20: only a real boolean true skips the wait. A hook that passes '1' or 1
+// (do_action with an argument) stays in the wait: 0 status calls.
+qa_reset(); $GLOBALS['QA_ROUTES'] = $R403;
+qa_saves_at([0]);
+$before = qa_status();
+cg_sync_with_hq('1');
+cg_sync_with_hq(1);
+$n = qa_status() - $before;
+ok('N20', "wait running: cg_sync_with_hq('1') and (1) -> 0 status calls (force is strict)", $n === 0, "status=$n wait=" . qa_wait_at());
 
 $out = ob_get_clean();
 // restore
