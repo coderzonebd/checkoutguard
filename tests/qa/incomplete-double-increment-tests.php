@@ -55,6 +55,7 @@ $GLOBALS['QA_ORDER_IDS'] = [];
 $GLOBALS['QA_MARK_KEYS'] = [];
 $GLOBALS['QA_ORIG']['cg_license_status'] = get_option('cg_license_status', null);
 $GLOBALS['QA_ORIG']['cg_last_synced'] = get_transient('cg_last_synced');
+$GLOBALS['QA_ORIG']['cg_status_next_allowed_at'] = get_option('cg_status_next_allowed_at', null);
 
 function qa_reset($usage = 10, $limit = 100) {
     set_transient('cg_api_cache', ['usage' => ['checkouts' => $usage, 'contact_reveals' => 0], 'limits' => ['checkouts' => $limit, 'contact_reveals' => 0]], DAY_IN_SECONDS);
@@ -297,6 +298,9 @@ try {
     // new customer's tracker request would wait for that lock meanwhile.
     $GLOBALS['QA_LOG'] = [];
     delete_transient('cg_api_cache');
+    // Earlier cases answer /sites/status unsigned, which stores a status
+    // wait (1.5.1 negative cache); this case needs the sync to run.
+    delete_option('cg_status_next_allowed_at');
     $c = qa_cust('i10');
     $GLOBALS['QA_SLOW'] = ['c' => $c, 'status_calls' => 0, 'second_done' => true, 'second' => null, 'free_at_status' => []];
     $res = qa_save($c);
@@ -313,6 +317,7 @@ try {
     $GLOBALS['QA_ORIG']['period'] = [get_option(CG_PERIOD_SYNCED_FOR_OPTION, null), get_transient(CG_PERIOD_SYNC_BACKOFF_TRANSIENT)];
     delete_option(CG_PERIOD_SYNCED_FOR_OPTION);
     delete_transient(CG_PERIOD_SYNC_BACKOFF_TRANSIENT);
+    delete_option('cg_status_next_allowed_at');
     set_transient('cg_api_cache', ['usage' => ['checkouts' => 10, 'contact_reveals' => 1], 'limits' => ['checkouts' => 100, 'contact_reveals' => 1], 'usage_period_end' => gmdate('Y-m-d\TH:i:s\Z', time() - 3600)], DAY_IN_SECONDS);
     $c = qa_cust('i10b');
     $GLOBALS['QA_SLOW'] = ['c' => $c, 'status_calls' => 0, 'second_done' => true, 'second' => null, 'free_at_status' => []];
@@ -380,6 +385,11 @@ try {
         delete_option('cg_license_status');
     } else {
         update_option('cg_license_status', $GLOBALS['QA_ORIG']['cg_license_status']);
+    }
+    if ($GLOBALS['QA_ORIG']['cg_status_next_allowed_at'] === null) {
+        delete_option('cg_status_next_allowed_at');
+    } else {
+        update_option('cg_status_next_allowed_at', $GLOBALS['QA_ORIG']['cg_status_next_allowed_at'], false);
     }
     if ($GLOBALS['QA_ORIG']['cg_last_synced'] === false) {
         delete_transient('cg_last_synced');

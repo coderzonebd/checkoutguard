@@ -140,6 +140,23 @@ $GLOBALS['QA_ROUTES'] = ['/sites/request-site-key' => ['code' => 202, 'body' => 
 cg_sitekey_request('scheduled'); qa_add_nonce(); cg_sitekey_claim();
 ok('K9', 'shared-key rollback restores the shared key', cg_sitekey_current_key() === 'qa-shared-key-not-real', 'key=' . (cg_sitekey_current_key() === $KEY ? 'site key' : 'other'));
 
+// K10: a status wait left from an earlier failure (cg_status_next_allowed_at,
+// +300 s) must not hold back the status call that commits a claimed key:
+// the claim clears the wait for that one call (no force, see G13k). Exactly one status call, result committed.
+// Stands on its own (no other case sets the wait), so it does not rely on
+// what K3, K4 or K9 leave behind.
+qa_reset();
+$GLOBALS['QA_ROUTES'] = ['/sites/register' => $claim409, '/sites/request-site-key' => ['code' => 202, 'body' => []], '/sites/claim-key' => ['code' => 200, 'body' => ['api_key' => $KEY, 'expires_in' => 3600]], '/sites/status' => ['code' => 200, 'body' => ['payload' => 'x', 'signature' => 'x']]];
+cg_register_site_with_hq();
+cg_sitekey_request('deadline');
+qa_add_nonce();
+update_option('cg_status_next_allowed_at', $GLOBALS['QA_NOW'] + 300, false);
+$GLOBALS['QA_LOG'] = [];
+$res = cg_sitekey_claim();
+$st = qa_calls('/sites/status');
+ok('K10', 'status wait set, then claim: exactly 1 status call, committed', $res === 'committed' && count($st) === 1 && $st[0]['key'] === $KEY && cg_sitekey_current_key() === $KEY, "res=$res status_calls=" . count($st));
+delete_option('cg_status_next_allowed_at');
+
 qa_reset();
 cg_update_options_from_hq(is_array($GLOBALS['QA_OPTS_ORIG']) ? $GLOBALS['QA_OPTS_ORIG'] : []);
 if ($GLOBALS['QA_STATUS_ORIG'] === null) { delete_option('cg_license_status'); } else { update_option('cg_license_status', $GLOBALS['QA_STATUS_ORIG']); }
