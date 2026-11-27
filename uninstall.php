@@ -101,3 +101,8 @@ $cg_cron_hooks = array(
 foreach ($cg_cron_hooks as $cg_cron_hook) {
     wp_unschedule_hook($cg_cron_hook);
 }
+
+// The Reconnect / Sync Now lock is removed on every uninstall, not only with
+// the opt-in above: it is a short-lived lock, not merchant data.
+delete_option('cg_register_reconnect_lock');
+delete_transient('cg_register_reconnect_lock');

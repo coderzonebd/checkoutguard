@@ -54,6 +54,7 @@
 if (!defined('ABSPATH')) {
     exit;
 }
+require_once __DIR__ . '/inc-reconnect-lock.php';
 $GLOBALS['QA_NOW'] = 1800000000;
 $GLOBALS['QA_ORIG'] = [];
 $GLOBALS['QA_OPT'] = 'cg_register_already_registered_at';
@@ -96,7 +97,7 @@ function qa_reset() {
     }
     wp_cache_delete('notoptions', 'options'); wp_cache_delete('alloptions', 'options');
     wp_clear_scheduled_hook('cg_sitekey_request_event');
-    delete_transient('cg_register_reconnect_lock');
+    qa_rl_clear();
     $o = is_array($GLOBALS['QA_ORIG']['cg_plugin_options']) ? $GLOBALS['QA_ORIG']['cg_plugin_options'] : [];
     unset($o['api_key']);
     cg_update_options_from_hq($o);
@@ -285,9 +286,9 @@ qa_reset();
 $GLOBALS['QA_ROUTES'] = $GLOBALS['QA_AR'];
 cg_register_site_with_hq();
 $GLOBALS['QA_NOW'] += 61;
-set_transient('cg_register_reconnect_lock', 1, 45);
+qa_rl_set(45);
 $b = qa_ar_notice();
-delete_transient('cg_register_reconnect_lock');
+qa_rl_clear();
 $running = $b !== null && strpos($b['text'], 'Reconnect is running. Reload this page in a few seconds.') !== false;
 ok('A11', 'already_registered, Reconnect lock held: notice says Reconnect is running, no Reconnect button', qa_ar_ok($b) && $running && !qa_has_button($b), qa_ar_fmt($b) . ' running_text=' . ($running ? 'yes' : 'no'));
 

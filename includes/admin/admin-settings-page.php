@@ -87,7 +87,8 @@ function cg_handle_force_sync_ajax()
     // tab) cannot send a second register while this one runs.
     $options = get_option('cg_plugin_options', []);
     $no_key = empty($options['api_key']) && defined('CG_REGISTER_RECONNECT_LOCK');
-    if ($no_key && get_transient(CG_REGISTER_RECONNECT_LOCK) !== false) {
+    $lock = $no_key ? cg_register_reconnect_lock_acquire() : null;
+    if ($no_key && $lock === false) {
         wp_send_json_error([
             'code' => 'running',
             'message' => __('Reconnect is running. Reload this page in a few seconds.', 'checkoutguard'),
@@ -95,11 +96,10 @@ function cg_handle_force_sync_ajax()
         return;
     }
     if ($no_key) {
-        set_transient(CG_REGISTER_RECONNECT_LOCK, 1, CG_REGISTER_RECONNECT_LOCK_TTL);
         try {
             $synced = cg_sync_with_hq(true);
         } finally {
-            delete_transient(CG_REGISTER_RECONNECT_LOCK);
+            cg_register_reconnect_lock_release($lock);
         }
     } else {
         $synced = cg_sync_with_hq();
