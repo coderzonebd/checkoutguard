@@ -688,9 +688,13 @@ function cg_sitekey_claim()
 
     if ($result === 'claimed' && function_exists('cg_sync_with_hq')) {
         // The first successful call with the new key commits it
-        // (cg_sitekey_on_response sees the 2xx). Forced: a status wait
-        // left from an earlier failure must not hold back this check.
-        cg_sync_with_hq(true);
+        // (cg_sitekey_on_response sees the 2xx). A status wait left from
+        // an earlier failure was earned by the old key and must not hold
+        // back this check, so it is cleared, as a new key from register
+        // clears it. No force: force is only Sync Now's (it also sends a
+        // keyless register past the register gate).
+        delete_option('cg_status_next_allowed_at');
+        cg_sync_with_hq();
         $state = cg_sitekey_state();
         if (empty($state['pending_until']) && cg_sitekey_is_site_key(cg_sitekey_current_key())) {
             $result = 'committed';

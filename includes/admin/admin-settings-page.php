@@ -46,16 +46,16 @@ function cg_status_now()
  * A failed status call (any HTTP error, timeout, HQ down or bad signature)
  * stores a wait in cg_status_next_allowed_at: Retry-After clamped to
  * 60..600 seconds. Calls inside that wait return false without contacting
- * HQ, unless $force is exactly true ("Sync now" and the status check
- * that commits a newly claimed site key).
+ * HQ, unless $force is exactly true. Sync now and the status check that
+ * commits a newly claimed site key clear the wait before they call.
  *
  * @param bool $force Only a real boolean true counts (a hook that passes an
  *                    argument, do_action with '1', must not force). True
  *                    does two things: when the site has no key it sends the
  *                    register call past the register gate, and it skips the
  *                    stored status wait. Only the admin's Sync Now button
- *                    and the site-key claim commit pass true; cron and every
- *                    automatic caller use the default.
+ *                    passes true, and only when the site has no key; cron
+ *                    and every automatic caller use the default.
  * @return bool True when a verified status was stored.
  */
 function cg_sync_with_hq($force = false)
@@ -161,9 +161,12 @@ function cg_handle_force_sync_ajax()
             cg_register_reconnect_lock_release($lock);
         }
     } else {
-        // A key is stored, so no register call can happen here: true only
-        // skips a status wait left from an earlier failed status call.
-        $synced = cg_sync_with_hq(true);
+        // A key is stored: Sync now asks HQ even during a status wait left
+        // from an earlier failed status call. The wait is cleared instead of
+        // forcing, so cg_handle_force_sync_ajax() keeps a single forced call
+        // (the keyless register above). A failed call writes a new wait.
+        delete_option('cg_status_next_allowed_at');
+        $synced = cg_sync_with_hq();
     }
 
     if ($synced) {
