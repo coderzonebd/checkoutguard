@@ -6,6 +6,10 @@
  * before it reads the cart. When the entry has no cart items it throws, and
  * the order that was already created stays as an empty Processing order.
  * The failed Recover must leave no new order and keep the entry recoverable.
+ * A PHP Error (not only an Exception) after the order exists is handled the
+ * same way (E5), and the order turns Processing only once it is complete, so
+ * status hooks such as the New Order email see its items (E6).
+ * woocommerce_new_order still fires exactly once (E7).
  *
  * Run on a local test site only (never production):
  *   wp eval-file tests/qa/recover-empty-cart-order-tests.php
@@ -101,6 +105,62 @@ add_action('woocommerce_order_before_calculate_totals', $qa_throw);
 list($r, $new) = qa_recover($e);
 remove_action('woocommerce_order_before_calculate_totals', $qa_throw);
 ok('E4', 'failure after the order was created: no order left, entry still incomplete', empty($r['success']) && count($new) === 0 && qa_status($e) === 'incomplete', 'success=' . var_export(!empty($r['success']), true) . ' msg=' . ($r['data']['message'] ?? '') . ' new_orders=' . json_encode($new) . ' entry=' . qa_status($e));
+
+// E5: a PHP Error (not an Exception) after wc_create_order(), e.g. a
+// TypeError from another plugin's hook, is handled the same way: Recover
+// fails, nothing escapes, no order left, entry still incomplete.
+$e = qa_entry(wp_json_encode([['product_id' => $pid, 'variation_id' => 0, 'quantity' => 1]]));
+$qa_err = function () { throw new Error('qa: totals error'); };
+add_action('woocommerce_order_before_calculate_totals', $qa_err);
+$escaped = null;
+$before5 = qa_order_ids();
+try {
+    list($r, $new) = qa_recover($e);
+} catch (\Throwable $t) {
+    $escaped = get_class($t);
+    $r = [];
+    $new = array_values(array_diff(qa_order_ids(), $before5));
+    $GLOBALS['QA_NEW_ORDERS'] = array_merge($GLOBALS['QA_NEW_ORDERS'], $new);
+}
+remove_action('woocommerce_order_before_calculate_totals', $qa_err);
+ok('E5', 'PHP Error after the order was created: handled, no order left, entry still incomplete', $escaped === null && empty($r['success']) && count($new) === 0 && qa_status($e) === 'incomplete', 'escaped=' . var_export($escaped, true) . ' success=' . var_export(!empty($r['success']), true) . ' new_orders=' . json_encode($new) . ' entry=' . qa_status($e));
+
+// E6: the order turns Processing only once it is complete. Status hooks
+// (admin New Order email, customer Processing email, invoice number) must
+// see the order with its line items, totals and the _cg_recovered_from
+// link, and the move to Processing happens exactly once.
+$e = qa_entry(wp_json_encode([['product_id' => $pid, 'variation_id' => 0, 'quantity' => 3]]));
+$GLOBALS['QA_E6'] = [];
+$qa_seen = function ($order_id, $order = null) {
+    $o = $order instanceof WC_Order ? $order : wc_get_order($order_id);
+    $GLOBALS['QA_E6'][] = [
+        'items' => $o ? count($o->get_items()) : -1,
+        'total' => $o ? (float) $o->get_total() : -1,
+        'link' => $o ? (string) $o->get_meta('_cg_recovered_from', true) : '',
+    ];
+};
+add_action('woocommerce_order_status_processing', $qa_seen, 10, 2);
+list($r, $new) = qa_recover($e);
+remove_action('woocommerce_order_status_processing', $qa_seen, 10);
+$seen = $GLOBALS['QA_E6'];
+$final = count($new) === 1 ? wc_get_order($new[0])->get_status() : null;
+ok('E6', 'Processing hooks fire once, after items, totals and the recover link are saved', !empty($r['success']) && count($new) === 1 && $final === 'processing' && count($seen) === 1 && $seen[0]['items'] === 1 && $seen[0]['total'] > 0 && $seen[0]['link'] === (string) $e, 'success=' . var_export(!empty($r['success']), true) . ' new_orders=' . json_encode($new) . ' final=' . var_export($final, true) . ' seen=' . json_encode($seen));
+
+// E7: woocommerce_new_order fires exactly once for a recovered order. WC core
+// fires it inside wc_create_order(), before items are added, so at that
+// moment the order is 'pending' with 0 items (CG's own new_order hooks saw
+// 0 items before this change too; only the status changed from processing).
+$e = qa_entry(wp_json_encode([['product_id' => $pid, 'variation_id' => 0, 'quantity' => 1]]));
+$GLOBALS['QA_E7'] = [];
+$qa_new = function ($order_id, $order = null) {
+    $o = $order instanceof WC_Order ? $order : wc_get_order($order_id);
+    $GLOBALS['QA_E7'][] = ['status' => $o ? $o->get_status() : '', 'items' => $o ? count($o->get_items()) : -1];
+};
+add_action('woocommerce_new_order', $qa_new, 10, 2);
+list($r, $new) = qa_recover($e);
+remove_action('woocommerce_new_order', $qa_new, 10);
+$seen = $GLOBALS['QA_E7'];
+ok('E7', 'woocommerce_new_order fires exactly once (pending, 0 items)', !empty($r['success']) && count($new) === 1 && count($seen) === 1 && $seen[0]['status'] === 'pending' && $seen[0]['items'] === 0 && qa_status($e) === 'recovered', 'success=' . var_export(!empty($r['success']), true) . ' new_orders=' . json_encode($new) . ' seen=' . json_encode($seen) . ' entry=' . qa_status($e));
 
 // cleanup
 foreach (array_unique($GLOBALS['QA_NEW_ORDERS']) as $oid) { $o = wc_get_order($oid); if ($o) { $o->delete(true); } }

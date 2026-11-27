@@ -671,6 +671,9 @@ function cg_get_incomplete_checkout_details_ajax_handler()
                 </a>
             <?php endif; ?>
         </div>
+        <?php if (in_array($entry->status, array('incomplete', 'hold'), true)): ?>
+            <p class="description cg-recover-hint"><?php esc_html_e('This will reduce stock and send the customer the order email.', 'checkoutguard'); ?></p>
+        <?php endif; ?>
         <?php if (!cg_is_pro_plan()): ?>
         </div><!-- .cg-pro-locked-hover -->
         <?php endif; ?>
@@ -822,8 +825,8 @@ function cg_recover_order_from_entry($entry_id)
     $order_complete = false;
     try {
         // Resolve the cart before creating the order: wc_create_order() saves
-        // a Processing order at once, and a cart with nothing to add (empty,
-        // never captured, or only products deleted since) must not leave one.
+        // the order at once, and a cart with nothing to add (empty, never
+        // captured, or only products deleted since) must not leave one.
         $cart_items = json_decode((string) $entry->cart_details, true);
         $lines = array();
         if (is_array($cart_items)) {
@@ -842,8 +845,11 @@ function cg_recover_order_from_entry($entry_id)
             throw new Exception(__('No cart items found in the incomplete checkout entry.', 'checkoutguard'));
         }
 
+        // Created as pending and moved to Processing only in the final save
+        // below, so status hooks (New Order email, customer Processing email,
+        // invoice number) run once, with the items and totals in place.
         $order_data = array(
-            'status' => 'wc-processing',
+            'status' => 'pending',
             'customer_id' => $entry->user_id ? $entry->user_id : 0,
             'created_via' => 'cg-recover',
         );
@@ -875,6 +881,7 @@ function cg_recover_order_from_entry($entry_id)
         $order->update_meta_data('_cg_recovered_from', $entry_id);
         $order->update_meta_data('_cg_validated', '1');
         $order->calculate_totals();
+        $order->set_status('processing');
         $order_id = $order->save();
         $order_complete = true;
 
@@ -920,10 +927,12 @@ function cg_recover_order_from_entry($entry_id)
             'edit_order_url' => admin_url('post.php?post=' . $order_id . '&action=edit')
         ));
 
-    } catch (Exception $e) {
+    } catch (\Throwable $e) {
         // An order created but not completed (items, totals and the
         // _cg_recovered_from link not saved yet) is not a recovery: remove it
-        // so no empty Processing order is left. The entry is not changed.
+        // so no half-built order is left. The entry is not changed. Throwable,
+        // not only Exception: a PHP Error from another plugin's hook must not
+        // leave the order behind either.
         if (!$order_complete && $order instanceof WC_Order && $order->get_id()) {
             $order->delete(true);
         }
