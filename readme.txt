@@ -496,7 +496,7 @@ After installation, go to **CheckoutGuard > Settings** and click **Sync Now**. I
 == Upgrade Notice ==
 
 = 1.5.0 =
-Security and plan updates. After updating, the plugin reconnects automatically; no action needed.
+Security update. Please update within 60 days: after that, fake-order and courier checks stop on older versions. After updating, the plugin reconnects automatically; nothing else to do.
 
 = 1.4.2 =
 Security fix for the admin screens and a fix for a connection loop after API key changes. Recommended for all sites.
