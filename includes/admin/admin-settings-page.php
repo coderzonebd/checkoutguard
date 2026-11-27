@@ -82,9 +82,11 @@ function cg_handle_force_sync_ajax()
         return;
     }
 
-    // No key yet: Sync Now forces one register past the gate, under the same
-    // short lock as Reconnect so a second click (or a Reconnect in another
-    // tab) cannot send a second register while this one runs.
+    // No key yet: Sync Now forces one register past the automatic gate, under
+    // the same short lock as Reconnect so a second click (or a Reconnect in
+    // another tab) cannot send a second register while this one runs, and
+    // held by the manual gate so it cannot send one right after the last
+    // manual try either.
     $options = get_option('cg_plugin_options', []);
     $no_key = empty($options['api_key']) && defined('CG_REGISTER_RECONNECT_LOCK');
     $lock = $no_key ? cg_register_reconnect_lock_acquire() : null;
@@ -95,9 +97,24 @@ function cg_handle_force_sync_ajax()
         ]);
         return;
     }
+    if ($no_key && !cg_register_manual_try_begin()) {
+        // Release before answering: wp_send_json_error() ends the request,
+        // and a finally block does not run on exit.
+        cg_register_reconnect_lock_release($lock);
+        wp_send_json_error([
+            'code' => 'gated',
+            'message' => sprintf(
+                /* translators: %s: time after which the admin may try again */
+                __('You can try again after %s.', 'checkoutguard'),
+                wp_date(get_option('date_format') . ' ' . get_option('time_format'), cg_register_now() + cg_register_try_again_left())
+            ),
+        ]);
+        return;
+    }
     if ($no_key) {
         try {
             $synced = cg_sync_with_hq(true);
+            cg_register_manual_try_end();
         } finally {
             cg_register_reconnect_lock_release($lock);
         }

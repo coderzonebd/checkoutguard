@@ -21,7 +21,7 @@ if (!defined('ABSPATH')) {
 global $wpdb;
 $GLOBALS['QA_NOW'] = 1800000000;
 $GLOBALS['QA_ORIG'] = [];
-foreach (['cg_plugin_options', 'cg_license_status', 'cg_register_next_allowed_at', 'cg_sitekey_state'] as $o) {
+foreach (['cg_plugin_options', 'cg_license_status', 'cg_register_next_allowed_at', 'cg_register_manual_next_allowed_at', 'cg_sitekey_state'] as $o) {
     $GLOBALS['QA_ORIG'][$o] = get_option($o, null);
 }
 add_filter('cg_sitekey_now', function () { return $GLOBALS['QA_NOW']; });
@@ -53,7 +53,7 @@ function qa_lock_rows_delete() {
 }
 function qa_reset() {
     global $wpdb;
-    foreach (['cg_sitekey_state', 'cg_sitekey_next_allowed_at', 'cg_sitekey_lock', 'cg_register_next_allowed_at', 'cg_register_already_registered_at'] as $o) {
+    foreach (['cg_sitekey_state', 'cg_sitekey_next_allowed_at', 'cg_sitekey_lock', 'cg_register_next_allowed_at', 'cg_register_manual_next_allowed_at', 'cg_register_already_registered_at'] as $o) {
         $wpdb->delete($wpdb->options, ['option_name' => $o]);
         wp_cache_delete($o, 'options');
     }

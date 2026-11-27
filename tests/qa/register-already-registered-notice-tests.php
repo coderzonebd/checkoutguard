@@ -58,7 +58,7 @@ require_once __DIR__ . '/inc-reconnect-lock.php';
 $GLOBALS['QA_NOW'] = 1800000000;
 $GLOBALS['QA_ORIG'] = [];
 $GLOBALS['QA_OPT'] = 'cg_register_already_registered_at';
-foreach (['cg_plugin_options', 'cg_license_status', 'cg_register_next_allowed_at', 'cg_sitekey_state', $GLOBALS['QA_OPT']] as $o) {
+foreach (['cg_plugin_options', 'cg_license_status', 'cg_register_next_allowed_at', 'cg_register_manual_next_allowed_at', 'cg_sitekey_state', $GLOBALS['QA_OPT']] as $o) {
     $GLOBALS['QA_ORIG'][$o] = get_option($o, null);
 }
 $GLOBALS['QA_USER_ORIG'] = get_current_user_id();
@@ -91,7 +91,7 @@ $GLOBALS['QA_OK'] = ['/sites/register' => ['code' => 201, 'body' => ['api_key' =
 
 function qa_reset() {
     global $wpdb;
-    foreach (['cg_sitekey_state', 'cg_sitekey_next_allowed_at', 'cg_sitekey_lock', 'cg_register_next_allowed_at', $GLOBALS['QA_OPT']] as $o) {
+    foreach (['cg_sitekey_state', 'cg_sitekey_next_allowed_at', 'cg_sitekey_lock', 'cg_register_next_allowed_at', 'cg_register_manual_next_allowed_at', $GLOBALS['QA_OPT']] as $o) {
         $wpdb->delete($wpdb->options, ['option_name' => $o]);
         wp_cache_delete($o, 'options');
     }
