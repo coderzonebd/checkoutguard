@@ -317,6 +317,9 @@ After installation, go to **CheckoutGuard > Settings** and click **Sync Now**. I
 * Improved: database updates are retried automatically; the settings page shows a notice if they fail three times in a row.
 * Fixed: deleting a blocklist entry now tells a database error apart from an entry that no longer exists.
 * Improved: every request to CheckoutGuard Headquarters now includes the plugin version (`X-CG-Version` header), so our server can answer each site according to the version it runs. No customer data is added.
+* Fixed: Recover no longer leaves an empty Processing order when the saved cart is empty, missing, or has only deleted products. The cart is checked before the order is made; if anything fails before the order is complete, the order is removed.
+* Fixed: the "already registered" notice now shows only when the CheckoutGuard server answers with HTTP 409. Any other error, even with similar text, shows the normal "could not connect" notice.
+* Fixed: uninstalling the plugin now always removes CheckoutGuard's scheduled tasks, including queued usage updates, even when "Delete all plugin data upon uninstallation." is off.
 
 = 1.4.2 =
 * Security: order data shown by the admin JavaScript on CheckoutGuard screens is now escaped (XSS fix).
