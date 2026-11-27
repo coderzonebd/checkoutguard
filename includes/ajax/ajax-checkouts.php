@@ -672,7 +672,7 @@ function cg_get_incomplete_checkout_details_ajax_handler()
             <?php endif; ?>
         </div>
         <?php if (in_array($entry->status, array('incomplete', 'hold'), true)): ?>
-            <p class="description cg-recover-hint"><?php esc_html_e('This will reduce stock and send the customer the order email.', 'checkoutguard'); ?></p>
+            <p class="description cg-recover-hint"><?php esc_html_e('Recovering creates a real order: stock is reduced for stock-managed products, and the customer gets the order email if it is enabled in WooCommerce → Emails.', 'checkoutguard'); ?></p>
         <?php endif; ?>
         <?php if (!cg_is_pro_plan()): ?>
         </div><!-- .cg-pro-locked-hover -->
