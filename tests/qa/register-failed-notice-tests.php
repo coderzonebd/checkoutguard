@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) {
 require_once __DIR__ . '/inc-reconnect-lock.php';
 $GLOBALS['QA_NOW'] = 1800000000;
 $GLOBALS['QA_ORIG'] = [];
-foreach (['cg_plugin_options', 'cg_license_status', 'cg_register_next_allowed_at', 'cg_sitekey_state'] as $o) {
+foreach (['cg_plugin_options', 'cg_license_status', 'cg_register_next_allowed_at', 'cg_register_manual_next_allowed_at', 'cg_sitekey_state'] as $o) {
     $GLOBALS['QA_ORIG'][$o] = get_option($o, null);
 }
 $GLOBALS['QA_USER_ORIG'] = get_current_user_id();
@@ -52,7 +52,7 @@ $GLOBALS['QA_ADMIN'] = (int) ($admins[0] ?? 1);
 
 function qa_reset() {
     global $wpdb;
-    foreach (['cg_sitekey_state', 'cg_sitekey_next_allowed_at', 'cg_sitekey_lock', 'cg_register_next_allowed_at', 'cg_register_already_registered_at'] as $o) {
+    foreach (['cg_sitekey_state', 'cg_sitekey_next_allowed_at', 'cg_sitekey_lock', 'cg_register_next_allowed_at', 'cg_register_manual_next_allowed_at', 'cg_register_already_registered_at'] as $o) {
         $wpdb->delete($wpdb->options, ['option_name' => $o]);
         wp_cache_delete($o, 'options');
     }
@@ -195,11 +195,14 @@ unset($b);
 // L1: the lock is released when the call ends (failed here): a new
 // Reconnect right after (same second, well inside the 10 s TTL) sends
 // exactly one more register. Catches a lock that is never deleted.
+// The manual gate (OBS-PRERC-01) would hold the second try on its own, so
+// it is cleared in between: only the lock is under test here.
 qa_reset();
 cg_register_site_with_hq();
 $GLOBALS['QA_NOW'] += 61; $GLOBALS['QA_LOG'] = [];
 $a = cg_register_reconnect_attempt();
 $n1 = qa_regs(); $GLOBALS['QA_LOG'] = [];
+delete_option('cg_register_manual_next_allowed_at');
 $b = cg_register_reconnect_attempt();
 $n2 = qa_regs();
 ok('L1', 'after a failed Reconnect the lock is gone: next Reconnect -> exactly 1 register', $a === 'tried' && $n1 === 1 && $b === 'tried' && $n2 === 1, "a=$a n1=$n1 b=$b n2=$n2");
