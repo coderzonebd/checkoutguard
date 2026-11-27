@@ -35,6 +35,16 @@
  *     notice, L2).
  * A12 a stored gate further ahead than CG_REGISTER_MAX_WAIT: Reconnect
  *     button, no try-again time (same as the failed notice, N12).
+ * A13 the reason field alone is not enough: HTTP 422 (A13a) or 400 (A13b)
+ *     with {"error":"already_registered","message":...} is a plain refusal
+ *     (no option, no already-registered notice, failed notice); the same
+ *     body with 409 is already registered (A13c); 422 after an
+ *     already-registered answer deletes the option (A13d).
+ * A13e/A13f the same as A13a/A13b with a bare body {"error":"already_registered"}
+ *     (no "message", so the error message is the reason itself).
+ * A13g HTTP 409 with only {"message":"already_registered"} (no "error"
+ *     field): still already registered (option set, already-registered
+ *     notice, status kept, gate written).
  *
  * Run on a local test site only (never production):
  *   wp eval-file tests/qa/register-already-registered-notice-tests.php
@@ -289,6 +299,77 @@ update_option('cg_register_next_allowed_at', $GLOBALS['QA_NOW'] + 3600, false);
 $b = qa_ar_notice();
 $try = $b !== null && stripos($b['text'], 'try again after') !== false;
 ok('A12', 'already_registered, gate 3600 s ahead (over the 600 s cap): Reconnect button, no try-again time', qa_ar_ok($b) && qa_has_button($b) && !$try, qa_ar_fmt($b) . ' try_again=' . ($try ? 'yes' : 'no'));
+
+// A13: the already-registered path needs HTTP 409. Another status with the
+// same "error" field (and a "message" next to it, so the message is not the
+// bare reason) is a plain refusal: no option, no already-registered notice,
+// status failed, the plain failed notice. A13c is the 409 control with the
+// same body; A13d starts from an already-registered site.
+function qa_a13_route($code) {
+    return ['/sites/register' => ['code' => $code, 'body' => ['error' => 'already_registered', 'message' => 'Request refused']], '/sites/status' => ['code' => 'down']];
+}
+function qa_a13_errs() {
+    return array_values(array_filter(qa_notice_blocks(), function ($x) { return strpos(' ' . $x['class'] . ' ', ' notice-error ') !== false; }));
+}
+foreach ([['A13a', 422], ['A13b', 400]] as $c) {
+    qa_reset();
+    $GLOBALS['QA_ROUTES'] = qa_a13_route($c[1]);
+    cg_register_site_with_hq();
+    $status = (string) get_option('cg_license_status');
+    $row = qa_opt_row();
+    $GLOBALS['QA_NOW'] += 61;
+    $b = qa_ar_notice();
+    $errs = qa_a13_errs();
+    $failed_notice = count($errs) === 1 && stripos($errs[0]['text'], 'could not connect') !== false;
+    ok($c[0], 'HTTP ' . $c[1] . ' with error already_registered: no option, no already-registered notice, status failed, failed notice', $row === null && $b === null && strpos($status, 'failed') === 0 && cg_register_failed() && $failed_notice, 'status=' . substr($status, 0, 7) . ' ' . qa_opt_fmt($row) . ' ' . qa_ar_fmt($b) . ' error_notices=' . count($errs) . ' failed_notice=' . ($failed_notice ? 'yes' : 'no'));
+}
+// A13e/A13f: the same with a bare body (no "message"): the client then uses
+// "already_registered" as the error message, and that alone must not count
+// without HTTP 409 either.
+foreach ([['A13e', 422], ['A13f', 400]] as $c) {
+    qa_reset();
+    $GLOBALS['QA_ROUTES'] = ['/sites/register' => ['code' => $c[1], 'body' => ['error' => 'already_registered']], '/sites/status' => ['code' => 'down']];
+    cg_register_site_with_hq();
+    $status = (string) get_option('cg_license_status');
+    $row = qa_opt_row();
+    $GLOBALS['QA_NOW'] += 61;
+    $b = qa_ar_notice();
+    $errs = qa_a13_errs();
+    $failed_notice = count($errs) === 1 && stripos($errs[0]['text'], 'could not connect') !== false;
+    ok($c[0], 'HTTP ' . $c[1] . ' with a bare {"error":"already_registered"}: no option, no already-registered notice, status failed, failed notice', $row === null && $b === null && strpos($status, 'failed') === 0 && cg_register_failed() && $failed_notice, 'status=' . substr($status, 0, 7) . ' ' . qa_opt_fmt($row) . ' ' . qa_ar_fmt($b) . ' error_notices=' . count($errs) . ' failed_notice=' . ($failed_notice ? 'yes' : 'no'));
+}
+qa_reset();
+$GLOBALS['QA_ROUTES'] = qa_a13_route(409);
+cg_register_site_with_hq();
+$status = (string) get_option('cg_license_status');
+$row = qa_opt_row();
+$GLOBALS['QA_NOW'] += 61;
+$b = qa_ar_notice();
+ok('A13c', 'HTTP 409 with the same body (control): option set, already-registered notice, status kept', qa_opt_set($row) && qa_ar_ok($b) && $status === 'active', "status=$status " . qa_opt_fmt($row) . ' ' . qa_ar_fmt($b));
+// A13g: 409 with only a "message" field that says already_registered (no
+// "error" field). The status is 409, so this is the already-registered path.
+qa_reset();
+$GLOBALS['QA_ROUTES'] = ['/sites/register' => ['code' => 409, 'body' => ['message' => 'already_registered']], '/sites/status' => ['code' => 'down']];
+cg_register_site_with_hq();
+$status = (string) get_option('cg_license_status');
+$row = qa_opt_row();
+$gate = (int) get_option('cg_register_next_allowed_at', 0) - $GLOBALS['QA_NOW'];
+$GLOBALS['QA_NOW'] += 61;
+$b = qa_ar_notice();
+ok('A13g', 'HTTP 409 with only {"message":"already_registered"}: option set, already-registered notice, status kept, gate written', qa_opt_set($row) && qa_ar_ok($b) && $status === 'active' && $gate > 0, "status=$status gate=+$gate " . qa_opt_fmt($row) . ' ' . qa_ar_fmt($b));
+qa_reset();
+$GLOBALS['QA_ROUTES'] = $GLOBALS['QA_AR'];
+cg_register_site_with_hq();
+$before = qa_opt_row();
+$GLOBALS['QA_NOW'] += 61;
+$GLOBALS['QA_ROUTES'] = qa_a13_route(422);
+cg_register_site_with_hq();
+$n = qa_registers();
+$row = qa_opt_row();
+$b = qa_ar_notice();
+$errs = qa_a13_errs();
+$failed_notice = count($errs) === 1 && stripos($errs[0]['text'], 'could not connect') !== false;
+ok('A13d', 'already_registered, then HTTP 422 with error already_registered: option deleted, failed notice is the one error notice', qa_opt_present($before) && $n === 2 && $row === null && $b === null && cg_register_failed() && $failed_notice, "registers=$n before " . qa_opt_fmt($before) . ', after ' . qa_opt_fmt($row) . ' ' . qa_ar_fmt($b) . ' error_notices=' . count($errs) . ' failed_notice=' . ($failed_notice ? 'yes' : 'no'));
 
 // restore
 qa_reset();
