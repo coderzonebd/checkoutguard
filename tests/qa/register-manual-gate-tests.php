@@ -223,6 +223,34 @@ $c_auto = substr_count($un, "delete_option('cg_register_next_allowed_at')");
 $c_man = substr_count($un, "delete_option('" . $GLOBALS['QA_MG'] . "')");
 ok('M15', 'uninstall.php: manual gate deleted as often as the automatic gate', $c_auto > 0 && $c_man === $c_auto, "auto=$c_auto manual=$c_man");
 
+// M16: Retry-After above CG_REGISTER_MAX_WAIT is capped at 600 s for the
+// manual gate (+599 s gated, +600 s one more register).
+$m16 = [];
+foreach (['900', '86400'] as $ra) {
+    qa_mg_reset();
+    $GLOBALS['QA_ROUTES'] = ['/sites/register' => ['code' => 429, 'ra' => $ra, 'body' => ['error' => 'Too many requests']]];
+    cg_register_reconnect_attempt();
+    $GLOBALS['QA_ROUTES'] = [];
+    qa_mg_at(599); $b = cg_register_reconnect_attempt(); $n1 = qa_mg_registers();
+    qa_mg_at(600); $c = cg_register_reconnect_attempt(); $n2 = qa_mg_registers();
+    $m16[$ra] = ($b === 'gated' && $n1 === 1 && $c === 'tried' && $n2 === 2) ? 'ok' : "b=$b n1=$n1 c=$c n2=$n2";
+}
+ok('M16', 'Retry-After 900 / 86400: manual gate capped at 600 s (+599 gated, +600 one more)', count(array_unique($m16)) === 1 && reset($m16) === 'ok', json_encode($m16));
+
+// M17: a negative, non-numeric or fractional Retry-After falls back to the
+// 60 s minimum (+59 s gated, +60 s one more register).
+$m17 = [];
+foreach (['-5', 'abc', '1.5'] as $ra) {
+    qa_mg_reset();
+    $GLOBALS['QA_ROUTES'] = ['/sites/register' => ['code' => 429, 'ra' => $ra, 'body' => ['error' => 'Too many requests']]];
+    cg_register_reconnect_attempt();
+    $GLOBALS['QA_ROUTES'] = [];
+    qa_mg_at(59); $b = cg_register_reconnect_attempt(); $n1 = qa_mg_registers();
+    qa_mg_at(60); $c = cg_register_reconnect_attempt(); $n2 = qa_mg_registers();
+    $m17[$ra] = ($b === 'gated' && $n1 === 1 && $c === 'tried' && $n2 === 2) ? 'ok' : "b=$b n1=$n1 c=$c n2=$n2";
+}
+ok('M17', 'Retry-After -5 / abc / 1.5: manual gate falls back to 60 s (+59 gated, +60 one more)', count(array_unique($m17)) === 1 && reset($m17) === 'ok', json_encode($m17));
+
 $out = ob_get_clean();
 // restore
 qa_mg_reset();
