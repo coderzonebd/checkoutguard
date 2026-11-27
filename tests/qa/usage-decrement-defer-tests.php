@@ -187,9 +187,26 @@ $kept = $GLOBALS['cg_hq_timeout_override'] ?? null;
 unset($GLOBALS['cg_hq_timeout_override']);
 ok('D11b', 'caller override 3 is put back after the run', $kept === 3, var_export($kept, true));
 
-// D12 (review N2): uninstall clears the queued-decrement hook
-$un = (string) @file_get_contents(CG_PLUGIN_DIR . 'uninstall.php');
-ok('D12', "uninstall.php clears cg_send_usage_decrements", strpos($un, "wp_clear_scheduled_hook('cg_send_usage_decrements')") !== false, 'found=' . var_export(strpos($un, 'cg_send_usage_decrements') !== false, true));
+// D12 (review N2): uninstall removes queued decrements (they carry args),
+// also with delete_on_uninstall off. Runs uninstall.php for real; the
+// option is off here, so no table or option is removed. Cron and the
+// plugin options are put back after. Both cases: uninstall-hooks-tests.php.
+$cron12 = _get_cron_array();
+$opt12 = get_option('cg_plugin_options', []);
+$o12 = is_array($opt12) ? $opt12 : [];
+$o12['delete_on_uninstall'] = 0;
+update_option('cg_plugin_options', $o12);
+wp_schedule_single_event(time() + 3600, CG_USAGE_DECREMENT_HOOK, ['checkouts', 2, 'order-d12']);
+$had12 = wp_next_scheduled(CG_USAGE_DECREMENT_HOOK, ['checkouts', 2, 'order-d12']) !== false;
+if (!defined('WP_UNINSTALL_PLUGIN')) {
+    define('WP_UNINSTALL_PLUGIN', 'checkoutguard/checkoutguard.php');
+}
+include CG_PLUGIN_DIR . 'uninstall.php';
+$left12 = count(qa_events());
+$kept12 = get_option('cg_plugin_options', null);
+_set_cron_array($cron12);
+update_option('cg_plugin_options', $opt12);
+ok('D12', 'uninstall (option off) removes queued decrements, keeps options', $had12 && $left12 === 0 && is_array($kept12), 'had=' . var_export($had12, true) . ' left=' . $left12);
 
 // D13 (review N3): only rows this request really deleted are queued
 qa_reset();

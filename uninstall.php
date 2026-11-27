@@ -82,13 +82,22 @@ if (!empty($options['delete_on_uninstall'])) {
     delete_option('cg_register_already_registered_at');
     delete_option('cg_sitekey_lock');
     delete_option('cg_sitekey_last_drop');
+}
 
-    // Clear scheduled cron hooks.
-    wp_clear_scheduled_hook('cg_daily_sync_hook');
-    wp_clear_scheduled_hook('cg_cleanup_expired_blocks');
-    wp_clear_scheduled_hook('cg_sitekey_request_event');
-    wp_clear_scheduled_hook('cg_sitekey_claim_event');
-    wp_clear_scheduled_hook('cg_sitekey_retry_event');
+// Cron events are removed on every uninstall, not only with the opt-in
+// above: the plugin code is gone, so nothing may still be scheduled for it.
+// wp_unschedule_hook() removes every event of the hook whatever its args;
+// wp_clear_scheduled_hook() with no args would leave the queued usage
+// decrements, which carry args.
+$cg_cron_hooks = array(
+    'cg_daily_sync_hook',
+    'cg_cleanup_expired_blocks',
+    'cg_sitekey_request_event',
+    'cg_sitekey_claim_event',
+    'cg_sitekey_retry_event',
     // Queued HQ usage decrements (CG_USAGE_DECREMENT_HOOK).
-    wp_clear_scheduled_hook('cg_send_usage_decrements');
+    'cg_send_usage_decrements',
+);
+foreach ($cg_cron_hooks as $cg_cron_hook) {
+    wp_unschedule_hook($cg_cron_hook);
 }
