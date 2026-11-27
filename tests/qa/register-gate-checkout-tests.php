@@ -555,7 +555,7 @@ foreach (['G13l-reconnect', 'G13l-syncnow'] as $gid) {
     remove_filter('query', $qa_rec);
     $lock_after = qa_rl_value();
     $L = $GLOBALS['QA_L'];
-    ok($gid, 'Reconnect lock held at +44 s, gone at +46 s, released after the call', is_array($L) && ($L['h44'] ?? null) === true && ($L['h46'] ?? null) === false && $b === 1 && $lock_after === null, 'r=' . var_export($r, true) . " register=$b lock=" . json_encode($L) . ' lock_after=' . var_export($lock_after, true));
+    ok($gid, 'Reconnect lock held at +44 s, gone at +46 s, released after the call', !wp_using_ext_object_cache() && is_array($L) && ($L['h44'] ?? null) === true && ($L['h46'] ?? null) === false && $b === 1 && $lock_after === null, 'r=' . var_export($r, true) . " register=$b lock=" . json_encode($L) . ' lock_after=' . var_export($lock_after, true));
 }
 
 // G13k: only Sync Now may force. Across the plugin code (tests excluded) there
