@@ -818,7 +818,30 @@ function cg_recover_order_from_entry($entry_id)
         return array('success' => false, 'data' => array('message' => __('This entry cannot be recovered. Current status: ', 'checkoutguard') . $entry->status));
     }
 
+    $order = null;
+    $order_complete = false;
     try {
+        // Resolve the cart before creating the order: wc_create_order() saves
+        // a Processing order at once, and a cart with nothing to add (empty,
+        // never captured, or only products deleted since) must not leave one.
+        $cart_items = json_decode((string) $entry->cart_details, true);
+        $lines = array();
+        if (is_array($cart_items)) {
+            foreach ($cart_items as $item_data) {
+                if (!is_array($item_data)) {
+                    continue;
+                }
+                $product_id_to_load = !empty($item_data['variation_id']) ? $item_data['variation_id'] : ($item_data['product_id'] ?? 0);
+                $product = wc_get_product($product_id_to_load);
+                if ($product) {
+                    $lines[] = array($product, !empty($item_data['quantity']) ? (int) $item_data['quantity'] : 1);
+                }
+            }
+        }
+        if (empty($lines)) {
+            throw new Exception(__('No cart items found in the incomplete checkout entry.', 'checkoutguard'));
+        }
+
         $order_data = array(
             'status' => 'wc-processing',
             'customer_id' => $entry->user_id ? $entry->user_id : 0,
@@ -845,23 +868,15 @@ function cg_recover_order_from_entry($entry_id)
         );
         $order->set_address($billing_address, 'billing');
 
-        $cart_items = json_decode($entry->cart_details, true);
-        if (is_array($cart_items) && !empty($cart_items)) {
-            foreach ($cart_items as $item_data) {
-                $product_id_to_load = !empty($item_data['variation_id']) ? $item_data['variation_id'] : ($item_data['product_id'] ?? 0);
-                $product = wc_get_product($product_id_to_load);
-                if ($product) {
-                    $order->add_product($product, !empty($item_data['quantity']) ? (int) $item_data['quantity'] : 1);
-                }
-            }
-        } else {
-            throw new Exception(__('No cart items found in the incomplete checkout entry.', 'checkoutguard'));
+        foreach ($lines as $line) {
+            $order->add_product($line[0], $line[1]);
         }
 
         $order->update_meta_data('_cg_recovered_from', $entry_id);
         $order->update_meta_data('_cg_validated', '1');
         $order->calculate_totals();
         $order_id = $order->save();
+        $order_complete = true;
 
         $order->add_order_note(
             sprintf(__('Order created from Incomplete Checkout ID %d by %s. Related WC Order ID: #%d', 'checkoutguard'), $entry_id, wp_get_current_user()->display_name, $order_id),
@@ -906,6 +921,12 @@ function cg_recover_order_from_entry($entry_id)
         ));
 
     } catch (Exception $e) {
+        // An order created but not completed (items, totals and the
+        // _cg_recovered_from link not saved yet) is not a recovery: remove it
+        // so no empty Processing order is left. The entry is not changed.
+        if (!$order_complete && $order instanceof WC_Order && $order->get_id()) {
+            $order->delete(true);
+        }
         return array('success' => false, 'data' => array('message' => $e->getMessage()));
     }
 }
