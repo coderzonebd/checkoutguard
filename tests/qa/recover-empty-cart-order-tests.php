@@ -9,6 +9,7 @@
  * A PHP Error (not only an Exception) after the order exists is handled the
  * same way (E5), and the order turns Processing only once it is complete, so
  * status hooks such as the New Order email see its items (E6).
+ * woocommerce_new_order still fires exactly once (E7).
  *
  * Run on a local test site only (never production):
  *   wp eval-file tests/qa/recover-empty-cart-order-tests.php
@@ -144,6 +145,22 @@ remove_action('woocommerce_order_status_processing', $qa_seen, 10);
 $seen = $GLOBALS['QA_E6'];
 $final = count($new) === 1 ? wc_get_order($new[0])->get_status() : null;
 ok('E6', 'Processing hooks fire once, after items, totals and the recover link are saved', !empty($r['success']) && count($new) === 1 && $final === 'processing' && count($seen) === 1 && $seen[0]['items'] === 1 && $seen[0]['total'] > 0 && $seen[0]['link'] === (string) $e, 'success=' . var_export(!empty($r['success']), true) . ' new_orders=' . json_encode($new) . ' final=' . var_export($final, true) . ' seen=' . json_encode($seen));
+
+// E7: woocommerce_new_order fires exactly once for a recovered order. WC core
+// fires it inside wc_create_order(), before items are added, so at that
+// moment the order is 'pending' with 0 items (CG's own new_order hooks saw
+// 0 items before this change too; only the status changed from processing).
+$e = qa_entry(wp_json_encode([['product_id' => $pid, 'variation_id' => 0, 'quantity' => 1]]));
+$GLOBALS['QA_E7'] = [];
+$qa_new = function ($order_id, $order = null) {
+    $o = $order instanceof WC_Order ? $order : wc_get_order($order_id);
+    $GLOBALS['QA_E7'][] = ['status' => $o ? $o->get_status() : '', 'items' => $o ? count($o->get_items()) : -1];
+};
+add_action('woocommerce_new_order', $qa_new, 10, 2);
+list($r, $new) = qa_recover($e);
+remove_action('woocommerce_new_order', $qa_new, 10);
+$seen = $GLOBALS['QA_E7'];
+ok('E7', 'woocommerce_new_order fires exactly once (pending, 0 items)', !empty($r['success']) && count($new) === 1 && count($seen) === 1 && $seen[0]['status'] === 'pending' && $seen[0]['items'] === 0 && qa_status($e) === 'recovered', 'success=' . var_export(!empty($r['success']), true) . ' new_orders=' . json_encode($new) . ' seen=' . json_encode($seen) . ' entry=' . qa_status($e));
 
 // cleanup
 foreach (array_unique($GLOBALS['QA_NEW_ORDERS']) as $oid) { $o = wc_get_order($oid); if ($o) { $o->delete(true); } }
