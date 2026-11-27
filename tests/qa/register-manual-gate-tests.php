@@ -199,6 +199,30 @@ ok('M11', 'failed notice inside the manual gate: no Reconnect button, shows try 
 $un = (string) file_get_contents(CG_PLUGIN_DIR . 'uninstall.php');
 ok('M12', 'uninstall.php deletes the manual gate option', strpos($un, "'" . $GLOBALS['QA_MG'] . "'") !== false, 'found=' . var_export(strpos($un, $GLOBALS['QA_MG']) !== false, true));
 
+// M13: Sync Now edge on a 409 "Domain already taken" answer: +59 s gated,
+// +60 s sends one.
+qa_mg_reset();
+$GLOBALS['QA_ROUTES'] = ['/sites/register' => ['code' => 409, 'body' => ['error' => 'Domain already taken']]];
+qa_mg_sync_now();
+$auto = cg_register_gate_left();
+qa_mg_at(CG_REGISTER_MIN_GAP - 1); $s59 = qa_mg_sync_now(); $n59 = qa_mg_registers();
+qa_mg_at(CG_REGISTER_MIN_GAP); $s60 = qa_mg_sync_now(); $n60 = qa_mg_registers();
+ok('M13', 'already taken via Sync Now: +59 s gated, +60 s exactly one more', $s59[1] === 'gated' && $n59 === 1 && $s60[1] !== 'gated' && $n60 === 2, "auto_left=$auto s59=" . json_encode($s59) . " n59=$n59 s60=" . json_encode($s60) . " n60=$n60");
+
+// M14: a gated Sync Now answers through wp_send_json_error (exit), so it
+// must release the Reconnect lock itself first.
+qa_mg_reset();
+qa_mg_sync_now();
+qa_mg_at(20); $s = qa_mg_sync_now();
+$held = cg_register_reconnect_lock_held();
+ok('M14', 'gated Sync Now leaves no Reconnect lock behind', $s[1] === 'gated' && !$held, 's=' . json_encode($s) . ' held=' . var_export($held, true));
+
+// M15: uninstall deletes the manual gate wherever it deletes the automatic
+// gate (single site and each site of a network).
+$c_auto = substr_count($un, "delete_option('cg_register_next_allowed_at')");
+$c_man = substr_count($un, "delete_option('" . $GLOBALS['QA_MG'] . "')");
+ok('M15', 'uninstall.php: manual gate deleted as often as the automatic gate', $c_auto > 0 && $c_man === $c_auto, "auto=$c_auto manual=$c_man");
+
 $out = ob_get_clean();
 // restore
 qa_mg_reset();
